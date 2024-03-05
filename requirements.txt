@@ -1,0 +1,4 @@
+# Dependencies
+scipy ~= 1.12
+bitarray ~= 2.9
+matplotlib ~= 3.8
