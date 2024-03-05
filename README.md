@@ -8,11 +8,11 @@ Students of the Bible are often confronted with questions about population growt
 - How could 2.3 million Israelites have left Egypt if only 70 people went in?
 - Can you get 2.3 million people in a ‘short’ Egyptian Sojourn of only 215 years?
 
-These have already been addressed in the literature (e.g., [here](https://creation.com/biblical-human-population-growth-model), but this does not mean every aspect of these questions has been answered. Also, many people might want to explore the question for themselves.
+These have already been addressed in the literature (e.g., [here](https://creation.com/biblical-human-population-growth-model)), but this does not mean every aspect of these questions has been answered. Also, many people might want to explore the question for themselves.
 
 We are sometimes presented with more complex questions that take a specialist to answer. For example:
 - How can all people descend from Adam and Eve? Would they have had enough genetic diversity to account for all the different types of people we see today? Would not the inbreeding among their children (and those of Noah) have been bad for humanity?
-- Can Swamidass’ [‘Genealogical Adam and Eve’](https://creation.com/review-swamidass-the-genealogical-adam-and-eve) model and Craig’s [‘Adam was a Homo heidelbergensis’](https://creation.com/historical-adam-craig) claims be answered by creationists?
+- Can Swamidass’ [‘Genealogical Adam and Eve’](https://creation.com/review-swamidass-the-genealogical-adam-and-eve) model and Craig’s [‘Adam was a *Homo heidelbergensis*’](https://creation.com/historical-adam-craig) claims be answered by creationists?
 - How did the number of differences seen between humans and chimps arise in just a few million years, or is this even possible?
 - What are the effects of population bottlenecks like the evolutionary pre-Out of Africa bottleneck or the biblical [Flood bottleneck](https://creation.com/genetic-effects-of-the-flood)?
 - Can we explain long-term survival of long-lived species with small populations (e.g., Sanford’s [‘Genetic Entropy’](https://creation.com/mendels-accountant-review)?
