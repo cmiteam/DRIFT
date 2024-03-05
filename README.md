@@ -101,7 +101,7 @@ Meiosis is a critical phase in the life cycle of all sexually reproducing organi
 
 This will be the copy of the genome that the child inherits from one parent. The process is simply repeated for the second parent to generate the diploid genome. Here is a visual representation of the process:
 
-![Digital Meiosis](data/Meiosis.png)
+![Digital Meiosis](data/meiosis.png)
 
 For any given chromosome (dark blue), random locations (red Xs) are selected to the right and left of the centromere (black circle). One centromere copy is then randomly chosen to be inherited. By setting the bits in the mask appropriately, a simple combination of AND, OR, and NOT results in a bitstring that can be inherited by a child from one parent. The two parental copies are color coded to help visualize the process of inheritance.
 
