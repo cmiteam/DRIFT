@@ -1,0 +1,37 @@
+parameter,label,type,value_format,default,group
+model_id,Model ID,Text,string,Model 1,main
+num_runs,Num Runs,Text,int,1,main
+start_pop_size,Start Pop Size,Text,int,100,main
+max_pop_size,Max Pop Size,Text,int,100,main
+max_growth_rate,Max Growth Rate,Text,float,1.02,main
+end_year,End Year,Text,int,1000,main
+init_lifespan,Init Lifespan,Text,int,85,main
+min_lifespan,Min Lifespan,Text,int,85,main
+lifespan_drop,Lifespan Drop,Text,float,0.85,main
+maturity,Maturity,Text,int,20,main
+spacing,Spacing,Text,int,3,main
+birth_prob,Birth Probability,Text,int,3,main
+save_interval,Save Interval,Text,int,100,main
+menopause,Menopause,Text,float,0.5,main
+bottleneck_start,Bottleneck Start,Text,int,-1,main
+bottleneck_end,Bottleneck End,Text,int,-1,main
+bottleneck_size,Bottleneck Size,Text,int,-1,main
+track_DNA,Track DNA,Check,bool,0,main
+track_mutations,Track Mutations,Check,bool,1,main
+track_dead,Track Dead,Check,bool,0,main
+max_breeding_inds,Max Breeding Inds,Check,bool,0,main
+random_mating,Random Mating,Text,float,1,main
+seed_year,Seed Year,Text,int,0,DNA
+multiplier,Multiplier,Text,int,1,DNA
+init_heterozygosity,Init Heterozygosity,Text,float,0,DNA
+genome_map,Genome Map,Check,bool,0,DNA
+every_genome_map,All Genome Maps,Check,bool,0,DNA
+mu,Mutation Rate,Text,float,1,mutation
+f_neutral,f(Neutal),Text,float,0.5,mutation
+f_beneficial,f(Beneficial),Text,float,0.0001,mutation
+shape,Weibull Shape,Text,float,1,mutation
+scale,Weibull Scale,Text,float,0.05,mutation
+Weibull_adj,Weibull Adjustment,Text,int,1,mutation
+mutation_hist,Mutation Histogram,Check,bool,1,mutation
+mutation_map,Mutation Map,Check,bool,1,mutation
+selection,Selection,Dropdown,string,"Annual,Birth",mutation
