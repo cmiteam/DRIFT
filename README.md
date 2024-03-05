@@ -15,7 +15,7 @@ We are sometimes presented with more complex questions that take a specialist to
 - Can Swamidass’ [‘Genealogical Adam and Eve’](https://creation.com/review-swamidass-the-genealogical-adam-and-eve) model and Craig’s [‘Adam was a *Homo heidelbergensis*’](https://creation.com/historical-adam-craig) claims be answered by creationists?
 - How did the number of differences seen between humans and chimps arise in just a few million years, or is this even possible?
 - What are the effects of population bottlenecks like the evolutionary pre-Out of Africa bottleneck or the biblical [Flood bottleneck](https://creation.com/genetic-effects-of-the-flood)?
-- Can we explain long-term survival of long-lived species with small populations (e.g., Sanford’s [‘Genetic Entropy’](https://creation.com/mendels-accountant-review)?
+- Can we explain long-term survival of long-lived species with small populations (e.g., Sanford’s [‘Genetic Entropy’](https://creation.com/mendels-accountant-review))?
 
 To address these questions, and potentially many more, this flexible, open-source population modeling software was created. To make it as accessible to as many people as possible, it is written in the popular programming language Python.
 
