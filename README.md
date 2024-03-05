@@ -1,4 +1,4 @@
-#DRIFT: The Dynamics of Recombination, Inheritance, and Fitness in Time
+# DRIFT: The Dynamics of Recombination, Inheritance, and Fitness in Time
 A comprehensive population genetics modeling software for the creationist community
 
 # Overview
