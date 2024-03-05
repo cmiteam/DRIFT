@@ -43,16 +43,16 @@ To use this software package, Python 3 must be installed on your system. If you 
 
 An installation program (e.g., install.bat) is not included, but setup is simple. Unzip the download file into your directory of choice. If, for example, the user unzipped it into the folder C:/Python/DRIFT, two additional folders will be created:
 
-- C:/Python/DRIFT/Data
-- C:/Python/DRIFT/Results
+- c:/python/drift/data
+- c:/python/drift/results
 
 These files will be in the main directory:
 
-- CPGM-GUI.py, CPGM-main.py
+- driftgui1.py, drift1.py
 
 These files will be in the Data directory:
 
-- ActuarialTable.csv, ChromosomeData.csv, ExamplePop.csv, ParameterDefaults.csv, PlotDefaults.csv
+- actuarial_table.csv, chromosome_data.csv, example_pop.csv, parameter_defaults.csv, plot_defaults.csv
 - Three additional image files (used in this readme) will also be in the directory.
 
 The Results directory will be empty.
@@ -65,12 +65,12 @@ Alternatively, the user might want to work with an environment management system
 
 The method needed to run the program is platform dependent. On a Windows machine, after navigating to the program directory, the command to run the program would be:
 
-     C:\Python3.11\Programs\DRIFT> python.exe cpgm-gui.py
+     c:\python3.11\programs\drift> python.exe driftgui1.py
 
 This will launch the GUI. This is a simple data entry form in which you can enter the relevant model parameters.
 
 #The GUI
-![The GUI](Data/GUI.png)
+![The GUI](data/gui.png)
 
 **Beware:** If you run multiple models with the same ID, the older data will be overwritten.
 **Beware:** Enabling the parameter TrackDead can potentially create very large files. This option is disabled by default. At present, there is no confirmation step when this is enabled.
@@ -101,7 +101,7 @@ Meiosis is a critical phase in the life cycle of all sexually reproducing organi
 
 This will be the copy of the genome that the child inherits from one parent. The process is simply repeated for the second parent to generate the diploid genome. Here is a visual representation of the process:
 
-![Digital Meiosis](/data/Meiosis.png)
+![Digital Meiosis](data/Meiosis.png)
 
 For any given chromosome (dark blue), random locations (red Xs) are selected to the right and left of the centromere (black circle). One centromere copy is then randomly chosen to be inherited. By setting the bits in the mask appropriately, a simple combination of AND, OR, and NOT results in a bitstring that can be inherited by a child from one parent. The two parental copies are color coded to help visualize the process of inheritance.
 
@@ -158,7 +158,7 @@ When the model run is completed, assuming the population has not gone extinct, t
 - Genome Map: This will save a .png file that includes a map of the genome at the top. This is followed by the genomic data for each individual, two lines each.
 - All Genome Maps: This will save a unique genome map at each save interval.
 
-![genome Map](/data/GenomeMap.png)
+![genome Map](data/genome_map.png)
 
 An example genome map: This is the top-left portion only. Chromosomes are denoted along the top. Green = telomeres. Blue = centromeres. White = individual chromosome arms. Here, a seed individual was introduced at year 0 and his/her DNA was allowed to mix into the population as meiosis broke the seed DNA into smaller and smaller fragments (red).
 
@@ -235,8 +235,8 @@ This is order of operations each model year:
 
 Adding parameters to the GUI is simple. All one has to do is add an item to either Parameter Defaults.csv or Plot Defaults.csv then direct the main program to take appropriate action. For example: the user wants the speed and efficiency of the DNA tracking algorithm without the overhead of the mutation algorithm. As long as all mutations have the same effect (whatever that might be), it should be possible to do this. So, the user adds a line to Parameter Defaults.csv:
 
-parameter label type value_format default group
-Use_DNA_engine Use DNA Engine Check bool 0 Mutation
+parameter         label             type     value_format   default  group
+Use_DNA_engine    Use DNA Engine    Check    bool           0        Mutation
 
 Now, when the program launches, a checkbox labeled Use DNA Engine will appear in the Mutation Parameters and Settings frame. The checkbox default setting is 0 (unchecked) and the setting will be accessible in the main program under model[‘Use_DNA’]. All one has to do is capture that setting at the appropriate place in the program (e.g., if model[‘Use_DNA’]: ) and redirect program execution to a new feature or a new subroutine.
 
