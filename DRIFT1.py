@@ -238,7 +238,7 @@ def save_population_genome_map(model_name, numbits, IndData, chromosomes, chromo
 
     new_image_height = row
     resized_image = image.resize((image_width, new_image_height))
-    filename = os.path.join(results_directory, f"{model_name}_genome_map.png")
+    filename = os.path.join(results_directory, f"{model_name} genome_map.png")
     resized_image.save(filename, format='PNG')
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -289,7 +289,7 @@ def save_population_mutation_map(model_name, image_width, IndData, mutations, ch
                    pixels[j, row] = (0,0,0)
                 row += 1
 
-    filename = os.path.join(results_directory, f"{model_name}_mutation_map.png")
+    filename = os.path.join(results_directory, f"{model_name} mutation_map.png")
     image.save(filename, format='PNG')
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -1007,7 +1007,7 @@ def calculate_fitness_stats(IndData, numbits):
 
 def load_chromosome_data(multiplier):
 
-    filename = os.path.join(data_directory, "ChromosomeData.csv")
+    filename = os.path.join(data_directory, "chromosome_data.csv")
     chromosome_arm_data = defaultdict(lambda: defaultdict(list))
     genome_size = 0
     with open(filename, 'r', newline='') as file:
@@ -1029,7 +1029,7 @@ def load_chromosome_data(multiplier):
 def load_actuarial_table():
 
     death_risk = {}
-    filename = os.path.join(data_directory, "ActuarialTable.csv")
+    filename = os.path.join(data_directory, "actuarial_table.csv")
     with open(filename, 'r', newline='') as file:
         reader = csv.DictReader(file)
         for row in reader:
