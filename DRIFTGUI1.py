@@ -18,8 +18,8 @@ class PopulationModelingApp:
             'DNA_parameter_frame': {'title': 'DNA Parameters and Settings', 'group': 'DNA', 'placement': 'top_right'},
             'mutation_parameter_frame': {'title': 'Mutation Parameters and Settings', 'group': 'mutation', 'placement': 'bottom_right'}
         }
-        self.initial_parameter_states = self.load_defaults('parameterdefaults.csv')
-        self.initial_plot_states = self.load_defaults('plotdefaults.csv')
+        self.initial_parameter_states = self.load_defaults('parameter_defaults.csv')
+        self.initial_plot_states = self.load_defaults('plot_defaults.csv')
         self.parameter_states = {}
         self.plot_states = {}
         self.check_var_dict = {}
