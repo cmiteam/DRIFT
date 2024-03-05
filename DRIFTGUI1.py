@@ -3,7 +3,7 @@ import csv
 import tkinter as tk
 from tkinter import ttk
 from tkinter import font as tkFont
-from DRIFT1 import run_population_model 
+from drift1 import run_population_model 
 
 data_directory = "data"
 
