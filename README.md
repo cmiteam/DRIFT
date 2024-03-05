@@ -276,7 +276,7 @@ Further memory optimization will be achieved by using cython for some of the var
 
 # How to Cite
 When reporting the results of any experiment based on this software, please cite:
-Carter, R.W., A population genetics modeling software for the creationist community, Creation.com, TBA.
+Carter, R.W., DRIFT: a population genetics modeling software for the creationist community, Creation.com, TBA.
 
 # Disclaimer
 We stand by the accuracy of the software algorithms in general, but there is always a possibility that bugs have been inadvertently introduced, so use this at your own discretion. Beware the fact that this software can potentially create very large data files. Finally, any conclusions should be thoroughly doublechecked prior to publication!
