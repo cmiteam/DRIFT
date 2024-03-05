@@ -59,7 +59,7 @@ The method needed to run the program is platform dependent. On a Windows machine
 This will launch the GUI. This is a simple data entry form in which you can enter the relevant model parameters.
 
 #The GUI
-![The GUI](/data/GUI.png)
+![The GUI](data/GUI.png)
  
 **Beware:** If you run multiple models with the same ID, the older data will be overwritten.
 **Beware:** Enabling the parameter TrackDead can potentially create very large files. This option is disabled by default. At present, there is no confirmation step when this is enabled.
