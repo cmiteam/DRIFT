@@ -41,10 +41,10 @@ The software runs on Python 3. The GUI requires the Tkinter library. The main pr
 
 To use this software package, Python 3 must be installed on your system. If you don't have Python installed, you can download it from the [official Python website](https://www.python.org/). The required libraries listed above can be installed using standard Python methods (e.g., run `pip install -r requirements.txt` in the command line).
 
-An installation program (e.g., install.bat) is not included, but setup is simple. Unzip the download file into your directory of choice. If, for example, the user unzipped it into the folder C:/Python/PopModels, two additional folders will be created:
+An installation program (e.g., install.bat) is not included, but setup is simple. Unzip the download file into your directory of choice. If, for example, the user unzipped it into the folder C:/Python/DRIFT, two additional folders will be created:
 
-- C:/Python/PopModels/Data
-- C:/Python/PopModels/Results
+- C:/Python/DRIFT/Data
+- C:/Python/DRIFT/Results
 
 These files will be in the main directory:
 
@@ -65,7 +65,7 @@ Alternatively, the user might want to work with an environment management system
 
 The method needed to run the program is platform dependent. On a Windows machine, after navigating to the program directory, the command to run the program would be:
 
-     C:\Python3.11\Programs\Popmodels> python.exe cpgm-gui.py
+     C:\Python3.11\Programs\DRIFT> python.exe cpgm-gui.py
 
 This will launch the GUI. This is a simple data entry form in which you can enter the relevant model parameters.
 
