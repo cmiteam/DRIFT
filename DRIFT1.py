@@ -1109,7 +1109,7 @@ def load_chromosome_data(multiplier):
 #            chromosome_arm_data[chrom][arm_type][1] = arm_length
 #    flattened_data = {chrom: dict(arm_data) for chrom, arm_data in chromosome_arm_data.items()}
 #    return flattened_data, int(genome_size)
-    return chromosome_data, int(genome_size)
+    return chromosome_arm_data, int(genome_size)
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 
