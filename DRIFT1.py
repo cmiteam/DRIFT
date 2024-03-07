@@ -1100,10 +1100,11 @@ def load_chromosome_data(multiplier):
             arm_start = int(row['Start'] * multiplier)
             arm_length = int(row['Length'] * multiplier)
             genome_size += arm_length
-            chromosome_arm_data{chrom} = {}
-            chromosome_arm_data{chrom}{armtype} = {}
-            chromosome_arm_data{chrom}{arm_type}{'start'} = arm_start
-            chromosome_arm_data{chrom}{arm_type}{'length'} = arm_length
+            if chrom not in chromosome_arm_data:
+                chromosome_arm_data[chrom] = {}
+            chromosome_arm_data[chrom][arm_type] = {}
+            chromosome_arm_data[chrom][arm_type]['start'] = arm_start
+            chromosome_arm_data[chrom][arm_type]['length'] = arm_length
 #            chromosome_arm_data[chrom][arm_type][0] = arm_start
 #            chromosome_arm_data[chrom][arm_type][1] = arm_length
 #    flattened_data = {chrom: dict(arm_data) for chrom, arm_data in chromosome_arm_data.items()}
