@@ -1089,4 +1089,4 @@ def setup_plot(model):
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 
 if __name__ == "__main__":
-    run_population_model()
+    run_population_model(model)
