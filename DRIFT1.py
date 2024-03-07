@@ -381,7 +381,7 @@ def createmask (sex, free_params, chromosome_arm_data):
     cents = bitarray(len(chromosome_arm_data) + 1)
     mask.setall(0)
     cents.setall(0)
-    for chrom in range(1, len(chromosome_arm_data) + 1):
+    for chrom in range(1, len(chromosome_arm_data)):
         pstart = chromosome_arm_data[chrom][0][0]
         plen = chromosome_arm_data[chrom][0][1]
         qstart = chromosome_arm_data[chrom][1][0]
@@ -779,7 +779,6 @@ def dead_string(ind, IndData, year):
 
 def RIP(dead_people, IndData, model, chromosomes, mutations):
 
-    list_dead = []
     for ind in dead_people:
         if ind in IndData:
             if IndData[ind]['marriage_state'] > -1:
