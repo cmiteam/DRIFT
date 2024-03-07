@@ -106,8 +106,7 @@ def Save(run, year, IndData, chromosomes, model, free_params, tracking, things_t
     # Save current model status
     with open(filename, mode='a', newline='') as results_file:
         results_writer = csv.writer(results_file)
-        results_writer.writerow([run, year, numinds, tracking['marriages'], tracking['births'], tracking['random_deaths'], tracking['cull_deaths'], 
-        genetic_descends, genealo_descends, Y_descends, mt_descends, num_centromeres, tot_blocks, av_block_size, sd_block_size, av_ind_fitness, av_bin_fitness, num_mutations, av_mutations_per_ind, av_mutations_per_bin, perc_seed_genome_retained, av_seed_genome_coverage, av_heterozygosity])
+        results_writer.writerow([run, year, numinds, tracking['marriages'], tracking['births'], tracking['random_deaths'], tracking['cull_deaths'], genetic_descends, genealo_descends, Y_descends, mt_descends, num_centromeres, tot_blocks, av_block_size, sd_block_size, av_ind_fitness, av_bin_fitness, num_mutations, av_mutations_per_ind, av_mutations_per_bin, perc_seed_genome_retained, av_seed_genome_coverage, av_heterozygosity])
 
     # Track progress on screen
     numinds = len(IndData)
@@ -388,16 +387,12 @@ def createmask (sex, free_params, chromosome_arm_data):
     mask.setall(0)
     cents.setall(0)
     for chrom in range(1, len(chromosome_arm_data) + 1):
-#        pstart = chromosome_arm_data[chrom][0][0]
-#        plen = chromosome_arm_data[chrom][0][1]
-#        qstart = chromosome_arm_data[chrom][1][0]
-#        qlen = chromosome_arm_data[chrom][1][1]
         pstart = chromosome_arm_data[chrom]['p']['start']
         qstart = chromosome_arm_data[chrom]['q']['start']
         plen = chromosome_arm_data[chrom]['p']['length']
         qlen = chromosome_arm_data[chrom]['q']['length']
-        ploc = random.randint(0, plen)
-        qloc = random.randint(0, qlen)
+        ploc = random.randint(0, plen - 1)
+        qloc = random.randint(0, qlen - 1)
         which_copy = random.randint(0, 1)
         if which_copy:
             mask[pstart + ploc:qstart + qloc] = True
@@ -535,7 +530,7 @@ def birth(IndData, model, free_params, birthlist, year, chromosomes, chromosome_
             if IndData[mom]['allele_count'] > 0:
                 meiosis(mom, child, chromosomes, mask2, 1)
             IndData[child]['allele_count'] = count_alleles(child, chromosomes)
-            if IndData[child]['allele_count'] < 1:
+            if IndData[child]['allele_count'] < 1 or IndData[child]['sex'] == 1:
                 del chromosomes[child]
             else:
                 IndData[child]['num_blocks'] = count_blocks(chromosomes, child)
@@ -1172,7 +1167,7 @@ def setup_output_files(model, run):
 
     if model["track_dead"]:
         filename = os.path.join(results_directory, f"{model_name}-{run} deaths.csv")
-        headers = ['ID', 'birthyear', 'deathyear', 'sex', 'father', 'mother', 'lifespan', 'lat', 'lon', 'married', 'numbirths', 'Ygens', 'MTgens', 'MinGenealGens', 'MaxGenealGens', 'MinGeneticGens', 'MaxGeneticGens', 'SeedAlleles', 'CentromereCount', 'blocks', 'fitness', 'NumMuts', 'CauseOfDeath']
+        headers = ['ID', 'birthyear', 'deathyear', 'sex', 'father', 'mother', 'lifespan', 'lat', 'lon', 'married', 'numbirths', 'Ygens', 'MTgens', 'MinGenealGens', 'MaxGenealGens', 'SeedAlleles', 'CentromereCount', 'blocks', 'fitness', 'NumMuts', 'CauseOfDeath']
         create_csv(filename, headers)
 
     if model["mutation_hist"]:
