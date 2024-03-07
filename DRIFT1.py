@@ -537,6 +537,9 @@ def birth(IndData, model, free_params, birthlist, year, chromosomes, chromosome_
             IndData[child]['allele_count'] = count_alleles(child, chromosomes)
             if IndData[child]['allele_count'] < 1:
                 del chromosomes[child]
+            else:
+                IndData[child]['num_blocks'] = count_blocks(chromosomes, child)
+            
             inherit_centromeres (cents1, cents2, IndData, dad, mom, child, chromosome_arm_data)
 
             IndData[child]['Y_gens'] = -1
@@ -559,8 +562,6 @@ def birth(IndData, model, free_params, birthlist, year, chromosomes, chromosome_
                 max_genealo = IndData[mom]['max_genealo_gens']
             if max_genealo > -1:
                 IndData[child]['max_genealo_gens'] = max_genealo + 1
-            
-            IndData[child]['num_blocks'] = count_blocks(chromosomes, child)
 
         if model['track_mutations']:
             mutations[child] = [[[[], []] for _ in range(numbits)] for _ in range(2)]
