@@ -16,7 +16,7 @@ sd_block_size,SD Block Size,Check,bool,0,,DNA
 perc_seed_genome_retained,% Seed Genome,Check,bool,0,,DNA
 av_seed_genome_coverage,Av Seed Genome Cov,Check,bool,0,,DNA
 av_heterozygosity,Av Heterozygosity,Check,bool,0,,DNA
-av_individual_fitness,Av Individual Fitness,Check,bool,0,,mutation
+av_ind_fitness,Av Individual Fitness,Check,bool,0,,mutation
 av_bin_fitness,Av Bin Fitness,Check,bool,0,,mutation
 num_mutations,Num Mutations,Check,bool,0,,mutation
 av_mutations_per_bin,Av Mutations Per Bin,Check,bool,0,,mutation
