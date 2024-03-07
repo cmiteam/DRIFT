@@ -21,6 +21,7 @@ track_mutations,Track Mutations,Check,bool,1,main
 track_dead,Track Dead,Check,bool,0,main
 max_breeding_inds,Max Breeding Inds,Check,bool,0,main
 random_mating,Random Mating,Text,float,1,main
+scenario,Scenario,Dropdown,string,"Default,Flood,Eden",main
 seed_year,Seed Year,Text,int,0,DNA
 multiplier,Multiplier,Text,int,1,DNA
 init_heterozygosity,Init Heterozygosity,Text,float,0,DNA
