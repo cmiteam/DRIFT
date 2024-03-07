@@ -1078,21 +1078,24 @@ def calculate_fitness_stats(IndData, numbits):
 def load_chromosome_data(multiplier):
 
     filename = os.path.join(data_directory, "chromosome_data.csv")
-    chromosome_arm_data = defaultdict(lambda: defaultdict(list))
+    chromosome_arm_data = []
     genome_size = 0
     with open(filename, 'r', newline='') as file:
         reader = csv.DictReader(file)        
         for row in reader:
             chrom = int(row['Chromosome'])
+            chromosome_arm_data[chrom] = []
             arm_type = int(row['Arm'])         # 0 = p, 1 = q
             arm_start = int(row['Start'] * multiplier)
             arm_length = int(row['Length'] * multiplier)
             genome_size += arm_length
-            chromosome_arm_data[chrom][arm_type].extend([arm_start, arm_length])
+            chromosome_arm_data[chrom][arm_type] = []
+            chromosome_arm_data[chrom][arm_type][0] = arm_start
+            chromosome_arm_data[chrom][arm_type][1] = arm_length
 
-    flattened_data = {chrom: dict(arm_data) for chrom, arm_data in chromosome_arm_data.items()}
-
-    return flattened_data, int(genome_size)
+#    flattened_data = {chrom: dict(arm_data) for chrom, arm_data in chromosome_arm_data.items()}
+#    return flattened_data, int(genome_size)
+    return chromosome_data, int(genome_size)
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 
