@@ -564,7 +564,7 @@ def setup_marriages(manlist, womanlist, IndData, model):
     if model['random_mating'] == 1:
         newmarriages = random_mariages(manlist, womanlist, IndData, model)
     else:
-        newmarriages = non_random_mariages(manlist, womanlist, IndData, model, year)
+        newmarriages = non_random_mariages(manlist, womanlist, IndData, model)
     return newmarriages
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -588,7 +588,7 @@ def random_mariages(manlist, womanlist, IndData, model):
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 
-def non_random_mariages(manlist, womanlist, IndData, model, year):
+def non_random_mariages(manlist, womanlist, IndData, model):
 
     # This will pick the man-woman pair closest in age (preferring woman younger than men unless none are avaialable),
     # but marriages will not happen if they are > randommating apart in x,y space
@@ -614,13 +614,13 @@ def non_random_mariages(manlist, womanlist, IndData, model, year):
             positive_age_diff = {k: v for k, v in eligible_females.items() if v > 0}
             negative_age_diff = {k: v for k, v in eligible_females.items() if v <= 0}
             if positive_age_diff:
-                woman, age_difference = min(positive_age_diff.items(), key=lambda x: x[1])
+                woman = min(positive_age_diff.items(), key=lambda x: x[1])
                 IndData[man]['marriage_state'] = woman
                 IndData[woman]['marriage_state'] = man
                 IndData[woman]['year_of_last_birth'] = 0
                 womanlist.remove(woman)
             else:
-                chosen_woman, age_difference = min(negative_age_diff.items(), key=lambda x: x[1])
+                woman  = min(negative_age_diff.items(), key=lambda x: x[1])
                 IndData[man]['marriage_state'] = woman
                 IndData[woman]['marriage_state'] = man
                 IndData[woman]['year_of_last_birth'] = 0
