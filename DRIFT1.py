@@ -795,9 +795,9 @@ def RIP(dead_people, IndData, model, chromosomes, mutations):
 def initialize_population(IndData, model, free_params, chromosomes, mutations):
 
     if model['scenario'] == 'Eden':
-        IndData = setup_pop_Eden(IndData, model, free_params, chromosomes, mutations)
+        IndData = setup_pop_Eden(IndData, model, free_params, mutations)
     elif model['scenario'] == 'Flood':
-        IndData = setup_pop_Ark(IndData, model, free_params, chromosomes, mutations)
+        IndData = setup_pop_Flood(IndData, model, free_params, mutations)
     else:
         IndData = setup_pop_1(IndData, model, free_params, mutations)
     if model['init_heterozygosity'] > 0:
@@ -841,7 +841,7 @@ def setup_pop_Eden(IndData, model, free_params, mutations):
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 
-def setup_pop_Ark(IndData, model, free_params, mutations):
+def setup_pop_Flood(IndData, model, free_params, mutations):
 
     for indid in range(6):
         IndData[indid] = {}
