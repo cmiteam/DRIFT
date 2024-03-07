@@ -202,8 +202,11 @@ def save_population_genome_map(model_name, numbits, IndData, chromosomes, chromo
             pixels[x, j] = (255, 255, 255)
 
     for chrom in range(1, len(chromosome_arm_data) + 1):
-        pstart, plen = chromosome_arm_data[chrom][0]
-        qstart, qlen = chromosome_arm_data[chrom][1]
+#        pstart, plen = chromosome_arm_data[chrom][0]
+#        qstart, qlen = chromosome_arm_data[chrom][1]
+        pstart = chromosome_arm_data[chrom]['p']['start']
+        qstart = chromosome_arm_data[chrom]['q']['start']
+        qlen = chromosome_arm_data[chrom]['q']['length']
         # draw telomere
         for x in range(pstart, pstart + 3):
             for j in range(10):
@@ -250,8 +253,11 @@ def save_population_mutation_map(model_name, image_width, IndData, mutations, ch
     image = Image.new('RGB', (image_width, image_height), 'white')
     pixels = image.load()
     for chrom in range(1, len(chromosome_arm_data) + 1):
-        pstart, plen = chromosome_arm_data[chrom][0]
-        qstart, qlen = chromosome_arm_data[chrom][1]
+#        pstart, plen = chromosome_arm_data[chrom][0]
+#        qstart, qlen = chromosome_arm_data[chrom][1]
+        pstart = chromosome_arm_data[chrom]['p']['start']
+        qstart = chromosome_arm_data[chrom]['q']['start']
+        qlen = chromosome_arm_data[chrom]['q']['length']
         # draw telomere
         for x in range(pstart, pstart + 3):
             for j in range(10):
@@ -381,11 +387,15 @@ def createmask (sex, free_params, chromosome_arm_data):
     cents = bitarray(len(chromosome_arm_data) + 1)
     mask.setall(0)
     cents.setall(0)
-    for chrom in range(1, len(chromosome_arm_data)):
-        pstart = chromosome_arm_data[chrom][0][0]
-        plen = chromosome_arm_data[chrom][0][1]
-        qstart = chromosome_arm_data[chrom][1][0]
-        qlen = chromosome_arm_data[chrom][1][1]
+    for chrom in range(1, len(chromosome_arm_data) + 1):
+#        pstart = chromosome_arm_data[chrom][0][0]
+#        plen = chromosome_arm_data[chrom][0][1]
+#        qstart = chromosome_arm_data[chrom][1][0]
+#        qlen = chromosome_arm_data[chrom][1][1]
+        pstart = chromosome_arm_data[chrom]['p']['start']
+        qstart = chromosome_arm_data[chrom]['q']['start']
+        plen = chromosome_arm_data[chrom]['p']['length']
+        qlen = chromosome_arm_data[chrom]['q']['length']
         ploc = random.randint(0, plen)
         qloc = random.randint(0, qlen)
         which_copy = random.randint(0, 1)
@@ -397,8 +407,9 @@ def createmask (sex, free_params, chromosome_arm_data):
             cents[chrom] = 1
 
     if sex == 0:
-        xstart = chromosome_arm_data[23][0][0]
-        mask[xstart:free_params["numbits"] + 1] = False    
+        xstart = chromosome_arm_data[23]['p']['start']
+        xend =  chromosome_arm_data[23]['q']['start'] +  chromosome_arm_data[23]['q']['length']
+        mask[xstart:xend] = False    
 
     return mask, cents
 
@@ -1078,21 +1089,21 @@ def calculate_fitness_stats(IndData, numbits):
 def load_chromosome_data(multiplier):
 
     filename = os.path.join(data_directory, "chromosome_data.csv")
-    chromosome_arm_data = []
+    chromosome_arm_data = {}
     genome_size = 0
     with open(filename, 'r', newline='') as file:
         reader = csv.DictReader(file)        
         for row in reader:
             chrom = int(row['Chromosome'])
-            chromosome_arm_data[chrom] = []
             arm_type = int(row['Arm'])         # 0 = p, 1 = q
+            arm_type = 'p' if arm_type == 0 else 'q'
             arm_start = int(row['Start'] * multiplier)
             arm_length = int(row['Length'] * multiplier)
             genome_size += arm_length
-            chromosome_arm_data[chrom][arm_type] = []
-            chromosome_arm_data[chrom][arm_type][0] = arm_start
-            chromosome_arm_data[chrom][arm_type][1] = arm_length
-
+            chromosome_arm_data{chrom}{arm_type}{'start'} = arm_start
+            chromosome_arm_data{chrom}{arm_type}{'length'} = arm_length
+#            chromosome_arm_data[chrom][arm_type][0] = arm_start
+#            chromosome_arm_data[chrom][arm_type][1] = arm_length
 #    flattened_data = {chrom: dict(arm_data) for chrom, arm_data in chromosome_arm_data.items()}
 #    return flattened_data, int(genome_size)
     return chromosome_data, int(genome_size)
