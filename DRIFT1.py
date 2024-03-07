@@ -86,7 +86,7 @@ def Save(run, year, IndData, chromosomes, model, free_params, tracking, things_t
 
     numinds = len(IndData)
 
-    Y_descends, mt_descends, genealo_descends, genetic_descends, num_blocks, num_centromeres = 0, 0, 0, 0, 0
+    Y_descends, mt_descends, genealo_descends, genetic_descends, num_blocks, num_centromeres = 0, 0, 0, 0, 0, 0
     tot_blocks, av_block_size, sd_block_size = 0, 0, 0
     perc_seed_genome_retained, av_seed_genome_coverage, av_heterozygosity = 0, 0, 0
     av_ind_fitness, av_bin_fitness, num_mutations, av_mutations_per_ind, av_mutations_per_bin = 0, 0, 0, 0, 0
