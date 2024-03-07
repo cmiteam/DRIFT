@@ -1100,6 +1100,8 @@ def load_chromosome_data(multiplier):
             arm_start = int(row['Start'] * multiplier)
             arm_length = int(row['Length'] * multiplier)
             genome_size += arm_length
+            chromosome_arm_data{chrom} = {}
+            chromosome_arm_data{chrom}{armtype} = {}
             chromosome_arm_data{chrom}{arm_type}{'start'} = arm_start
             chromosome_arm_data{chrom}{arm_type}{'length'} = arm_length
 #            chromosome_arm_data[chrom][arm_type][0] = arm_start
