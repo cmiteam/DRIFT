@@ -86,14 +86,14 @@ def Save(run, year, IndData, chromosomes, model, free_params, tracking, things_t
 
     numinds = len(IndData)
 
-    Y_descends, mt_descends, genealo_descends, genetic_descends, num_centromeres = 0, 0, 0, 0, 0
-    num_blocks, av_block_size, sd_block_size = 0, 0, 0
+    Y_descends, mt_descends, genealo_descends, genetic_descends, num_blocks, num_centromeres = 0, 0, 0, 0, 0
+    tot_blocks, av_block_size, sd_block_size = 0, 0, 0
     perc_seed_genome_retained, av_seed_genome_coverage, av_heterozygosity = 0, 0, 0
     av_ind_fitness, av_bin_fitness, num_mutations, av_mutations_per_ind, av_mutations_per_bin = 0, 0, 0, 0, 0
 
     if model["track_DNA"] == 1:
-        Y_descends, mt_descends, genealo_descends, genetic_descends, num_centromeres = calculate_misc_stats(IndData)
-        num_blocks, av_block_size, sd_block_size = calculate_block_stats(chromosomes)
+        Y_descends, mt_descends, genealo_descends, genetic_descends, num_blocks, num_centromeres = calculate_misc_stats(IndData)
+        tot_blocks, av_block_size, sd_block_size = calculate_block_stats(chromosomes)
         perc_seed_genome_retained, av_seed_genome_coverage, av_heterozygosity = calculate_genetic_stats(chromosomes, free_params["numbits"], numinds)
 
     if model["track_mutations"] == 1:
@@ -107,17 +107,17 @@ def Save(run, year, IndData, chromosomes, model, free_params, tracking, things_t
     with open(filename, mode='a', newline='') as results_file:
         results_writer = csv.writer(results_file)
         results_writer.writerow([run, year, numinds, tracking['marriages'], tracking['births'], tracking['random_deaths'], tracking['cull_deaths'], 
-        genetic_descends, genealo_descends, Y_descends, mt_descends, num_centromeres, num_blocks, av_block_size, sd_block_size, av_ind_fitness, av_bin_fitness, num_mutations, av_mutations_per_ind, av_mutations_per_bin, perc_seed_genome_retained, av_seed_genome_coverage, av_heterozygosity])
+        genetic_descends, genealo_descends, Y_descends, mt_descends, num_centromeres, tot_blocks, av_block_size, sd_block_size, av_ind_fitness, av_bin_fitness, num_mutations, av_mutations_per_ind, av_mutations_per_bin, perc_seed_genome_retained, av_seed_genome_coverage, av_heterozygosity])
 
     # Track progress on screen
     numinds = len(IndData)
     print(f"Y:{year} N:{numinds} m:{tracking['marriages']} b:{tracking['births']} r:{tracking['random_deaths']} c:{tracking['cull_deaths']} ge:{genetic_descends} go:{genealo_descends} Y:{Y_descends} mt:{mt_descends} cs:{num_centromeres} mI:{free_params['indID']} bl:{num_blocks} abl:{av_block_size} sbl:{sd_block_size} FI:{av_ind_fitness} FB:{av_bin_fitness} NM:{num_mutations} MI:{av_mutations_per_ind} MB:{av_mutations_per_bin}")
 
     # Update onscreen graph
-    marriages = tracking['marriages']
-    births = tracking['births']
-    random_deaths = tracking['random_deaths']
-    cull_deaths = tracking['cull_deaths']
+#    marriages = tracking['marriages']
+#    births = tracking['births']
+#    random_deaths = tracking['random_deaths']
+#    cull_deaths = tracking['cull_deaths']
 #    max_ID = free_params['indID']
     for variable in model["plot"]:
         value = locals()[variable]
@@ -559,6 +559,8 @@ def birth(IndData, model, free_params, birthlist, year, chromosomes, chromosome_
                 max_genealo = IndData[mom]['max_genealo_gens']
             if max_genealo > -1:
                 IndData[child]['max_genealo_gens'] = max_genealo + 1
+            
+            IndData[child]['num_blocks'] = count_blocks(chromosomes, child)
 
         if model['track_mutations']:
             mutations[child] = [[[[], []] for _ in range(numbits)] for _ in range(2)]
@@ -566,6 +568,22 @@ def birth(IndData, model, free_params, birthlist, year, chromosomes, chromosome_
             mutations, mutation_hist = generate_new_mutations(child, model, free_params, mutations, mutation_hist)
             IndData[child]['mutations'], IndData[child]['fitness'] = count_fitness_and_mutations(mutations, child)
     return mutation_hist
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
+def count_blocks(chromosomes, ind):
+
+    num_blocks = 0
+    for copy in range(2):
+        bit_array = chromosomes[ind][copy]
+        bit_string = bit_array.to01()
+        if bit_string == '0' * len(bit_string):  # if the bit array contains only unset bits
+            continue
+        substrings = bit_string.split("0")
+        substrings = [substring for substring in substrings if substring]
+        num_blocks += len(substrings)
+
+    return num_blocks
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 
@@ -769,9 +787,7 @@ def dead_string(ind, IndData, year):
         ind_info['MTGens'] = ind_info.get('mt_gens', -1)
         ind_info['MaxGenealGens'] = ind_info.get('max_genealo_gens', -1)
         ind_info['MinGenealGens'] = ind_info.get('min_genealo_gens', -1)
-        ind_info['MaxGeneticGens'] = ind_info.get('max_genetic_gens', -1)
-        ind_info['MinGeneticGens'] = ind_info.get('min_genetic_gens', -1)
-        ind_info['seed_alleles'] = ind_info.get('seed_alleles', -1)
+        ind_info['seed_alleles'] = ind_info.get('allele_count', -1)
         ind_info['blocks'] = ind_info.get('num_blocks', -1)
         ind_info['CentromereCount'] = ind_info.get('centromeres', -1)
         ind_info['fitness'] = ind_info.get('fitness', -1)
@@ -779,8 +795,8 @@ def dead_string(ind, IndData, year):
         ind_info['CauseOfDeath'] = ind_info.get('cause_of_death', -1)
         info = f"{ind},{ind_info['birth_year']},{year},{ind_info['sex']},{ind_info['dad']},{ind_info['mom']},{ind_info['lifespan']},"
         info = info + f"{ind_info['lat']},{ind_info['lon']},{ind_info['marriage_state']},{ind_info['numbirths']},{ind_info['Ygens']},"
-        info = info + f"{ind_info['MTGens']},{ind_info['MinGenealGens']},{ind_info['MaxGenealGens']},{ind_info['MinGeneticGens']},"
-        info = info + f"{ind_info['MaxGeneticGens']},{ind_info['seed_alleles']},{ind_info['CentromereCount']},{ind_info['blocks']},"
+        info = info + f"{ind_info['MTGens']},{ind_info['MinGenealGens']},{ind_info['MaxGenealGens']},"
+        info = info + f"{ind_info['seed_alleles']},{ind_info['CentromereCount']},{ind_info['blocks']},"
         info = info + f"{ind_info['fitness']},{ind_info['NumMuts']},{ind_info['CauseOfDeath']}"
         info = info + '\n'
 
@@ -1000,9 +1016,10 @@ def calculate_misc_stats(IndData):
     mt      = sum(1 for ind in IndData.values() if ind.get("mt_gens",          -1) > 0)
     genealo = sum(1 for ind in IndData.values() if ind.get("max_genealo_gens", -1) > 0)
     genetic = sum(1 for ind in IndData.values() if ind.get("allele_count",     -1) > 0 )
+    blocks  = sum(1 for ind in IndData.values() if ind.get("num_blocks",       -1) > 0 )
     cents = sum(ind.get("centromeres", bitarray()).count() for ind in IndData.values())
 
-    return Y, mt, genealo, genetic, cents
+    return Y, mt, genealo, genetic, blocks, cents
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 
