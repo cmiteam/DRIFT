@@ -88,7 +88,7 @@ def Save(run, year, IndData, chromosomes, model, free_params, tracking, things_t
 
     Y_descends, mt_descends, genealo_descends, genetic_descends, num_centromeres = 0, 0, 0, 0, 0
     num_blocks, av_block_size, sd_block_size = 0, 0, 0
-    perc_seed_genome_retained, average_seed_genome_coverage, av_heterozygosity = 0, 0, 0
+    perc_seed_genome_retained, av_seed_genome_coverage, av_heterozygosity = 0, 0, 0
     av_ind_fitness, av_bin_fitness, num_mutations, av_mutations_per_ind, av_mutations_per_bin = 0, 0, 0, 0, 0
 
     if model["track_DNA"] == 1:
@@ -106,7 +106,8 @@ def Save(run, year, IndData, chromosomes, model, free_params, tracking, things_t
     # Save current model status
     with open(filename, mode='a', newline='') as results_file:
         results_writer = csv.writer(results_file)
-        results_writer.writerow([run, year, numinds, tracking['marriages'], tracking['births'], tracking['random_deaths'], tracking['cull_deaths'], genetic_descends, genealo_descends, Y_descends, mt_descends, num_centromeres, num_blocks, av_block_size, sd_block_size, av_ind_fitness, av_bin_fitness, num_mutations, av_mutations_per_ind, av_mutations_per_bin])
+        results_writer.writerow([run, year, numinds, tracking['marriages'], tracking['births'], tracking['random_deaths'], tracking['cull_deaths'], 
+        genetic_descends, genealo_descends, Y_descends, mt_descends, num_centromeres, num_blocks, av_block_size, sd_block_size, av_ind_fitness, av_bin_fitness, num_mutations, av_mutations_per_ind, av_mutations_per_bin, perc_seed_genome_retained, av_seed_genome_coverage, av_heterozygosity])
 
     # Track progress on screen
     numinds = len(IndData)
