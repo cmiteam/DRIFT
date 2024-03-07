@@ -530,7 +530,7 @@ def birth(IndData, model, free_params, birthlist, year, chromosomes, chromosome_
             if IndData[mom]['allele_count'] > 0:
                 meiosis(mom, child, chromosomes, mask2, 1)
             IndData[child]['allele_count'] = count_alleles(child, chromosomes)
-            if IndData[child]['allele_count'] < 1 or IndData[child]['sex'] == 1:
+            if IndData[child]['allele_count'] < 1:
                 del chromosomes[child]
             else:
                 IndData[child]['num_blocks'] = count_blocks(chromosomes, child)
