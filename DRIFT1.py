@@ -794,31 +794,90 @@ def RIP(dead_people, IndData, model, chromosomes, mutations):
 
 def initialize_population(IndData, model, free_params, chromosomes, mutations):
 
-#    if model['scenario'] == 'Eden':
-#        IndData = setup_pop_Eden(IndData, model, free_params, chromosomes, mutations)
-#    elif model['scenario'] == 'Flood':
-#        IndData = setup_pop_Ark(IndData, model, free_params, chromosomes, mutations)
-#    else:
+    if model['scenario'] == 'Eden':
+        IndData = setup_pop_Eden(IndData, model, free_params, chromosomes, mutations)
+    elif model['scenario'] == 'Flood':
+        IndData = setup_pop_Ark(IndData, model, free_params, chromosomes, mutations)
+    else:
     IndData = setup_pop_1(IndData, model, free_params, mutations)
     if model['init_heterozygosity'] > 0:
         setup_init_heterozygosity(IndData, model, free_params, chromosomes)
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 
-def setup_init_heterozygosity(IndData, model, free_params, chromosomes):
+def setup_pop_Eden(IndData, model, free_params, mutations):
 
-    init_het = model['init_heterozygosity']
-    numbits = free_params['numbits']
-    for ind in IndData:
-        chromosomes[ind] = {}
-        chromosomes[ind][0] = bitarray(numbits)
-        chromosomes[ind][1] = bitarray(numbits)
-        chromosomes[ind][0].setall(0)
-        chromosomes[ind][1].setall(0)
-        for i in range(numbits):
-            if random.random() < init_het:
-                chromosomes[ind][0][i] = 1
-        IndData[ind]['allele_count'] = count_alleles(ind, chromosomes)
+    for indid in range(2):
+        IndData[indid] = {}
+        if indid % 2 == 0:
+            IndData[indid]['sex'] = 0
+        else:
+            IndData[indid]['sex'] = 1
+            IndData[indid]['year_of_last_birth'] = model['spacing'] * -1
+        IndData[indid]['birth_year'] = -100
+        IndData[indid]['lifespan'] = 900
+        IndData[indid]['fitness'] = 1
+        if model['track_DNA']:
+             IndData[indid]['centromeres'] = bitarray(48)
+             IndData[indid]['centromeres'].setall(0)
+             IndData[indid]['Y_gens'] = -1
+             IndData[indid]['mt_gens'] = -1
+             IndData[indid]['min_genealo_gens'] = -1
+             IndData[indid]['max_genealo_gens'] = -1
+             IndData[indid]['allele_count'] = 0
+        if model['track_mutations']:
+            numbits = free_params['numbits']
+            mutations[indid] = {}
+            mutations[indid][0] = [[] for _ in range(numbits)]
+            mutations[indid][1] = [[] for _ in range(numbits)]
+            IndData[indid]['mutations'] = 0
+            IndData[indid]['fitness'] = 1
+        IndData[indid]['lat'], IndData[indid]['lon'] = 0, 0
+
+        IndData[0]['marriage_state'] = 1
+        IndData[1]['marriage_state'] = 0
+
+    return IndData
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+
+def setup_pop_Ark(IndData, model, free_params, mutations):
+
+    for indid in range(6):
+        IndData[indid] = {}
+        if indid % 2 == 0:
+            IndData[indid]['sex'] = 0
+        else:
+            IndData[indid]['sex'] = 1
+            IndData[indid]['year_of_last_birth'] = model['spacing'] * -1
+        IndData[indid]['birth_year'] = -100
+        IndData[indid]['lifespan'] = 650
+        IndData[indid]['fitness'] = 1
+        if model['track_DNA']:
+             IndData[indid]['centromeres'] = bitarray(48)
+             IndData[indid]['centromeres'].setall(0)
+             IndData[indid]['Y_gens'] = -1
+             IndData[indid]['mt_gens'] = -1
+             IndData[indid]['min_genealo_gens'] = -1
+             IndData[indid]['max_genealo_gens'] = -1
+             IndData[indid]['allele_count'] = 0
+        if model['track_mutations']:
+            numbits = free_params['numbits']
+            mutations[indid] = {}
+            mutations[indid][0] = [[] for _ in range(numbits)]
+            mutations[indid][1] = [[] for _ in range(numbits)]
+            IndData[indid]['mutations'] = 0
+            IndData[indid]['fitness'] = 1
+        IndData[indid]['lat'], IndData[indid]['lon'] = 0, 0
+
+        IndData[0]['marriage_state'] = 1
+        IndData[1]['marriage_state'] = 0
+        IndData[2]['marriage_state'] = 3
+        IndData[3]['marriage_state'] = 2
+        IndData[4]['marriage_state'] = 5
+        IndData[5]['marriage_state'] = 4
+
+    return IndData
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 
@@ -864,6 +923,23 @@ def setup_pop_1(IndData, model, free_params, mutations):
         IndData[indid]['lat'], IndData[indid]['lon'] = random_coordinates()
 
     return IndData
+
+# * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
+
+def setup_init_heterozygosity(IndData, model, free_params, chromosomes):
+
+    init_het = model['init_heterozygosity']
+    numbits = free_params['numbits']
+    for ind in IndData:
+        chromosomes[ind] = {}
+        chromosomes[ind][0] = bitarray(numbits)
+        chromosomes[ind][1] = bitarray(numbits)
+        chromosomes[ind][0].setall(0)
+        chromosomes[ind][1].setall(0)
+        for i in range(numbits):
+            if random.random() < init_het:
+                chromosomes[ind][0][i] = 1
+        IndData[ind]['allele_count'] = count_alleles(ind, chromosomes)
 
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 
@@ -1089,4 +1165,4 @@ def setup_plot(model):
 # * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * 
 
 if __name__ == "__main__":
-    run_population_model(model)
+    run_population_model()
