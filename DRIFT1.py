@@ -118,7 +118,7 @@ def Save(run, year, IndData, chromosomes, model, free_params, tracking, things_t
     births = tracking['births']
     random_deaths = tracking['random_deaths']
     cull_deaths = tracking['cull_deaths']
-    max_ID = free_params['indID']
+#    max_ID = free_params['indID']
     for variable in model["plot"]:
         value = locals()[variable]
         things_to_plot_during_run[variable].append(value)
