@@ -828,7 +828,7 @@ def setup_pop_1(IndData, model, free_params, mutations):
     n = model['start_pop_size']
 
     structure = [0] * 100
-    filename = os.path.join(data_directory, 'ExamplePop.csv')
+    filename = os.path.join(data_directory, 'example_pop.csv')
     with open(filename, 'r', newline='') as file:
         reader = csv.DictReader(file)
         for row in reader:
