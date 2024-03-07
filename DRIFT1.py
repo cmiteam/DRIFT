@@ -799,7 +799,7 @@ def initialize_population(IndData, model, free_params, chromosomes, mutations):
     elif model['scenario'] == 'Flood':
         IndData = setup_pop_Ark(IndData, model, free_params, chromosomes, mutations)
     else:
-    IndData = setup_pop_1(IndData, model, free_params, mutations)
+        IndData = setup_pop_1(IndData, model, free_params, mutations)
     if model['init_heterozygosity'] > 0:
         setup_init_heterozygosity(IndData, model, free_params, chromosomes)
 
