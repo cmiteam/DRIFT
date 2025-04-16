@@ -10,16 +10,30 @@ import (
 	"drift/modules/marriage"
 	"drift/modules/save"
 	"drift/modules/seedpopulation"
+	"flag"
 	"fmt"
+	"os"
 	"time"
 )
 
 // * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+const defaultConfigRoot = "C:/Go/Programs/Drift/static"
 
 func main() {
 
+	// Define a command-line parameter (e.g., for a config file path)
+	configRootArg := flag.String("config-root", defaultConfigRoot, "path to directory containing configuration files")
+	// Add more parameters as needed
+
+	// Parse the command-line arguments
+	flag.Parse()
+
 	starttime := time.Now()
-	model := initializemodel.InitializeModel()
+	model, err := initializemodel.InitializeModel(*configRootArg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing model: %v", err)
+		os.Exit(1)
+	}
 
 	// Loop over the number of model runs
 	for run := 1; run <= int(model.Parameters["num_runs"]); run++ {

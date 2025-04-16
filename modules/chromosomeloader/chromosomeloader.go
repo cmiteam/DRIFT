@@ -2,40 +2,45 @@ package chromosomeloader
 
 import (
 	"drift/types"
-	"encoding/csv"
-	"os"
+	"fmt"
 	"strconv"
 )
 
-func LoadChromosomeArmsFromCSV(model *types.Model) {
+func LoadChromosomeArmsFromCSV(model *types.Model,
+	records [][]string) error {
 
-	file, err := os.Open("C:/Go/Programs/Drift/static/chromosome_data.csv")
-	if err != nil {
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	records, err := reader.ReadAll()
-	if err != nil {
+	// Ensure the CSV file has at least one record
+	if len(records) == 0 {
+		return fmt.Errorf("No records found in the CSV file")
 	}
 
+	// Skip the header row and process each record
 	var totallen int
-
 	for _, record := range records[1:] {
+
+		// Ensure the record has at least 4 fields
+		if len(record) < 4 {
+			return fmt.Errorf("Invalid record: %v", record)
+		}
+
 		chromosome, err := strconv.Atoi(record[0])
 		if err != nil {
+			return err
 		}
 
 		arm, err := strconv.Atoi(record[1])
 		if err != nil {
+			return err
 		}
 
 		start, err := strconv.Atoi(record[2])
 		if err != nil {
+			return err
 		}
 
 		length, err := strconv.Atoi(record[3])
 		if err != nil {
+			return err
 		}
 
 		if model.ChromosomeArms[chromosome] == nil {
@@ -51,4 +56,5 @@ func LoadChromosomeArmsFromCSV(model *types.Model) {
 
 	model.FreeParameters["numbits"] = totallen
 
+	return nil
 }

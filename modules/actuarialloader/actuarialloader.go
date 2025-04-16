@@ -2,41 +2,44 @@ package actuarialloader
 
 import (
 	"drift/types"
-	"encoding/csv"
-	"os"
+	"fmt"
 	"strconv"
 )
 
-func LoadActuarialTable(model *types.Model) {
+func LoadActuarialTable(model *types.Model,
+	records [][]string) error {
 
-	file, err := os.Open("C:/Go/Programs/Drift/static/actuarial_table.csv")
-	if err != nil {
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	records, err := reader.ReadAll()
-	if err != nil {
+	// Ensure the CSV file has at least one record
+	if len(records) == 0 {
+		return fmt.Errorf("No records found in the CSV file")
 	}
 
+	// Skip the header row and process each record
 	var cumulative float64
-
 	for _, row := range records[1:] { // Skip the header row
+
+		// Ensure the record has at least 3 fields
+		if len(row) < 3 {
+			return fmt.Errorf("Invalid record: %v", row)
+		}
 
 		age, err := strconv.Atoi(row[0])
 		if err != nil {
+			return err
 		}
 
 		risk, err := strconv.ParseFloat(row[1], 64)
 		if err != nil {
+			return err
 		}
 		model.DeathRisk[age] = risk
 
 		popProb, err := strconv.ParseFloat(row[2], 64)
 		if err != nil {
+			return err
 		}
 		cumulative += popProb * 4.4
 		model.CumulativeProb[age] = cumulative
 	}
-
+	return nil
 }
