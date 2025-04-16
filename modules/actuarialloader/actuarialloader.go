@@ -1,37 +1,42 @@
 package actuarialloader
 
 import (
-    "os"
-    "strconv"
-    "drift/types"
-    "encoding/csv"
+	"drift/types"
+	"encoding/csv"
+	"os"
+	"strconv"
 )
 
-func LoadActuarialTable(model *types.Model){
+func LoadActuarialTable(model *types.Model) {
 
-    file, err := os.Open("C:/Go/Programs/Drift/static/actuarial_table.csv")
-    if err != nil {}
-    defer file.Close()
+	file, err := os.Open("C:/Go/Programs/Drift/static/actuarial_table.csv")
+	if err != nil {
+	}
+	defer file.Close()
 
-    reader := csv.NewReader(file)
-    records, err := reader.ReadAll()
-    if err != nil {}
-    
-    var cumulative float64
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	if err != nil {
+	}
 
-    for _, row := range records[1:] { // Skip the header row
+	var cumulative float64
 
-        age, err := strconv.Atoi(row[0])
-        if err != nil {}
+	for _, row := range records[1:] { // Skip the header row
 
-        risk, err := strconv.ParseFloat(row[1], 64)
-        if err != nil {}
-        model.DeathRisk[age] = risk
+		age, err := strconv.Atoi(row[0])
+		if err != nil {
+		}
 
-        popProb, err := strconv.ParseFloat(row[2], 64)
-		  if err != nil {}
-  		  cumulative += popProb * 4.4
-		  model.CumulativeProb[age] = cumulative
-    }
+		risk, err := strconv.ParseFloat(row[1], 64)
+		if err != nil {
+		}
+		model.DeathRisk[age] = risk
+
+		popProb, err := strconv.ParseFloat(row[2], 64)
+		if err != nil {
+		}
+		cumulative += popProb * 4.4
+		model.CumulativeProb[age] = cumulative
+	}
 
 }

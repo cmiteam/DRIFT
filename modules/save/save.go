@@ -1,14 +1,14 @@
 package save
 
 import (
-	"os"
+	"drift/types"
+	"encoding/csv"
 	"fmt"
 	"image"
-	"strings"
-	"image/png"
-   "drift/types"
 	"image/color"
-	"encoding/csv"
+	"image/png"
+	"os"
+	"strings"
 )
 
 // SaveHeaders creates a CSV file with the headers for the results
@@ -34,13 +34,13 @@ func SaveHeaders(modelName string) error {
 // Save writes the current simulation state to a CSV file
 
 func Save(model *types.Model, pop *types.Pop, run int, year int) {
-    fmt.Printf("   Year: %d  n: %d  b: %d  m: %d c: %d\n", 
-        year, 
-        model.FreeParameters["last_pop_size"], 
-        pop.Tracking["births"], 
-        pop.Tracking["marriages"],
-        pop.Tracking["cull_deaths"],
-    )
+	fmt.Printf("   Year: %d  n: %d  b: %d  m: %d c: %d\n",
+		year,
+		model.FreeParameters["last_pop_size"],
+		pop.Tracking["births"],
+		pop.Tracking["marriages"],
+		pop.Tracking["cull_deaths"],
+	)
 
 	filename := fmt.Sprintf("results/%s_results.csv", model.ModelName)
 	numInds := len(pop.IndData)
@@ -254,23 +254,23 @@ func calculateMiscStats(indData map[int]map[string]int) (int, int, int, int, int
 	var Y, mt, genealo, genetic, alleles, blocks, cents int
 	for _, ind := range indData {
 		if ind["Y_gens"] > 0 {
-   		Y += 1
+			Y += 1
 		}
 		if ind["mt_gens"] > 0 {
-         mt += 1
+			mt += 1
 		}
-      if ind["max_genealo_gens"] > -1 {
+		if ind["max_genealo_gens"] > -1 {
 			genealo++
 		}
 		if ind["allele_count"] > 0 {
-         alleles += ind["allele_count"]
+			alleles += ind["allele_count"]
 			genetic++
-      }
+		}
 		if ind["num_blocks"] > 0 {
-          blocks += ind["num_blocks"]
+			blocks += ind["num_blocks"]
 		}
 		if ind["num_centromeres"] > 0 {
-          cents += ind["num_centromeres"]
+			cents += ind["num_centromeres"]
 		}
 	}
 	return Y, mt, genealo, genetic, alleles, blocks, cents
@@ -279,27 +279,27 @@ func calculateMiscStats(indData map[int]map[string]int) (int, int, int, int, int
 func seedCounts(model *types.Model, pop *types.Pop) (int, int, int, int) {
 
 	bitCounts := make([]int, model.FreeParameters["NumBits"])
-   totHet, totHomMin, totHomMaj := 0, 0, 0
-	seedGenomeRetained := make([]uint64, (model.FreeParameters["NumBits"] + 63 ) / 64)
+	totHet, totHomMin, totHomMaj := 0, 0, 0
+	seedGenomeRetained := make([]uint64, (model.FreeParameters["NumBits"]+63)/64)
 
 	for _, chromosomePairs := range pop.Chromosomes {
 		if len(chromosomePairs) > 0 && len(chromosomePairs[0]) > 0 && len(chromosomePairs[1]) > 0 {
-   		seedGenomeRetained = bitwiseOR(seedGenomeRetained, chromosomePairs[0])
-		   seedGenomeRetained = bitwiseOR(seedGenomeRetained, chromosomePairs[1])
-         for j := range chromosomePairs[0] {
-		      b0, b1 := chromosomePairs[0][j], chromosomePairs[1][j]
-       		bitCounts[j] += countSetBitsSingleVar(b0)
-	    	   bitCounts[j] += countSetBitsSingleVar(b1)
-		      xorBits := b0 ^ b1
-		      andBits := b0 & b1
-		      norBits := ^(b0 | b1)
-		      totHet    += countSetBitsSingleVar(xorBits)
-		      totHomMin += countSetBitsSingleVar(andBits)
-		      totHomMaj += countSetBitsSingleVar(norBits)
-         }
-      }
-   }
-   numbitsRetained := countSetBits(seedGenomeRetained)
+			seedGenomeRetained = bitwiseOR(seedGenomeRetained, chromosomePairs[0])
+			seedGenomeRetained = bitwiseOR(seedGenomeRetained, chromosomePairs[1])
+			for j := range chromosomePairs[0] {
+				b0, b1 := chromosomePairs[0][j], chromosomePairs[1][j]
+				bitCounts[j] += countSetBitsSingleVar(b0)
+				bitCounts[j] += countSetBitsSingleVar(b1)
+				xorBits := b0 ^ b1
+				andBits := b0 & b1
+				norBits := ^(b0 | b1)
+				totHet += countSetBitsSingleVar(xorBits)
+				totHomMin += countSetBitsSingleVar(andBits)
+				totHomMaj += countSetBitsSingleVar(norBits)
+			}
+		}
+	}
+	numbitsRetained := countSetBits(seedGenomeRetained)
 	return numbitsRetained, totHet, totHomMin, totHomMaj
 }
 

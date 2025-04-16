@@ -1,12 +1,12 @@
 package death
 
 import (
-   "os"
-	"fmt"
-	"time"
-	"strings"
-	"math/rand"
 	"drift/types"
+	"fmt"
+	"math/rand"
+	"os"
+	"strings"
+	"time"
 )
 
 func Death(model *types.Model, pop *types.Pop, year int, run int) int {
@@ -18,7 +18,7 @@ func Death(model *types.Model, pop *types.Pop, year int, run int) int {
 
 	// Step 1: Random actuarial deaths
 	for _, ind := range keyList {
-		// People that can potentially live for a long time (e.g., 900 years) need 
+		// People that can potentially live for a long time (e.g., 900 years) need
 		// lower death risks or they will NEVER reach that age.
 		// Since you cannot test people who can *potentially* live for a long time
 		// at the same rate as normal people, we will create a variable called
@@ -31,7 +31,7 @@ func Death(model *types.Model, pop *types.Pop, year int, run int) int {
 		// >= 85 has the same risk of dying each year.
 
 		age := year - pop.IndData[ind]["birth_year"]
-		ageGroup := int((float64(age) / float64(pop.IndData[ind]["lifespan"])) * model.Parameters["min_lifespan"] / 5) * 5
+		ageGroup := int((float64(age)/float64(pop.IndData[ind]["lifespan"]))*model.Parameters["min_lifespan"]/5) * 5
 		if ageGroup > 85 {
 			ageGroup = 85
 		}
@@ -120,7 +120,7 @@ func Death(model *types.Model, pop *types.Pop, year int, run int) int {
 				deadPersonString += ",R\n"
 				deadPeopleData += deadPersonString
 			}
-   		RIP(ind, pop, model)
+			RIP(ind, pop, model)
 			deaths++
 			pop.Tracking["cull_deaths"]++
 			breeders = countBreedingIndividuals(pop, year, model)
@@ -245,27 +245,27 @@ func getOrDefault(data map[string]int, key string, defaultVal int) int {
 
 // countBreedingIndividuals counts individuals of breeding age
 func countBreedingIndividuals(pop *types.Pop, year int, model *types.Model) int {
-    count := 0
-    for _, data := range pop.IndData {
-        age := year - data["birth_year"]
-        if age >= int(model.Parameters["maturity"]) {
-            count++
-        }
-    }
-    return count
+	count := 0
+	for _, data := range pop.IndData {
+		age := year - data["birth_year"]
+		if age >= int(model.Parameters["maturity"]) {
+			count++
+		}
+	}
+	return count
 }
 
 // writeToFile writes content to a file
 func writeToFile(filename, content string) error {
-    file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-    if err != nil {
-        return fmt.Errorf("could not open file %s: %w", filename, err)
-    }
-    defer file.Close()
+	file, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("could not open file %s: %w", filename, err)
+	}
+	defer file.Close()
 
-    _, err = file.WriteString(content)
-    if err != nil {
-        return fmt.Errorf("could not write to file %s: %w", filename, err)
-    }
-    return nil
+	_, err = file.WriteString(content)
+	if err != nil {
+		return fmt.Errorf("could not write to file %s: %w", filename, err)
+	}
+	return nil
 }

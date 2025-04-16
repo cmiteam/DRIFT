@@ -1,11 +1,11 @@
 package birth
 
 import (
+	"drift/modules/mutation"
+	"drift/types"
 	"fmt"
-  	"strings"
 	"math/rand"
-   "drift/types"
-   "drift/modules/mutation"
+	"strings"
 )
 
 func Birth(model *types.Model, pop *types.Pop, year int) {
@@ -13,28 +13,28 @@ func Birth(model *types.Model, pop *types.Pop, year int) {
 	// First, find eligible females and roll the dice
 	for ind := range pop.IndData {
 		// skip males
-      if pop.IndData[ind]["sex"] == 0 {
+		if pop.IndData[ind]["sex"] == 0 {
 			continue
 		}
 		// skip unmarried women
-      if pop.IndData[ind]["marriage_state"] == -1 {
+		if pop.IndData[ind]["marriage_state"] == -1 {
 			continue
 		}
 		age := year - pop.IndData[ind]["birth_year"]
 		// skip adolescent girls
-      if age < int(model.Parameters["maturity"]) {
+		if age < int(model.Parameters["maturity"]) {
 			continue
 		}
 		// skip women in menopause
-      if float64(age) > float64(pop.IndData[ind]["lifespan"]) * model.Parameters["menopause"] {
+		if float64(age) > float64(pop.IndData[ind]["lifespan"])*model.Parameters["menopause"] {
 			continue
 		}
 		// skip women with young children
-      if int(pop.IndData[ind]["last_birth_year"]) + int(model.Parameters["spacing"]) >= year {
+		if int(pop.IndData[ind]["last_birth_year"])+int(model.Parameters["spacing"]) >= year {
 			continue
 		}
 		// Failed to get pregnant this year
-      if rand.Intn(int(model.Parameters["birth_prob"])) != 0 {
+		if rand.Intn(int(model.Parameters["birth_prob"])) != 0 {
 			continue
 		}
 
@@ -71,12 +71,12 @@ func Birth(model *types.Model, pop *types.Pop, year int) {
 
 				// Add tracked DNA
 				if model.Parameters["track_DNA"] > 0 {
-               // only create a child's chromosomes if there is something to track at least one parent
+					// only create a child's chromosomes if there is something to track at least one parent
 					if pop.IndData[dad]["allele_count"] > 0 || pop.IndData[mom]["allele_count"] > 0 {
-						pop.Chromosomes[child] = [][]uint64{make([]uint64, (model.FreeParameters["NumBits"] + 63) / 64), make([]uint64, (model.FreeParameters["NumBits"] + 63) / 64)}
+						pop.Chromosomes[child] = [][]uint64{make([]uint64, (model.FreeParameters["NumBits"]+63)/64), make([]uint64, (model.FreeParameters["NumBits"]+63)/64)}
 					}
 					numSetBits := 0
-               // only go through meiosis if there is a set bit in mom or dad
+					// only go through meiosis if there is a set bit in mom or dad
 					if pop.IndData[dad]["allele_count"] > 0 {
 						meiosis(pop, genomemask1, dad, child, 0)
 						numSetBits += countSetBits(pop.Chromosomes[child][0])
@@ -86,20 +86,20 @@ func Birth(model *types.Model, pop *types.Pop, year int) {
 						numSetBits += countSetBits(pop.Chromosomes[child][1])
 					}
 					pop.IndData[child]["allele_count"] = numSetBits
-               // delete the child's chromosomes if they inherited zero set bits
+					// delete the child's chromosomes if they inherited zero set bits
 					if pop.IndData[child]["allele_count"] < 1 {
 						delete(pop.Chromosomes, child)
 					} else {
-						pop.IndData[child]["num_blocks"] =  countContiguousBlocks(model, pop, child, 0)
+						pop.IndData[child]["num_blocks"] = countContiguousBlocks(model, pop, child, 0)
 						pop.IndData[child]["num_blocks"] += countContiguousBlocks(model, pop, child, 1)
 					}
 
-               // inherit centromeres if mom or dad have a set bit in their centromeres
+					// inherit centromeres if mom or dad have a set bit in their centromeres
 					if pop.IndData[dad]["centromere_count"] > 0 || pop.IndData[mom]["centromere_count"] > 0 {
-    					inheritCentromeres(model, pop, centsmask1, centsmask2, dad, mom, child)
-               }
+						inheritCentromeres(model, pop, centsmask1, centsmask2, dad, mom, child)
+					}
 
-               // track avenues of descent from the seed individual(s)
+					// track avenues of descent from the seed individual(s)
 					pop.IndData[child]["Y_gens"] = -1
 					if pop.IndData[dad]["Y_gens"] > -1 && pop.IndData[child]["sex"] == 0 {
 						pop.IndData[child]["Y_gens"] = pop.IndData[dad]["Y_gens"] + 1
@@ -130,9 +130,9 @@ func Birth(model *types.Model, pop *types.Pop, year int) {
 
 				// Assign mutations, both inherited and de novo
 				if model.Parameters["track_mutations"] > 0 {
-               mutation.InheritMutations(pop, genomemask1, dad, child, 0)
-               mutation.InheritMutations(pop, genomemask2, mom, child, 1)
-               mutation.GenerateNewMutations(model, pop, child)
+					mutation.InheritMutations(pop, genomemask1, dad, child, 0)
+					mutation.InheritMutations(pop, genomemask2, mom, child, 1)
+					mutation.GenerateNewMutations(model, pop, child)
 					numMutations, mutationLoad := mutation.CountFitnessAndMutations(pop, child)
 					fitness := 1 + mutationLoad
 					pop.IndData[child]["fitness"] = int(float64(fitness) * model.Parameters["mu_scale_factor"])
@@ -151,7 +151,7 @@ func createChild(model *types.Model, pop *types.Pop, dad, mom, child int, year i
 	if lifespan < int(model.Parameters["min_lifespan"]) {
 		lifespan = int(model.Parameters["min_lifespan"])
 	}
-	
+
 	pop.IndData[child] = map[string]int{
 		"dad":            dad,
 		"mom":            mom,
@@ -185,32 +185,32 @@ func createMask(model *types.Model, sex int) ([]uint64, uint64) {
 		// chromosomeArms[chrom][0][0] = start of p arm in bits, chromosomeArms[chrom][0][1] = length of p arm in bits
 		pstart := model.ChromosomeArms[chrom][0][0]
 		qstart := model.ChromosomeArms[chrom][1][0]
-		plen   := model.ChromosomeArms[chrom][0][1]
-		qlen   := model.ChromosomeArms[chrom][1][1]
+		plen := model.ChromosomeArms[chrom][0][1]
+		qlen := model.ChromosomeArms[chrom][1][1]
 
 		if plen <= 0 || qlen <= 0 {
 			continue
 		}
 
 		// choose a random place on each chromosome arm and decide if the paternal
-      // or maternal centromere will be inherited by the child
+		// or maternal centromere will be inherited by the child
 		ploc := rand.Intn(plen)
 		qloc := rand.Intn(qlen)
 		whichCopy := rand.Intn(2)
 
-      if whichCopy == 1 {
-		   // example: 00001111x11110000, where 0 = paternal, 1 = maternal, and x = the centromere
-         for i := pstart + ploc; i < qstart + qloc; i++ {
-				genomemask[i / 64] |= (1 << (i % 64))
+		if whichCopy == 1 {
+			// example: 00001111x11110000, where 0 = paternal, 1 = maternal, and x = the centromere
+			for i := pstart + ploc; i < qstart+qloc; i++ {
+				genomemask[i/64] |= (1 << (i % 64))
 			}
 			centromask |= (1 << (chrom % 64))
 		} else {
 			// example: 11110000x00001111
-			for i := pstart; i < pstart + ploc; i++ {
-				genomemask[i / 64] |= (1 << (i % 64))
+			for i := pstart; i < pstart+ploc; i++ {
+				genomemask[i/64] |= (1 << (i % 64))
 			}
-			for i := qstart + qloc; i < qstart + qlen; i++ {
-				genomemask[i / 64] |= (1 << (i % 64))
+			for i := qstart + qloc; i < qstart+qlen; i++ {
+				genomemask[i/64] |= (1 << (i % 64))
 			}
 		}
 	}
@@ -218,7 +218,7 @@ func createMask(model *types.Model, sex int) ([]uint64, uint64) {
 	if sex == 0 {
 		// males don't inherit the father's X chromosome
 		xstart := model.ChromosomeArms[23][0][0]
-		xend   := model.ChromosomeArms[23][1][0] + model.ChromosomeArms[23][1][1]
+		xend := model.ChromosomeArms[23][1][0] + model.ChromosomeArms[23][1][1]
 		for i := xstart; i < xend; i++ {
 			genomemask[i/64] &^= (1 << (i % 64))
 		}
@@ -229,20 +229,19 @@ func createMask(model *types.Model, sex int) ([]uint64, uint64) {
 // Meiosis simulates genetic recombination during gamete formation.
 // By applying a combination of AND, OR, and NOT between the genome mask and the
 // two parental chromosome copies, the child can get a haploid, recombined
-// version of a parent's genome. This happens once for the father and once for 
-// the mother, so chromosomes[child][0] = paternal inheritance and 
+// version of a parent's genome. This happens once for the father and once for
+// the mother, so chromosomes[child][0] = paternal inheritance and
 // chromosomes[child][1] = maternal inheritance
 
 func meiosis(pop *types.Pop, mask []uint64, parent int, child int, copy int) {
 	parentCopy0 := pop.Chromosomes[parent][0]
 	parentCopy1 := pop.Chromosomes[parent][1]
-	childCopy := make([]uint64, len(mask))	
+	childCopy := make([]uint64, len(mask))
 	for i := 0; i < len(mask); i++ {
 		childCopy[i] = (mask[i] & parentCopy0[i]) | (^mask[i] & parentCopy1[i])
-	}	
+	}
 	pop.Chromosomes[child][copy] = childCopy
 }
-
 
 // countContiguousBlocks counts blocks of contiguous set bits
 func countContiguousBlocks(model *types.Model, pop *types.Pop, ind int, copy int) int {
@@ -250,16 +249,16 @@ func countContiguousBlocks(model *types.Model, pop *types.Pop, ind int, copy int
 	genomestring := uint64ArrayToBitString(pop.Chromosomes[ind][copy])
 	for chrom := 1; chrom < len(model.ChromosomeArms); chrom++ {
 		pstart := model.ChromosomeArms[chrom][0][0]
-		plen   := model.ChromosomeArms[chrom][0][1]
-		if pstart + plen <= len(genomestring) {
-			psegment := genomestring[pstart : pstart + plen]
+		plen := model.ChromosomeArms[chrom][0][1]
+		if pstart+plen <= len(genomestring) {
+			psegment := genomestring[pstart : pstart+plen]
 			blockCount += countBlocksInRange(psegment)
 		}
 
 		qstart := model.ChromosomeArms[chrom][1][0]
-		qlen   := model.ChromosomeArms[chrom][1][1]
-		if qstart + qlen <= len(genomestring) {
-			qsegment := genomestring[qstart : qstart + qlen]
+		qlen := model.ChromosomeArms[chrom][1][1]
+		if qstart+qlen <= len(genomestring) {
+			qsegment := genomestring[qstart : qstart+qlen]
 			blockCount += countBlocksInRange(qsegment)
 		}
 	}
@@ -287,7 +286,7 @@ func uint64ArrayToBitString(genomesegment []uint64) string {
 
 func inheritCentromeres(model *types.Model, pop *types.Pop, centsmask1 uint64, centsmask2 uint64, dad int, mom int, child int) {
 
-	if pop.IndData[dad]["num_centromeres"] > 0 || pop. IndData[mom]["num_centromeres"] > 0 {
+	if pop.IndData[dad]["num_centromeres"] > 0 || pop.IndData[mom]["num_centromeres"] > 0 {
 		pop.Centromeres[child] = make([]uint64, 2)
 		for i := 0; i < len(model.ChromosomeArms); i++ {
 			if centsmask1&(1<<i) == 0 {
