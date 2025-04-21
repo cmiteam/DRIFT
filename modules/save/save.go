@@ -33,9 +33,9 @@ func SaveHeaders(modelName string) error {
 
 // Save writes the current simulation state to a CSV file
 
-func Save(model *types.Model, pop *types.Pop, run int, year int) {
+func Save(model *types.Model, pop *types.Pop) {
 	fmt.Printf("   Year: %d  n: %d  b: %d  m: %d c: %d\n",
-		year,
+		model.FreeParameters["year"],
 		model.FreeParameters["last_pop_size"],
 		pop.Tracking["births"],
 		pop.Tracking["marriages"],
@@ -69,8 +69,8 @@ func Save(model *types.Model, pop *types.Pop, run int, year int) {
 	defer writer.Flush()
 
 	data := []string{
-		fmt.Sprintf("%d", run),
-		fmt.Sprintf("%d", year),
+		fmt.Sprintf("%d", model.FreeParameters["run"]),
+		fmt.Sprintf("%d", model.FreeParameters["year"]),
 		fmt.Sprintf("%d", numInds),
 		fmt.Sprintf("%d", pop.Tracking["marriages"]),
 		fmt.Sprintf("%d", pop.Tracking["births"]),
@@ -112,7 +112,7 @@ func Save(model *types.Model, pop *types.Pop, run int, year int) {
 //}
 
 // personDataString formats detailed individual data with state information
-func personDataString(pop *types.Pop, ind int, year int, state string) string {
+func personDataString(model *types.Model, pop *types.Pop, ind int, state string) string {
 	var info strings.Builder
 	indInfo, exists := pop.IndData[ind]
 	if exists {
@@ -122,7 +122,7 @@ func personDataString(pop *types.Pop, ind int, year int, state string) string {
 			"Y_gens", "mt_gens", "min_genealo_gens", "max_genealo_gens",
 			"allele_count", "num_blocks", "centromeres", "fitness", "mutations",
 		}
-		info.WriteString(fmt.Sprintf("%d,%d,%d,", ind, getOrDefault(indInfo, "birth_year", -1), year))
+		info.WriteString(fmt.Sprintf("%d,%d,%d,", ind, getOrDefault(indInfo, "birth_year", -1), model.FreeParameters["year"]))
 		for _, field := range fields {
 			info.WriteString(fmt.Sprintf("%d,", getOrDefault(indInfo, field, -1)))
 		}

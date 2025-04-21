@@ -6,12 +6,12 @@ import (
 	"time"
 )
 
-func Marriage(model *types.Model, pop *types.Pop, year int) {
+func Marriage(model *types.Model, pop *types.Pop) {
 	var availableMen, availableWomen []int
 
 	// Find eligible individuals
 	for id, data := range pop.IndData {
-		if data["marriage_state"] == -1 && year-data["birth_year"] >= int(model.Parameters["maturity"]) {
+		if data["marriage_state"] == -1 && model.FreeParameters["year"]-data["birth_year"] >= int(model.Parameters["maturity"]) {
 			if data["sex"] == 0 {
 				availableMen = append(availableMen, id)
 			} else if data["sex"] == 1 {

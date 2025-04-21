@@ -8,8 +8,8 @@ import (
 
 // SeedThePopulation chooses a random seed individual and sets up their genetic data
 
-func SeedThePopulation(model *types.Model, pop *types.Pop, year int) {
-	seed := chooseRandomSeed(model, pop, year)
+func SeedThePopulation(model *types.Model, pop *types.Pop) {
+	seed := chooseRandomSeed(model, pop)
 
 	if seed == -1 {
 		return
@@ -48,8 +48,8 @@ func SeedThePopulation(model *types.Model, pop *types.Pop, year int) {
 
 }
 
-func chooseRandomSeed(model *types.Model, pop *types.Pop, year int) int {
-
+func chooseRandomSeed(model *types.Model, pop *types.Pop) int {
+	year := model.FreeParameters["year"]
 	matureMales := []int{}
 	for id, data := range pop.IndData {
 		age := year - data["birth_year"]

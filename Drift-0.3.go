@@ -55,24 +55,26 @@ func main() {
 	// Loop over the number of model runs
 	for run := 1; run <= int(model.Parameters["num_runs"]); run++ {
 		print("\nRun ", run, "\n")
+		model.FreeParameters["run"] = run
 		pop := initializepop.InitializePop(model)
 
 		// Loop over the number years in each model run
 		for year := 0; year <= int(model.Parameters["end_year"]); year++ {
+			model.FreeParameters["year"] = year
 			if year >= int(model.Parameters["seed_year"]) &&
 				model.FreeParameters["seed"] == -1 {
-				seedpopulation.SeedThePopulation(model, pop, year)
+				seedpopulation.SeedThePopulation(model, pop)
 			}
 
-			birth.Birth(model, pop, year)
-			marriage.Marriage(model, pop, year)
-			death.Death(model, pop, year, run)
+			birth.Birth(model, pop)
+			marriage.Marriage(model, pop)
+			death.Death(model, pop)
 			model.FreeParameters["last_pop_size"] = len(pop.IndData) // save pop size for future growth rate calculations
 			if year%int(model.Parameters["save_interval"]) == 0 {
-				save.Save(model, pop, run, year)
+				save.Save(model, pop)
 			}
 			if len(pop.IndData) <= 1 { // Save and quit if population extinct
-				save.Save(model, pop, run, year)
+				save.Save(model, pop)
 				break
 			}
 		}

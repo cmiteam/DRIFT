@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-func Birth(model *types.Model, pop *types.Pop, year int) {
+func Birth(model *types.Model, pop *types.Pop) {
 
 	// First, find eligible females and roll the dice
 	for ind := range pop.IndData {
@@ -20,7 +20,7 @@ func Birth(model *types.Model, pop *types.Pop, year int) {
 		if pop.IndData[ind]["marriage_state"] == -1 {
 			continue
 		}
-		age := year - pop.IndData[ind]["birth_year"]
+		age := model.FreeParameters["year"] - pop.IndData[ind]["birth_year"]
 		// skip adolescent girls
 		if age < int(model.Parameters["maturity"]) {
 			continue
@@ -30,7 +30,7 @@ func Birth(model *types.Model, pop *types.Pop, year int) {
 			continue
 		}
 		// skip women with young children
-		if int(pop.IndData[ind]["last_birth_year"])+int(model.Parameters["spacing"]) >= year {
+		if int(pop.IndData[ind]["last_birth_year"])+int(model.Parameters["spacing"]) >= model.FreeParameters["year"] {
 			continue
 		}
 		// Failed to get pregnant this year
@@ -56,7 +56,7 @@ func Birth(model *types.Model, pop *types.Pop, year int) {
 		if chance < fitness {
 			model.FreeParameters["indID"] += 1
 			child := model.FreeParameters["indID"]
-			createChild(model, pop, dad, mom, child, year)
+			createChild(model, pop, dad, mom, child)
 
 			// If DNA or mutations are being tracked, bitmasks will be created that
 			// will be used to control meiosis and mutation inheritance. These will
@@ -144,7 +144,7 @@ func Birth(model *types.Model, pop *types.Pop, year int) {
 	}
 }
 
-func createChild(model *types.Model, pop *types.Pop, dad, mom, child int, year int) {
+func createChild(model *types.Model, pop *types.Pop, dad, mom, child int) {
 
 	// potential lifespan is the average of the parents X the lifespan drop per generation, but it bottoms out at min_lifespan
 	lifespan := int((pop.IndData[dad]["lifespan"] + pop.IndData[mom]["lifespan"]) / 2 * int(model.Parameters["lifespan_drop"]))
@@ -156,14 +156,14 @@ func createChild(model *types.Model, pop *types.Pop, dad, mom, child int, year i
 		"dad":            dad,
 		"mom":            mom,
 		"sex":            rand.Intn(2),
-		"birth_year":     year,
+		"birth_year":     model.FreeParameters["year"],
 		"lifespan":       lifespan,
 		"marriage_state": -1,
 		"lat":            0,
 		"lon":            0,
 	}
 
-	pop.IndData[mom]["last_birth_year"] = year
+	pop.IndData[mom]["last_birth_year"] = model.FreeParameters["year"]
 	if _, exists := pop.IndData[mom]["numbirths"]; !exists {
 		pop.IndData[mom]["numbirths"] = 0
 	}

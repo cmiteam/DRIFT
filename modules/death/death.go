@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func Death(model *types.Model, pop *types.Pop, year int, run int) int {
+func Death(model *types.Model, pop *types.Pop) int {
 
 	rand.Seed(time.Now().UnixNano())
 	deaths := 0
@@ -30,7 +30,7 @@ func Death(model *types.Model, pop *types.Pop, year int, run int) int {
 		// The death risk is really high at 85 already, so anyone who makes it to
 		// >= 85 has the same risk of dying each year.
 
-		age := year - pop.IndData[ind]["birth_year"]
+		age := model.FreeParameters["year"] - pop.IndData[ind]["birth_year"]
 		ageGroup := int((float64(age)/float64(pop.IndData[ind]["lifespan"]))*model.Parameters["min_lifespan"]/5) * 5
 		if ageGroup > 85 {
 			ageGroup = 85
@@ -45,7 +45,7 @@ func Death(model *types.Model, pop *types.Pop, year int, run int) int {
 		adjustedDeathRisk := deathrisk * riskModification * fitness
 		if die < adjustedDeathRisk {
 			if int(model.Parameters["track_dead"]) == 1 {
-				deadPersonString := personDataString(ind, pop, year, "R")
+				deadPersonString := personDataString(model, pop, ind, "R")
 				deadPeopleData += deadPersonString
 			}
 			RIP(ind, pop, model)
@@ -56,7 +56,7 @@ func Death(model *types.Model, pop *types.Pop, year int, run int) int {
 
 	// Adjust max population size based on bottleneck
 	maxPopSize := int(model.Parameters["max_pop_size"])
-	if int(model.Parameters["bottleneck_start"]) <= year && int(model.Parameters["bottleneck_end"]) >= year {
+	if int(model.Parameters["bottleneck_start"]) <= model.FreeParameters["year"] && int(model.Parameters["bottleneck_end"]) >= model.FreeParameters["year"] {
 		maxPopSize = int(model.Parameters["bottleneck_size"])
 	}
 
@@ -70,7 +70,7 @@ func Death(model *types.Model, pop *types.Pop, year int, run int) int {
 			continue
 		}
 		if int(model.Parameters["track_dead"]) == 1 {
-			deadPersonString := deadString(ind, pop, year)
+			deadPersonString := deadString(model, pop, ind)
 			deadPersonString += ",R\n"
 			deadPeopleData += deadPersonString
 		}
@@ -95,7 +95,7 @@ func Death(model *types.Model, pop *types.Pop, year int, run int) int {
 			continue
 		}
 		if int(model.Parameters["track_dead"]) == 1 {
-			deadPersonString := deadString(ind, pop, year)
+			deadPersonString := deadString(model, pop, ind)
 			deadPersonString += ",R\n"
 			deadPeopleData += deadPersonString
 		}
@@ -108,7 +108,7 @@ func Death(model *types.Model, pop *types.Pop, year int, run int) int {
 	// Step 4: Reduce population to specified number of breeding individuals, if called for, by randomly culling individuals
 	if model.Parameters["max_breeding_inds"] > -1 {
 		keyList = generateKeyList(pop.IndData)
-		breeders := countBreedingIndividuals(pop, year, model)
+		breeders := countBreedingIndividuals(model, pop)
 		for breeders > int(model.Parameters["max_breeding_inds"]) {
 			randomIndex := rand.Intn(len(keyList))
 			ind := keyList[randomIndex]
@@ -116,21 +116,21 @@ func Death(model *types.Model, pop *types.Pop, year int, run int) int {
 				continue
 			}
 			if int(model.Parameters["track_dead"]) == 1 {
-				deadPersonString := deadString(ind, pop, year)
+				deadPersonString := deadString(model, pop, ind)
 				deadPersonString += ",R\n"
 				deadPeopleData += deadPersonString
 			}
 			RIP(ind, pop, model)
 			deaths++
 			pop.Tracking["cull_deaths"]++
-			breeders = countBreedingIndividuals(pop, year, model)
+			breeders = countBreedingIndividuals(model, pop)
 		}
 	}
 
 	// Save dead individuals to file
 	if int(model.Parameters["track_dead"]) == 1 {
 		modelID := fmt.Sprintf("%.0f", model.Parameters["model_id"])
-		filename := fmt.Sprintf("results_directory/%s-%d deaths.csv", modelID, run)
+		filename := fmt.Sprintf("results_directory/%s-%d deaths.csv", modelID, model.FreeParameters["run"])
 		writeToFile(filename, deadPeopleData)
 	}
 
@@ -175,7 +175,7 @@ func RIP(ind int, pop *types.Pop, model *types.Model) {
 }
 
 // deadString formats individual data for death records
-func deadString(ind int, pop *types.Pop, year int) string {
+func deadString(model *types.Model, pop *types.Pop, ind int) string {
 	// keeps track of deceased individuals if they are to be saved
 	var info strings.Builder
 	indInfo, exists := pop.IndData[ind]
@@ -189,7 +189,7 @@ func deadString(ind int, pop *types.Pop, year int) string {
 		info.WriteString(fmt.Sprintf("%d,%d,%d,%d,%d,%d,%d,",
 			ind,
 			getValue("birth_year", -1),
-			year,
+			model.FreeParameters["year"],
 			getValue("sex", -1),
 			getValue("dad", -1),
 			getValue("mom", -1),
@@ -215,7 +215,7 @@ func deadString(ind int, pop *types.Pop, year int) string {
 }
 
 // personDataString formats detailed individual data with state information
-func personDataString(ind int, pop *types.Pop, year int, state string) string {
+func personDataString(model *types.Model, pop *types.Pop, ind int, state string) string {
 	var info strings.Builder
 	indInfo, exists := pop.IndData[ind]
 	if exists {
@@ -225,7 +225,7 @@ func personDataString(ind int, pop *types.Pop, year int, state string) string {
 			"Y_gens", "mt_gens", "min_genealo_gens", "max_genealo_gens",
 			"allele_count", "num_blocks", "centromeres", "fitness", "mutations",
 		}
-		info.WriteString(fmt.Sprintf("%d,%d,%d,", ind, getOrDefault(indInfo, "birth_year", -1), year))
+		info.WriteString(fmt.Sprintf("%d,%d,%d,", ind, getOrDefault(indInfo, "birth_year", -1), model.FreeParameters["year"]))
 		for _, field := range fields {
 			info.WriteString(fmt.Sprintf("%d,", getOrDefault(indInfo, field, -1)))
 		}
@@ -244,10 +244,10 @@ func getOrDefault(data map[string]int, key string, defaultVal int) int {
 }
 
 // countBreedingIndividuals counts individuals of breeding age
-func countBreedingIndividuals(pop *types.Pop, year int, model *types.Model) int {
+func countBreedingIndividuals(model *types.Model, pop *types.Pop) int {
 	count := 0
 	for _, data := range pop.IndData {
-		age := year - data["birth_year"]
+		age := model.FreeParameters["year"] - data["birth_year"]
 		if age >= int(model.Parameters["maturity"]) {
 			count++
 		}
