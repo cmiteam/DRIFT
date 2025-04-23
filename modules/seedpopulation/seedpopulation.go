@@ -44,7 +44,8 @@ func SeedThePopulation(model *types.Model, pop *types.Pop) {
 	pop.IndData[seed]["min_genealo_gens"] = 0
 	pop.IndData[seed]["allele_count"] = model.FreeParameters["NumBits"] * 2
 	pop.IndData[seed]["num_centomeres"] = countSetBitsSingleVar(pop.Centromeres[seed][0])
-	pop.IndData[seed]["num_centomeres"] += countSetBitsSingleVar(pop.Centromeres[seed][1])
+	pop.IndData[seed]["lat"] = 0
+	pop.IndData[seed]["lon"] = 0
 
 }
 

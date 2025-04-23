@@ -3,6 +3,7 @@
 package main
 
 import (
+	"drift/modules/animations"
 	"drift/modules/birth"
 	"drift/modules/death"
 	"drift/modules/initializemodel"
@@ -12,6 +13,7 @@ import (
 	"drift/modules/seedpopulation"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"time"
 )
@@ -47,16 +49,23 @@ func main() {
 	// Initialize the model.
 	// If there is an error, print it to stderr and exit with a non-zero status code.
 	model, err := initializemodel.InitializeModel(*configRootArg, *mapRootArg)
+
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing model: %v\n", err)
 		os.Exit(1)
 	}
+
+	animContainer := animations.Initialize(model)
 
 	// Loop over the number of model runs
 	for run := 1; run <= int(model.Parameters["num_runs"]); run++ {
 		print("\nRun ", run, "\n")
 		model.FreeParameters["run"] = run
 		pop := initializepop.InitializePop(model)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error initializing animations: %v\n", err)
+			os.Exit(1)
+		}
 
 		// Loop over the number years in each model run
 		for year := 0; year <= int(model.Parameters["end_year"]); year++ {
@@ -71,10 +80,10 @@ func main() {
 			death.Death(model, pop)
 			model.FreeParameters["last_pop_size"] = len(pop.IndData) // save pop size for future growth rate calculations
 			if year%int(model.Parameters["save_interval"]) == 0 {
-				save.Save(model, pop)
+				save.Save(model, pop, animContainer)
 			}
 			if len(pop.IndData) <= 1 { // Save and quit if population extinct
-				save.Save(model, pop)
+				save.Save(model, pop, animContainer)
 				break
 			}
 		}
@@ -84,6 +93,13 @@ func main() {
 			filename := fmt.Sprintf("results/%s genome map.png", model.ModelName)
 			pixelSize := 4
 			save.SaveGenomeMap(pop.Chromosomes, model.ChromosomeArms, filename, pixelSize, int(model.Parameters["NumBits"]))
+		}
+		if model.Parameters["track_map"] == 1 {
+			print("Saving map...\n")
+			err := animations.SaveAllGIFs(animContainer)
+			if err != nil {
+				log.Printf("Error saving animation: %v", err)
+			}
 		}
 	}
 

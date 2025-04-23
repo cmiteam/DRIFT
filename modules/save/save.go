@@ -1,6 +1,7 @@
 package save
 
 import (
+	"drift/modules/animations"
 	"drift/types"
 	"encoding/csv"
 	"fmt"
@@ -32,8 +33,7 @@ func SaveHeaders(modelName string) error {
 }
 
 // Save writes the current simulation state to a CSV file
-
-func Save(model *types.Model, pop *types.Pop) {
+func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsContainer) {
 	fmt.Printf("   Year: %d  n: %d  b: %d  m: %d c: %d\n",
 		model.FreeParameters["year"],
 		model.FreeParameters["last_pop_size"],
@@ -61,6 +61,107 @@ func Save(model *types.Model, pop *types.Pop) {
 
 	if model.Parameters["track_map"] == 1 {
 
+		// Count individuals with genetic markers at each location
+		freqMap := make(map[int]map[int]int)
+		for _, individual := range pop.IndData {
+			// Check if this individual has any of the genetic markers we're tracking
+			hasMarker := individual["Y_gens"] > 0 ||
+				individual["mt_gens"] > 0 ||
+				individual["allele_count"] > 0 ||
+				individual["num_centromeres"] > 0 ||
+				individual["num_blocks"] > 0
+
+			if hasMarker {
+				lat := individual["lat"]
+				lon := individual["lon"]
+
+				// Initialize the inner map if needed
+				if _, exists := freqMap[lat]; !exists {
+					freqMap[lat] = make(map[int]int)
+				}
+
+				// Increment the counter
+				freqMap[lat][lon]++
+			}
+		}
+
+		// Prepare data points for genetics animation
+		changePoints := make(map[[2]int]color.RGBA)
+		// Add your specific data points based on population data
+		totalPopSize := model.FreeParameters["last_pop_size"]
+		for lat, innerMap := range freqMap {
+			for lon, count := range innerMap {
+				if count > 0 {
+					// Calculate color based on frequency
+					ratio := float64(count) / float64(totalPopSize)
+					intensity := 255 - int(ratio*255)
+					colorValue := (0xFF << 16) | (intensity << 8) | intensity
+					r := uint8((colorValue >> 16) & 0xFF)
+					g := uint8((colorValue >> 8) & 0xFF)
+					b := uint8(colorValue & 0xFF)
+
+					// Add this point to our changed points
+					changePoints[[2]int{lat, lon}] = color.RGBA{r, g, b, 255}
+				}
+			}
+		}
+		// Set a bright red pixel at (year, year)
+		changePoints[[2]int{model.FreeParameters["year"], model.FreeParameters["year"]}] = color.RGBA{255, 0, 0, 255}
+		err := animations.AddFrame(animManager, "genetic", changePoints, 1)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error adding frame to Genetic animation: %v\n", err)
+			os.Exit(1)
+		}
+
+		// Count individuals with genealogical markers at each location
+		freqMap = make(map[int]map[int]int)
+		for _, individual := range pop.IndData {
+			// Check if this individual has any of the genealogical markers we're tracking
+			hasMarker := individual["Y_gens"] > 0 ||
+				individual["mt_gens"] > 0 ||
+				individual["min_genealo_gens"] > 0 ||
+				individual["max_genealo_gens"] > 0
+
+			if hasMarker {
+				lat := individual["lat"]
+				lon := individual["lon"]
+
+				// Initialize the inner map if needed
+				if _, exists := freqMap[lat]; !exists {
+					freqMap[lat] = make(map[int]int)
+				}
+
+				// Increment the counter
+				freqMap[lat][lon]++
+			}
+		}
+
+		// Prepare data points for genealogical animation
+		changePoints = make(map[[2]int]color.RGBA)
+		// Add your specific data points based on population data
+		totalPopSize = model.FreeParameters["last_pop_size"]
+		for lat, innerMap := range freqMap {
+			for lon, count := range innerMap {
+				if count > 0 {
+					// Calculate color based on frequency
+					ratio := float64(count) / float64(totalPopSize)
+					intensity := 255 - int(ratio*255)
+					colorValue := (0xFF << 16) | (intensity << 8) | intensity
+					r := uint8((colorValue >> 16) & 0xFF)
+					g := uint8((colorValue >> 8) & 0xFF)
+					b := uint8(colorValue & 0xFF)
+
+					// Add this point to our changed points
+					changePoints[[2]int{lat, lon}] = color.RGBA{r, g, b, 255}
+				}
+			}
+		}
+		// Set a bright red pixel at (year, year)
+		changePoints[[2]int{model.FreeParameters["year"], model.FreeParameters["year"]}] = color.RGBA{255, 0, 0, 255}
+		err = animations.AddFrame(animManager, "genealogical", changePoints, 1)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error adding frame to Genetic animation: %v\n", err)
+		}
 	}
 
 	file, _ := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -99,17 +200,6 @@ func Save(model *types.Model, pop *types.Pop) {
 	pop.Tracking["random_deaths"] = 0
 	pop.Tracking["cull_deaths"] = 0
 }
-
-// SaveLivingPeople saves data on all living people to a CSV file
-//func SaveLivingPeople(model *types.Model, pop *types.Model, run int, year int) error {
-//	var livingPeopleData strings.Builder
-//	for ind := range pop.IndData {
-//		livingPeopleData.WriteString(personDataString(ind, pop.IndData[ind], year, "A"))
-//	}
-//	modelID := fmt.Sprintf("%.0f", model.Parameters["model_id"])
-//	filename := fmt.Sprintf("results/%s-%d living.csv", modelID, run)
-//	return writeToFile(filename, livingPeopleData.String())
-//}
 
 // personDataString formats detailed individual data with state information
 func personDataString(model *types.Model, pop *types.Pop, ind int, state string) string {

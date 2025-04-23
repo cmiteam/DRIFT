@@ -159,8 +159,8 @@ func createChild(model *types.Model, pop *types.Pop, dad, mom, child int) {
 		"birth_year":     model.FreeParameters["year"],
 		"lifespan":       lifespan,
 		"marriage_state": -1,
-		"lat":            0,
-		"lon":            0,
+		"lat":            pop.IndData[dad]["lat"],
+		"lon":            pop.IndData[dad]["lon"],
 	}
 
 	pop.IndData[mom]["last_birth_year"] = model.FreeParameters["year"]

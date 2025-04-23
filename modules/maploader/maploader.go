@@ -4,16 +4,12 @@ import (
 	"drift/modules/csvutils"
 	"drift/types"
 	"fmt"
+	"math"
+	"sort"
+	"strconv"
 )
 
-// A few healthy guardrails
-const minValidLat = -90
-const maxValidLat = 90
-const minValidLon = -180
-const maxValidLon = 180
-
 // Terrain types
-// TODO you might want to move this somewhere else
 type Terrain int
 
 const (
@@ -29,14 +25,16 @@ const (
 
 // Load the map from a CSV file and populate the model's Map map.
 func LoadMap(model *types.Model, mapRoot string) error {
-	minLat, minLon, maxLat, maxLon := 0, 0, 0, 0
+	minLat, minLon := 1000000.0, 1000000.0
+	maxLat, maxLon := -1000000.0, -1000000.0
+
 	// Initialize the map if it's nil
 	if model.Map == nil {
 		model.Map = make(map[int]map[int]int)
 	}
 
 	// Derive the filename from the model and load the CSV file
-	filename := fmt.Sprintf("%s_map.csv", model.MapName)
+	filename := fmt.Sprintf("%s.csv", model.MapName)
 	csvLoader := csvutils.CSVLoader{
 		FileName:   filename,
 		Dir:        mapRoot,
@@ -47,84 +45,158 @@ func LoadMap(model *types.Model, mapRoot string) error {
 		return err
 	}
 
-	// Skip the header row and process each record
+	fmt.Printf("Loading map: %s (%d records)\n", filename, len(records)-1)
+
+	// Store all coordinates for processing
+	allCoordinates := make([]struct {
+		lat, lon float64
+		terrain  int
+	}, 0, len(records)-1)
+
+	// Sample lat/lon values to determine resolution
+	latSamples := make([]float64, 0, 100)
+	lonSamples := make([]float64, 0, 100)
+
 	for _, record := range records[1:] {
-		// Ensure the record has at least 3 fields
-		err := csvLoader.CheckRecord(record, 3)
+		lat, err := strconv.ParseFloat(record[0], 64)
 		if err != nil {
 			return err
 		}
 
-		// Each record should have three fields: latitude, longitude, and terrain type
-		lat, err := csvLoader.Atoi(record, 0)
+		lon, err := strconv.ParseFloat(record[1], 64)
 		if err != nil {
 			return err
 		}
-		if lat < minValidLat || lat > maxValidLat {
-			return csvutils.ErrInvalidField{
-				CSVLoader: csvLoader,
-				Record:    record,
-				Field:     0,
-				Message:   "Latitude out of range",
-			}
+
+		terrain, err := strconv.ParseInt(record[2], 10, 64)
+		if err != nil {
+			return err
 		}
+
+		// Store for later processing
+		allCoordinates = append(allCoordinates, struct {
+			lat, lon float64
+			terrain  int
+		}{lat, lon, int(terrain)})
+
+		// Track min values
 		if lat < minLat {
 			minLat = lat
-		}
-		if lat > maxLat {
-			maxLat = lat
-		}
-
-		lon, err := csvLoader.Atoi(record, 1)
-		if err != nil {
-			return err
-		}
-		if lon < minValidLon || lon > maxValidLon {
-			return csvutils.ErrInvalidField{
-				CSVLoader: csvLoader,
-				Record:    record,
-				Field:     1,
-				Message:   "Longitude out of range",
-			}
 		}
 		if lon < minLon {
 			minLon = lon
 		}
-		if lon > maxLon {
-			maxLon = lon
+
+		// Add to samples (limit to 100 samples for efficiency)
+		if len(latSamples) < 100 {
+			latSamples = append(latSamples, lat)
+		}
+		if len(lonSamples) < 100 {
+			lonSamples = append(lonSamples, lon)
+		}
+	}
+
+	// Determine scale factor based on coordinate patterns
+	scaleFactor := calculateScaleFactor(latSamples, lonSamples)
+	fmt.Printf("Detected coordinate resolution, using scale factor: %f\n", scaleFactor)
+	fmt.Printf("Coordinate offsets: lat=%f, lon=%f\n", minLat, minLon)
+
+	// Process and store the data with offsets
+	for _, coord := range allCoordinates {
+		// Apply offsets and convert to integers
+		adjustedLat := int(math.Round((coord.lat - minLat) * scaleFactor))
+		adjustedLon := int(math.Round((coord.lon - minLon) * scaleFactor))
+
+		// Track the maximum values after adjustment
+		if float64(adjustedLat) > maxLat {
+			maxLat = float64(adjustedLat)
+		}
+		if float64(adjustedLon) > maxLon {
+			maxLon = float64(adjustedLon)
 		}
 
-		terrain, err := csvLoader.Atoi(record, 2)
-		if err != nil {
-			return err
+		// Store in model.Map with adjusted coordinates
+		if model.Map[adjustedLat] == nil {
+			model.Map[adjustedLat] = make(map[int]int)
 		}
-		if terrain <= int(InvalidTerrainLow) || terrain >= int(InvalidTerrainHigh) {
-			return csvutils.ErrInvalidField{
-				CSVLoader: csvLoader,
-				Record:    record,
-				Field:     2,
-				Message: fmt.Sprintf("Terrain type out of range [%d, %d]",
-					InvalidTerrainLow+1,
-					InvalidTerrainHigh-1),
+		model.Map[adjustedLat][adjustedLon] = coord.terrain
+	}
+
+	// Store the coordinate info
+	model.FreeParameters["maxLat"] = int(maxLat)
+	model.FreeParameters["maxLon"] = int(maxLon)
+
+	// Calculate tile size for display
+	latRange := int(maxLat) + 1
+	lonRange := int(maxLon) + 1
+	width := model.Parameters["map_width"]
+	height := model.Parameters["map_height"]
+	model.FreeParameters["tileWidth"] = int(width / float64(lonRange))
+	model.FreeParameters["tileHeight"] = int(height / float64(latRange))
+
+	fmt.Printf("Map loaded with dimensions: %d×%d\n", latRange, lonRange)
+
+	return nil
+}
+
+// calculateScaleFactor analyzes coordinate samples to find the appropriate scale factor
+func calculateScaleFactor(latSamples, lonSamples []float64) float64 {
+	// Find the smallest decimal increment in a slice of floats
+	findSmallestIncrement := func(samples []float64) float64 {
+		if len(samples) < 2 {
+			return 1.0 // Default if not enough samples
+		}
+
+		// Sort the samples
+		sort.Float64s(samples)
+
+		// Find the smallest non-zero difference
+		minDiff := 1000.0
+		for i := 1; i < len(samples); i++ {
+			diff := math.Abs(samples[i] - samples[i-1])
+			if diff > 0 && diff < minDiff {
+				minDiff = diff
 			}
 		}
 
-		if model.Map[lat] == nil {
-			model.Map[lat] = make(map[int]int)
+		if minDiff >= 1000.0 {
+			return 1.0 // No meaningful difference found
 		}
-		model.Map[lat][lon] = terrain
+
+		return minDiff
 	}
-	model.FreeParameters["minLat"] = minLat
-	model.FreeParameters["minLon"] = minLon
-	model.FreeParameters["maxLat"] = maxLat
-	model.FreeParameters["maxLon"] = maxLon
 
-	latRange := maxLat - minLat + 1
-	lonRange := maxLon - minLon + 1
-	width := model.FreeParameters["map_width"]
-	height := model.FreeParameters["map_height"]
-	model.FreeParameters["tileWidth"] = width / lonRange
-	model.FreeParameters["tileHeight"] = height / latRange
+	// Get the smallest increments
+	latIncrement := findSmallestIncrement(latSamples)
+	lonIncrement := findSmallestIncrement(lonSamples)
 
-	return nil
+	// Use the smaller of the two increments to ensure we don't lose precision
+	increment := math.Min(latIncrement, lonIncrement)
+
+	// Check for common patterns
+	if almostEqual(increment, 0.1) {
+		return 10.0
+	} else if almostEqual(increment, 0.01) {
+		return 100.0
+	} else if almostEqual(increment, 0.001) {
+		return 1000.0
+	} else if almostEqual(increment, 0.5) {
+		return 2.0
+	} else if almostEqual(increment, 0.25) {
+		return 4.0
+	} else if almostEqual(increment, 0.2) {
+		return 5.0
+	} else if increment > 0 {
+		// For other patterns, use 1/increment as scale factor
+		return 1.0 / increment
+	}
+
+	// Default fallback
+	return 1.0
+}
+
+// almostEqual checks if two floats are nearly equal
+func almostEqual(a, b float64) bool {
+	epsilon := 1e-9
+	return math.Abs(a-b) < epsilon
 }

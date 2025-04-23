@@ -1,8 +1,8 @@
 package types
 
 import (
-	"image/gif"
-	"sync"
+	"image"
+	"image/color"
 )
 
 type Model struct {
@@ -37,11 +37,17 @@ type Mutation struct {
 	Count     int     // Number of instances in circulation
 }
 
-// type Chromosomes struct {
-// 	data [][]uint64
-// }
+// AnimationsContainer manages multiple animations with a shared base map
+type AnimationsContainer struct {
+	BaseMap    [][]color.RGBA
+	Collection map[string]*AnimationWriter
+	PixelSize  int
+}
 
-type AnimationManager struct {
-	animations map[string]*gif.GIF
-	mutex      sync.RWMutex
+// AnimationWriter tracks and creates a single animation
+type AnimationWriter struct {
+	Frames []*image.Paletted
+	Delays []int
+	Width  int
+	Height int
 }
