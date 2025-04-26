@@ -2,7 +2,6 @@ package initializepop
 
 import (
 	"drift/types"
-	"fmt"
 	"math/rand"
 	"time"
 )
@@ -35,11 +34,34 @@ func InitializePop(model *types.Model) *types.Pop {
 	// Initialize the random number generator
 	rand.Seed(time.Now().UnixNano())
 
+	// Find all land squares in the map
+	var landCoordinates [][2]float64
+	for lat := range model.Map {
+		for lon := range model.Map[lat] {
+			// Check if this is land (terrain type 1)
+			if model.Map[lat][lon] == 1 {
+				landCoordinates = append(landCoordinates, [2]float64{lat, lon})
+				//print("appending land coordinate: ", lat, ",", lon, "\n")
+			}
+		}
+	}
+	if len(landCoordinates) == 0 {
+		landCoordinates = append(landCoordinates, [2]float64{0, 0})
+	}
+
 	// Set up the individuals
 	popSize := int(model.Parameters["start_pop_size"])
 	fitness := int(model.Parameters["mu_scale_factor"])
 
 	for i := 0; i < popSize; i++ {
+		// Choose a random land location
+		randomIndex := rand.Intn(len(landCoordinates))
+		randomLoc := landCoordinates[randomIndex]
+
+		// Convert to integer coordinates with 10x multiplier for precision
+		lat := int(randomLoc[0] * 10.0)
+		lon := int(randomLoc[1] * 10.0)
+
 		// assign data to each individual
 		age := 0
 		r := rand.Float64()
@@ -65,27 +87,15 @@ func InitializePop(model *types.Model) *types.Pop {
 			"mt_gens":          -1,                                // generations from female seed
 			"min_genealo_gens": -1,                                // shortest path on family tree to seed
 			"max_genealo_gens": -1,                                // longest path on family tree to seed
-			"lat":              rand.Intn(1000) - 500,             // for non-random mating or geography
-			"lon":              rand.Intn(1000) - 500,             // lat and lon are in a square centered on (0,0)
+			"lat":              lat,
+			"lon":              lon,
 		}
-
+		//print("Individual", i, " position: ", lat, ",", lon, "\n")
 		model.FreeParameters["indID"]++ // each ind gets a unique ID
 	}
 
 	model.FreeParameters["last_pop_size"] = len(pop.IndData) // needed to control population growth
 
-	//PrintPop(pop)  // For doublechecking purposes
 	return pop
 
-}
-
-func PrintPop(pop *types.Pop) {
-	fmt.Println("Individual Data:", pop.IndData)
-	fmt.Println("Chromosomes:", pop.Chromosomes)
-	fmt.Println("Centromeres:", pop.Centromeres)
-	fmt.Println("Individual Mutations:", pop.IndMutations)
-	fmt.Println("Mutation Pool Size:", len(pop.MutationPool))
-	fmt.Println("Mutation History Size:", len(pop.MutationHist))
-	fmt.Println("Total Mutation Count:", pop.MutationCount)
-	fmt.Println("Tracking Information:", pop.Tracking)
 }

@@ -33,6 +33,8 @@ func LoadParameters(model *types.Model, configRoot string) error {
 			model.ModelName = record[4]
 		} else if record[0] == "map_name" {
 			model.MapName = record[4]
+		} else if record[0] == "mating_style" {
+			model.MatingStyle = record[4]
 		} else if record[5] == "Plot" {
 			boolValue, err := csvLoader.ParseBool(record, 4)
 			if err != nil {

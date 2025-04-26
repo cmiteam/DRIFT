@@ -3,16 +3,14 @@ package initializemodel
 import (
 	"drift/modules/actuarialloader"
 	"drift/modules/chromosomeloader"
-	"drift/modules/maploader"
 	"drift/modules/paramloader"
 	"drift/modules/save"
 	"drift/types"
-	"fmt"
 	"math"
 )
 
 // Initializes the model based on the configuration files.
-func InitializeModel(configRoot string, mapRoot string) (*types.Model, error) {
+func InitializeModel(configRoot string) (*types.Model, error) {
 	model := &types.Model{
 		Parameters:     make(map[string]float64),
 		PlotFlags:      make(map[string]bool),
@@ -20,7 +18,7 @@ func InitializeModel(configRoot string, mapRoot string) (*types.Model, error) {
 		DeathRisk:      make(map[int]float64),
 		CumulativeProb: make(map[int]float64),
 		FreeParameters: make(map[string]int),
-		Map:            make(map[int]map[int]int),
+		Map:            make(map[float64]map[float64]int),
 	}
 
 	// Attempt to load each config file. Failure will be fatal.
@@ -33,10 +31,6 @@ func InitializeModel(configRoot string, mapRoot string) (*types.Model, error) {
 		return nil, err
 	}
 	err = actuarialloader.LoadActuarialTable(model, configRoot)
-	if err != nil {
-		return nil, err
-	}
-	err = maploader.LoadMap(model, mapRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -53,17 +47,5 @@ func InitializeModel(configRoot string, mapRoot string) (*types.Model, error) {
 	model.FreeParameters["last_pop_size"] = 0 // Required for growth rate calculations
 	model.FreeParameters["mutID"] = 0         // Starting ID for mutations
 
-	//PrintModel(model)                       // For doublechecking purposes
-
 	return model, nil
-}
-
-func PrintModel(model *types.Model) {
-	fmt.Println("Model Name:", model.ModelName)
-	fmt.Println("Parameters:", model.Parameters)
-	fmt.Println("Free Parameters:", model.FreeParameters)
-	fmt.Println("Plot Flags:", model.PlotFlags)
-	fmt.Println("Chromosome Arms:", model.ChromosomeArms)
-	fmt.Println("Death Risk:", model.DeathRisk)
-	fmt.Println("Cumulative Probability:", model.CumulativeProb)
 }

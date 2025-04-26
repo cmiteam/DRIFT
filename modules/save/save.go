@@ -61,9 +61,18 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 
 	if model.Parameters["track_map"] == 1 {
 
+		allPoints := make(map[[2]float64]color.RGBA)
+		freqMap := make(map[float64]map[float64]int)
+		changePoints := make(map[[2]float64]color.RGBA)
+		progressPercent := float64(model.FreeParameters["year"]) / float64(model.Parameters["end_year"])
+		model.FreeParameters["progressPercent"] = int(progressPercent * 100)
+
 		// Count individuals with genetic markers at each location
-		freqMap := make(map[int]map[int]int)
 		for _, individual := range pop.IndData {
+			lat := float64(individual["lat"]) / 10.0
+			lon := float64(individual["lon"]) / 10.0
+			allPoints[[2]float64{lat, lon}] = color.RGBA{255, 255, 255, 255}
+
 			// Check if this individual has any of the genetic markers we're tracking
 			hasMarker := individual["Y_gens"] > 0 ||
 				individual["mt_gens"] > 0 ||
@@ -72,49 +81,51 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 				individual["num_blocks"] > 0
 
 			if hasMarker {
-				lat := individual["lat"]
-				lon := individual["lon"]
-
 				// Initialize the inner map if needed
 				if _, exists := freqMap[lat]; !exists {
-					freqMap[lat] = make(map[int]int)
+					freqMap[lat] = make(map[float64]int)
 				}
-
 				// Increment the counter
 				freqMap[lat][lon]++
 			}
 		}
+		for coords, color := range allPoints {
+			changePoints[coords] = color
+		}
 
-		// Prepare data points for genetics animation
-		changePoints := make(map[[2]int]color.RGBA)
 		// Add your specific data points based on population data
-		totalPopSize := model.FreeParameters["last_pop_size"]
+		//totalPopSize := model.FreeParameters["last_pop_size"]
 		for lat, innerMap := range freqMap {
 			for lon, count := range innerMap {
 				if count > 0 {
+					changePoints[[2]float64{lat, lon}] = color.RGBA{255, 0, 0, 255}
 					// Calculate color based on frequency
-					ratio := float64(count) / float64(totalPopSize)
-					intensity := 255 - int(ratio*255)
-					colorValue := (0xFF << 16) | (intensity << 8) | intensity
-					r := uint8((colorValue >> 16) & 0xFF)
-					g := uint8((colorValue >> 8) & 0xFF)
-					b := uint8(colorValue & 0xFF)
-
+					//ratio := float64(count) / float64(totalPopSize)
+					//					minRedness := 50
+					//intensity := 255 - int(ratio*255)
+					//colorValue := (0xFF << 16) | (intensity << 8) | intensity
+					//r := uint8((colorValue >> 16) & 0xFF)
+					//g := uint8((colorValue >> 8) & 0xFF)
+					//b := uint8(colorValue & 0xFF)
 					// Add this point to our changed points
-					changePoints[[2]int{lat, lon}] = color.RGBA{r, g, b, 255}
+					//changePoints[[2]float64{lat, lon}] = color.RGBA{r, g, b, 255}
 				}
 			}
 		}
-		// Set a bright red pixel at (year, year)
-		changePoints[[2]int{model.FreeParameters["year"], model.FreeParameters["year"]}] = color.RGBA{255, 0, 0, 255}
-		err := animations.AddFrame(animManager, "genetic", changePoints, 1)
+
+		err := animations.AddFrame(model, animManager, "genetic", changePoints)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error adding frame to Genetic animation: %v\n", err)
 			os.Exit(1)
 		}
 
 		// Count individuals with genealogical markers at each location
-		freqMap = make(map[int]map[int]int)
+		freqMap = make(map[float64]map[float64]int)
+		changePoints = make(map[[2]float64]color.RGBA)
+		for coords, color := range allPoints {
+			changePoints[coords] = color
+		}
+
 		for _, individual := range pop.IndData {
 			// Check if this individual has any of the genealogical markers we're tracking
 			hasMarker := individual["Y_gens"] > 0 ||
@@ -123,12 +134,12 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 				individual["max_genealo_gens"] > 0
 
 			if hasMarker {
-				lat := individual["lat"]
-				lon := individual["lon"]
+				lat := float64(individual["lat"] / 10.0)
+				lon := float64(individual["lon"] / 10.0)
 
 				// Initialize the inner map if needed
 				if _, exists := freqMap[lat]; !exists {
-					freqMap[lat] = make(map[int]int)
+					freqMap[lat] = make(map[float64]int)
 				}
 
 				// Increment the counter
@@ -137,28 +148,29 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 		}
 
 		// Prepare data points for genealogical animation
-		changePoints = make(map[[2]int]color.RGBA)
-		// Add your specific data points based on population data
-		totalPopSize = model.FreeParameters["last_pop_size"]
+		//totalPopSize = model.FreeParameters["last_pop_size"]
 		for lat, innerMap := range freqMap {
 			for lon, count := range innerMap {
 				if count > 0 {
+					changePoints[[2]float64{lat, lon}] = color.RGBA{255, 0, 0, 255}
 					// Calculate color based on frequency
-					ratio := float64(count) / float64(totalPopSize)
-					intensity := 255 - int(ratio*255)
-					colorValue := (0xFF << 16) | (intensity << 8) | intensity
-					r := uint8((colorValue >> 16) & 0xFF)
-					g := uint8((colorValue >> 8) & 0xFF)
-					b := uint8(colorValue & 0xFF)
+					//ratio := float64(count) / float64(totalPopSize)
+					//intensity := 255 - int(ratio*255)
+					//colorValue := (0xFF << 16) | (intensity << 8) | intensity
+					//r := uint8((colorValue >> 16) & 0xFF)
+					//g := uint8((colorValue >> 8) & 0xFF)
+					//b := uint8(colorValue & 0xFF)
 
 					// Add this point to our changed points
-					changePoints[[2]int{lat, lon}] = color.RGBA{r, g, b, 255}
+					//changePoints[[2]float64{lat, lon}] = color.RGBA{r, g, b, 255}
 				}
 			}
 		}
-		// Set a bright red pixel at (year, year)
-		changePoints[[2]int{model.FreeParameters["year"], model.FreeParameters["year"]}] = color.RGBA{255, 0, 0, 255}
-		err = animations.AddFrame(animManager, "genealogical", changePoints, 1)
+		// For testing purposes, set a bright red pixel at (year, year)
+		//		xy := float64(model.FreeParameters["year"]) / 100.0
+		//		changePoints[[2]float64{xy, xy}] = color.RGBA{255, 0, 0, 255}
+
+		err = animations.AddFrame(model, animManager, "genealogical", changePoints)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error adding frame to Genetic animation: %v\n", err)
 		}

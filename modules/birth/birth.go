@@ -4,6 +4,7 @@ import (
 	"drift/modules/mutation"
 	"drift/types"
 	"fmt"
+	"math"
 	"math/rand"
 	"strings"
 )
@@ -151,6 +152,15 @@ func createChild(model *types.Model, pop *types.Pop, dad, mom, child int) {
 	if lifespan < int(model.Parameters["min_lifespan"]) {
 		lifespan = int(model.Parameters["min_lifespan"])
 	}
+	childLat, childLon := placeChildWithSpread(model, pop, dad, child)
+	//momLat := pop.IndData[mom]["lat"]
+	//momLon := pop.IndData[mom]["lon"]
+	//r := rand.Float64() // Random value between 0 and 1
+	//childLat := dadLat
+	//childLon := dadLon
+	// Calculate child's position using linear interpolation
+	//childLat := int(float64(momLat) + r*float64(dadLat-momLat))
+	//childLon := int(float64(momLon) + r*float64(dadLon-momLon))
 
 	pop.IndData[child] = map[string]int{
 		"dad":            dad,
@@ -159,8 +169,8 @@ func createChild(model *types.Model, pop *types.Pop, dad, mom, child int) {
 		"birth_year":     model.FreeParameters["year"],
 		"lifespan":       lifespan,
 		"marriage_state": -1,
-		"lat":            pop.IndData[dad]["lat"],
-		"lon":            pop.IndData[dad]["lon"],
+		"lat":            childLat,
+		"lon":            childLon,
 	}
 
 	pop.IndData[mom]["last_birth_year"] = model.FreeParameters["year"]
@@ -325,4 +335,64 @@ func countSetBitsSingleVar(n uint64) int {
 		n >>= 1
 	}
 	return count
+}
+
+// placeChildWithSpread places a child at a random location around the father
+// with a specified spread distance, ensuring the location is on land
+func placeChildWithSpread(model *types.Model, pop *types.Pop, dad, child int) (int, int) {
+	spread := 100
+	// Get the father's location
+	dadLat := pop.IndData[dad]["lat"]
+	dadLon := pop.IndData[dad]["lon"]
+
+	// Generate a random direction by picking a random angle
+	angle := rand.Float64() * 2 * math.Pi // Random angle in radians (0 to 2π)
+
+	// Calculate offset using trigonometry
+	// sin and cos give us a point on the unit circle, multiply by spread to get desired distance
+	latOffset := int(math.Sin(angle) * float64(spread))
+	lonOffset := int(math.Cos(angle) * float64(spread))
+
+	// Calculate child's position with offset from father's location
+	childLat := dadLat + latOffset
+	childLon := dadLon + lonOffset
+
+	// Check if the new location is land
+	mapLat := float64(childLat) / 10.0
+	mapLon := float64(childLon) / 10.0
+
+	// If location is not land, try a few more times
+	maxAttempts := 5
+	attempts := 0
+	isValidLocation := false
+
+	for attempts < maxAttempts && !isValidLocation {
+		// Check if location is land
+		if innerMap, exists := model.Map[mapLat]; exists {
+			if terrain, exists := innerMap[mapLon]; exists && terrain == 1 {
+				isValidLocation = true
+				break
+			}
+		}
+
+		// Try a new direction
+		angle = rand.Float64() * 2 * math.Pi
+		latOffset = int(math.Sin(angle) * float64(spread))
+		lonOffset = int(math.Cos(angle) * float64(spread))
+
+		childLat = dadLat + latOffset
+		childLon = dadLon + lonOffset
+		mapLat = float64(childLat) / 10.0
+		mapLon = float64(childLon) / 10.0
+
+		attempts++
+	}
+
+	// If we couldn't find a valid land location, just use the father's location
+	if !isValidLocation {
+		childLat = dadLat
+		childLon = dadLon
+	}
+
+	return childLat, childLon
 }

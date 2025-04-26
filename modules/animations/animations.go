@@ -1,72 +1,34 @@
 package animations
 
 import (
+	"drift/modules/maploader"
 	"drift/types"
 	"fmt"
 	"image"
 	"image/color"
 	"image/draw"
 	"image/gif"
+	"math"
 	"os"
 	"path/filepath"
 )
 
-// TerrainColors maps terrain types to colors
-var TerrainColors = map[int]color.RGBA{
-	1: color.RGBA{76, 153, 0, 255},    // Land - Green
-	2: color.RGBA{0, 191, 255, 255},   // CoastalWater - Light blue
-	3: color.RGBA{0, 0, 204, 255},     // OpenWater - Deep blue
-	4: color.RGBA{255, 255, 255, 255}, // HighMountain - Brown
-	5: color.RGBA{255, 204, 102, 255}, // Desert - Sand
-	6: color.RGBA{255, 255, 255, 255}, // Ice - White
-	0: color.RGBA{0, 0, 0, 255},       // InvalidTerrainLow - Black
-	7: color.RGBA{0, 0, 0, 255},       // InvalidTerrainHigh - Black
-}
-
-// CreateBaseMap transforms terrain data into a 2D color array
-func CreateBaseMap(model *types.Model, terrainColors map[int]color.RGBA) [][]color.RGBA {
-	// Get map dimensions from model
-	maxLat := model.FreeParameters["maxLat"]
-	maxLon := model.FreeParameters["maxLon"]
-
-	// Create the base map array
-	baseMap := make([][]color.RGBA, maxLat+1)
-	for i := range baseMap {
-		baseMap[i] = make([]color.RGBA, maxLon+1)
-	}
-
-	// Fill the base map with terrain colors
-	for lat := 0; lat <= maxLat; lat++ {
-		for lon := 0; lon <= maxLon; lon++ {
-			// Get terrain type from model.Map
-			terrainType := model.Map[lat][lon]
-
-			// Get color from the provided mapping
-			pixelColor, exists := terrainColors[terrainType]
-			if !exists {
-				// Default color for unknown terrain types
-				pixelColor = color.RGBA{0, 0, 0, 255} // Black
-			}
-
-			// Set the color in the base map
-			baseMap[maxLat-lat][lon] = pixelColor
-		}
-	}
-
-	return baseMap
-}
-
 // Initialize creates and sets up an animations container
-func Initialize(model *types.Model) *types.AnimationsContainer {
+func Initialize(model *types.Model, mapRoot string) *types.AnimationsContainer {
 	// Create the base map
-	baseMap := CreateBaseMap(model, TerrainColors)
+	baseMap, minLat, minLon, maxLat, maxLon := CreateBaseMap(model, TerrainColors, mapRoot)
+	if baseMap == nil {
+		return nil
+	}
 
 	// Create the animations container
-	pixelSize := 10
 	container := &types.AnimationsContainer{
 		BaseMap:    baseMap,
 		Collection: make(map[string]*types.AnimationWriter),
-		PixelSize:  pixelSize,
+		MinLat:     minLat,
+		MinLon:     minLon,
+		MaxLat:     maxLat,
+		MaxLon:     maxLon,
 	}
 
 	// Create the standard animations
@@ -78,11 +40,9 @@ func Initialize(model *types.Model) *types.AnimationsContainer {
 
 // CreateAnimation adds a new animation to the container
 func CreateAnimation(container *types.AnimationsContainer, name string) {
-	height := len(container.BaseMap)
-	width := 0
-	if height > 0 {
-		width = len(container.BaseMap[0])
-	}
+	bounds := container.BaseMap.Bounds()
+	width := bounds.Dx()
+	height := bounds.Dy()
 
 	container.Collection[name] = &types.AnimationWriter{
 		Frames: []*image.Paletted{},
@@ -92,42 +52,112 @@ func CreateAnimation(container *types.AnimationsContainer, name string) {
 	}
 }
 
+// CreateBaseMap transforms terrain data into a 2D color array
+
+func CreateBaseMap(model *types.Model, terrainColors map[int]color.RGBA, mapRoot string) (*image.RGBA, float64, float64, float64, float64) {
+	err, minLat, minLon, maxLat, maxLon := maploader.LoadMap(model, mapRoot)
+	if err != nil {
+		return nil, 0, 0, 0, 0
+	}
+
+	// Get pixel scale from model parameters
+	pixelSize := 1
+	if size, exists := model.Parameters["pixel_size"]; exists {
+		pixelSize = int(size)
+		if pixelSize < 1 {
+			pixelSize = 1 // Ensure minimum scale is 1
+		}
+	}
+
+	imgWidth := int((maxLon - minLon + 1) * float64(pixelSize))
+	imgHeight := int((maxLat-minLat+1)*float64(pixelSize)) + 10 // +10 for progress bar
+
+	// Create the base map image with scaled dimensions
+	bounds := image.Rect(0, 0, imgWidth, imgHeight)
+	baseMap := image.NewRGBA(bounds)
+
+	// Pre-color the bottom 10 rows with red (for the indicator area)
+	for y := bounds.Dy() - 10; y < bounds.Dy(); y++ {
+		for x := 0; x < bounds.Dx(); x++ {
+			baseMap.SetRGBA(x, y, color.RGBA{255, 0, 0, 255}) // Red background
+		}
+	}
+
+	// Fill the base map with terrain colors
+	for lat := range model.Map {
+		for lon := range model.Map[lat] {
+			terrainType := model.Map[lat][lon]
+			pixelColor, exists := terrainColors[terrainType]
+			if !exists {
+				pixelColor = color.RGBA{0, 0, 0, 255} // Default color
+			}
+
+			// Transform coordinates
+			x, y := TransformCoordinates(lat, lon, minLat, minLon, maxLat, maxLon, pixelSize)
+
+			// Draw the pixel (with size scaling)
+			for dy := 0; dy < pixelSize; dy++ {
+				for dx := 0; dx < pixelSize; dx++ {
+					if x+dx < bounds.Dx() && y+dy < bounds.Dy()-10 {
+						baseMap.SetRGBA(x+dx, y+dy, pixelColor)
+					}
+				}
+			}
+		}
+	}
+
+	return baseMap, minLat, minLon, maxLat, maxLon
+}
+
 // AddFrame adds a new frame to an animation
-func AddFrame(container *types.AnimationsContainer, animName string, updates map[[2]int]color.RGBA, delay int) error {
+func AddFrame(model *types.Model, container *types.AnimationsContainer, animName string, updates map[[2]float64]color.RGBA) error {
+
 	// Find the animation
 	anim, exists := container.Collection[animName]
 	if !exists {
 		return fmt.Errorf("animation %s does not exist", animName)
 	}
+	//	delay := model.Parameters["delay"]
+	pixelSize := int(model.Parameters["pixel_size"])
+	progressPercent := float64(model.FreeParameters["year"]) / float64(model.Parameters["end_year"])
+	model.FreeParameters["progressPercent"] = int(progressPercent * 100)
+	minLat := container.MinLat
+	minLon := container.MinLon
+	maxLat := container.MaxLat
+	maxLon := container.MaxLon
+	pointSize := int(model.Parameters["point_size"])
 
 	// Create a temporary RGBA image with base map
-	bounds := image.Rect(0, 0, anim.Width, anim.Height)
+	bounds := container.BaseMap.Bounds()
 	rgba := image.NewRGBA(bounds)
+	draw.Draw(rgba, bounds, container.BaseMap, image.Point{}, draw.Src)
 
-	// Copy base map colors
-	for y := 0; y < len(container.BaseMap); y++ {
-		for x := 0; x < len(container.BaseMap[0]); x++ {
-			rgba.SetRGBA(x, y, container.BaseMap[y][x])
-		}
-	}
-
-	// Apply updates
-	pixelSize := container.PixelSize
+	// Apply updates with scaling
 	for coords, pixelColor := range updates {
 		lat, lon := coords[0], coords[1]
-		if lat >= 0 && lat < len(container.BaseMap) &&
-			lon >= 0 && lon < len(container.BaseMap[0]) {
-			// Draw a larger pixel (pixelSize x pixelSize square)
-			for dy := 0; dy < pixelSize; dy++ {
-				for dx := 0; dx < pixelSize; dx++ {
-					// Check boundaries to avoid out-of-bounds errors
-					newLat := lat + dy
-					newLon := lon + dx
-					if newLat < len(container.BaseMap) && newLon < len(container.BaseMap[0]) {
-						rgba.SetRGBA(newLon, newLat, pixelColor)
+		x, y := TransformCoordinates(lat, lon, minLat, minLon, maxLat, maxLon, pixelSize)
+		//		fmt.Printf("  Drawing from lat/lon (%.1f, %.1f) to pixel x/y (%d, %d)\n", lat, lon, x, y)
+
+		// Check bounds and draw each update
+		if x >= 0 && x < bounds.Dx() && y >= 0 && y < bounds.Dy() {
+			for dy := 0; dy < pointSize; dy++ {
+				for dx := 0; dx < pointSize; dx++ {
+					newX := x + dx
+					newY := y + dy
+					if newX >= 0 && newX < bounds.Dx() && newY >= 0 && newY < bounds.Dy() {
+						rgba.SetRGBA(newX, newY, pixelColor)
 					}
 				}
 			}
+		}
+	}
+
+	barWidth := int(float64(bounds.Dx()) * progressPercent)
+
+	// Draw a 5-pixel thick green progress bar over the red background at the bottom
+	for y := bounds.Dy() - 10; y < bounds.Dy(); y++ {
+		for x := 0; x < barWidth; x++ {
+			rgba.SetRGBA(x, y, color.RGBA{0, 255, 0, 255}) // Bright green
 		}
 	}
 
@@ -162,7 +192,7 @@ func AddFrame(container *types.AnimationsContainer, animName string, updates map
 
 	// Add the frame
 	anim.Frames = append(anim.Frames, palettedImg)
-	anim.Delays = append(anim.Delays, delay)
+	anim.Delays = append(anim.Delays, int(model.Parameters["delay"]))
 
 	return nil
 }
@@ -189,7 +219,6 @@ func SaveGIF(container *types.AnimationsContainer, animName string) error {
 		Delay:     anim.Delays,
 		LoopCount: 0, // 0 means loop forever
 	}
-
 	return gif.EncodeAll(f, g)
 }
 
@@ -201,4 +230,40 @@ func SaveAllGIFs(container *types.AnimationsContainer) error {
 		}
 	}
 	return nil
+}
+
+// Transform from geographic coordinates to image pixel coordinates
+func TransformCoordinates(lat, lon float64, minLat, minLon, maxLat, maxLon float64, pixelSize int) (x, y int) {
+
+	//	fmt.Printf("Input values: lat=%f, lon=%f, minLat=%f, minLon=%f, maxLat=%f, maxLon=%f, pixelSize=%d\n",
+	//		lat, lon, minLat, minLon, maxLat, maxLon, pixelSize)
+	// Calculate normalized position within bounds (0.0 to 1.0)
+	normalizedX := (lon - minLon) / (maxLon - minLon)
+	normalizedY := (lat - minLat) / (maxLat - minLat) // Note: Not inverting Y yet
+
+	// Calculate image dimensions
+	imgWidth := int((maxLon - minLon) * float64(pixelSize))
+	imgHeight := int((maxLat - minLat) * float64(pixelSize))
+
+	// Convert to pixel coordinates and scale by pixelSize
+	// For Y, we invert to match image coordinates (0,0 at top-left)
+	//	x = int(math.Floor(normalizedX * float64(imgWidth)))
+	//	y = int(math.Floor((1.0 - normalizedY) * float64(imgHeight)))
+	rawX := normalizedX * float64(imgWidth)
+	rawY := (1.0 - normalizedY) * float64(imgHeight)
+	x = int(math.Round(rawX))
+	y = int(math.Round(rawY))
+	return x, y
+}
+
+// TerrainColors maps terrain types to colors
+var TerrainColors = map[int]color.RGBA{
+	1: color.RGBA{76, 153, 0, 255},    // Land - Green
+	2: color.RGBA{0, 191, 255, 255},   // CoastalWater - Light blue
+	3: color.RGBA{0, 0, 204, 255},     // OpenWater - Deep blue
+	4: color.RGBA{255, 255, 255, 255}, // HighMountain - Brown
+	5: color.RGBA{255, 204, 102, 255}, // Desert - Sand
+	6: color.RGBA{255, 255, 255, 255}, // Ice - White
+	0: color.RGBA{0, 0, 0, 255},       // InvalidTerrainLow - Black
+	7: color.RGBA{0, 0, 0, 255},       // InvalidTerrainHigh - Black
 }

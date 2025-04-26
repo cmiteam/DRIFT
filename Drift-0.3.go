@@ -48,24 +48,20 @@ func main() {
 
 	// Initialize the model.
 	// If there is an error, print it to stderr and exit with a non-zero status code.
-	model, err := initializemodel.InitializeModel(*configRootArg, *mapRootArg)
+	model, err := initializemodel.InitializeModel(*configRootArg)
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing model: %v\n", err)
 		os.Exit(1)
 	}
 
-	animContainer := animations.Initialize(model)
+	animContainer := animations.Initialize(model, *mapRootArg)
 
 	// Loop over the number of model runs
 	for run := 1; run <= int(model.Parameters["num_runs"]); run++ {
 		print("\nRun ", run, "\n")
 		model.FreeParameters["run"] = run
 		pop := initializepop.InitializePop(model)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error initializing animations: %v\n", err)
-			os.Exit(1)
-		}
 
 		// Loop over the number years in each model run
 		for year := 0; year <= int(model.Parameters["end_year"]); year++ {
@@ -79,12 +75,12 @@ func main() {
 			marriage.Marriage(model, pop)
 			death.Death(model, pop)
 			model.FreeParameters["last_pop_size"] = len(pop.IndData) // save pop size for future growth rate calculations
-			if year%int(model.Parameters["save_interval"]) == 0 {
-				save.Save(model, pop, animContainer)
-			}
-			if len(pop.IndData) <= 1 { // Save and quit if population extinct
+			if len(pop.IndData) <= 1 {                               // Save and quit if population extinct
 				save.Save(model, pop, animContainer)
 				break
+			}
+			if year%int(model.Parameters["save_interval"]) == 0 {
+				save.Save(model, pop, animContainer)
 			}
 		}
 
@@ -107,4 +103,11 @@ func main() {
 	elapsed := time.Since(starttime)
 	fmt.Printf("Execution time: %s\n", elapsed)
 	fmt.Print("\a")
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
 }

@@ -2,7 +2,6 @@ package types
 
 import (
 	"image"
-	"image/color"
 )
 
 type Model struct {
@@ -12,9 +11,10 @@ type Model struct {
 	ChromosomeArms map[int]map[int][]int
 	DeathRisk      map[int]float64
 	CumulativeProb map[int]float64
-	Map            map[int]map[int]int
+	Map            map[float64]map[float64]int
 	ModelName      string
 	MapName        string
+	MatingStyle    string
 }
 
 type Pop struct {
@@ -39,9 +39,17 @@ type Mutation struct {
 
 // AnimationsContainer manages multiple animations with a shared base map
 type AnimationsContainer struct {
-	BaseMap    [][]color.RGBA
-	Collection map[string]*AnimationWriter
-	PixelSize  int
+	BaseMap     *image.RGBA
+	Collection  map[string]*AnimationWriter
+	MinLat      float64
+	MaxLat      float64
+	MinLon      float64
+	MaxLon      float64
+	MapWidth    int
+	MapHeight   int
+	latScale    float64
+	lonScale    float64
+	ScaleFactor float64
 }
 
 // AnimationWriter tracks and creates a single animation
