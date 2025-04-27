@@ -14,11 +14,11 @@ import (
 )
 
 // Initialize creates and sets up an animations container
-func Initialize(model *types.Model, mapRoot string) *types.AnimationsContainer {
+func Initialize(model *types.Model, mapRoot string) (*types.AnimationsContainer, error) {
 	// Create the base map
 	baseMap, minLat, minLon, maxLat, maxLon := CreateBaseMap(model, TerrainColors, mapRoot)
 	if baseMap == nil {
-		return nil
+		return nil, fmt.Errorf("failed to create base map")
 	}
 
 	// Create the animations container
@@ -35,7 +35,7 @@ func Initialize(model *types.Model, mapRoot string) *types.AnimationsContainer {
 	CreateAnimation(container, "genetic")
 	CreateAnimation(container, "genealogical")
 
-	return container
+	return container, nil
 }
 
 // CreateAnimation adds a new animation to the container

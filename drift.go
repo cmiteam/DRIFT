@@ -46,16 +46,19 @@ func main() {
 	// Parse the command-line arguments
 	flag.Parse()
 
-	// Initialize the model.
-	// If there is an error, print it to stderr and exit with a non-zero status code.
+	// Initialize the model
 	model, err := initializemodel.InitializeModel(*configRootArg)
-
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing model: %v\n", err)
 		os.Exit(1)
 	}
 
-	animContainer := animations.Initialize(model, *mapRootArg)
+	// Initialize the animations
+	animContainer, err := animations.Initialize(model, *mapRootArg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing animations: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Loop over the number of model runs
 	for run := 1; run <= int(model.Parameters["num_runs"]); run++ {
