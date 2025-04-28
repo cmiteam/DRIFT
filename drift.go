@@ -24,6 +24,9 @@ const defaultConfigRoot = "static"
 // Default value for the map-root parameter, relative path to map files
 const defaultMapRoot = "maps"
 
+// Default value for the results parameter, relative path to results files
+const defaultResults = "results"
+
 // Main function does the following:
 // 1. Parses command-line arguments
 // 2. Initializes the model
@@ -41,6 +44,10 @@ func main() {
 	mapRootArg := flag.String("map-root",
 		defaultMapRoot,
 		"path to directory containing map files")
+	resultsArg := flag.String("results",
+		defaultResults,
+		"path to directory containing results files")
+
 	// Add more parameters as needed
 
 	// Parse the command-line arguments
@@ -50,6 +57,15 @@ func main() {
 	model, err := initializemodel.InitializeModel(*configRootArg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing model: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Create the results directory if it doesn't exist
+	if _, err := os.Stat(*resultsArg); os.IsNotExist(err) {
+		err = os.Mkdir(*resultsArg, 0755)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating results directory: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -95,7 +111,7 @@ func main() {
 		}
 		if model.Parameters["track_map"] == 1 {
 			print("Saving map...\n")
-			err := animations.SaveAllGIFs(animContainer)
+			err := animations.SaveAllGIFs(animContainer, *resultsArg)
 			if err != nil {
 				log.Printf("Error saving animation: %v", err)
 			}

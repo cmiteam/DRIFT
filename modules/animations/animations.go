@@ -198,7 +198,7 @@ func AddFrame(model *types.Model, container *types.AnimationsContainer, animName
 }
 
 // SaveGIF saves the animation as a GIF file
-func SaveGIF(container *types.AnimationsContainer, animName string) error {
+func SaveGIF(container *types.AnimationsContainer, animName string, results string) error {
 	// Find the animation
 	anim, exists := container.Collection[animName]
 	if !exists {
@@ -206,7 +206,7 @@ func SaveGIF(container *types.AnimationsContainer, animName string) error {
 	}
 
 	// Create the output file
-	outputPath := filepath.Join("Results", animName+".gif")
+	outputPath := filepath.Join(results, animName+".gif")
 	f, err := os.Create(outputPath)
 	if err != nil {
 		return err
@@ -223,9 +223,9 @@ func SaveGIF(container *types.AnimationsContainer, animName string) error {
 }
 
 // SaveAllGIFs saves all animations in the container
-func SaveAllGIFs(container *types.AnimationsContainer) error {
+func SaveAllGIFs(container *types.AnimationsContainer, results string) error {
 	for name := range container.Collection {
-		if err := SaveGIF(container, name); err != nil {
+		if err := SaveGIF(container, name, results); err != nil {
 			return fmt.Errorf("error saving animation %s: %w", name, err)
 		}
 	}
