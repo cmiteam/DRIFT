@@ -85,6 +85,9 @@ func InitializePop(model *types.Model) *types.Pop {
 		pop.IndData[i][individual.AlleleCount] = 0                              // tracking descent from seed individual(s)
 		pop.IndData[i][individual.Lat] = lat
 		pop.IndData[i][individual.Lon] = lon
+		pop.IndData[i][individual.NumCentromeres] = 0 //TODO guessing
+
+		pop.Centromeres[i] = make([]uint64, 2)
 
 		//print("Individual", i, " position: ", lat, ",", lon, "\n")
 		model.FreeParameters["indID"]++ // each ind gets a unique ID

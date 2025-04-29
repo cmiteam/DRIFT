@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime/pprof"
 	"time"
 )
 
@@ -69,12 +70,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize the genome masks
+	birth.InitGenome(model)
+
 	// Initialize the animations
 	animContainer, err := animations.Initialize(model, *mapRootArg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing animations: %v\n", err)
 		os.Exit(1)
 	}
+
+	// Start CPU profiling
+	cpuFile, err := os.Create("cpu.prof")
+	if err != nil {
+		panic(err)
+	}
+	defer cpuFile.Close()
+	pprof.StartCPUProfile(cpuFile)
 
 	// Loop over the number of model runs
 	for run := 1; run <= int(model.Parameters["num_runs"]); run++ {
@@ -102,6 +114,8 @@ func main() {
 				save.Save(model, pop, animContainer)
 			}
 		}
+
+		pprof.StopCPUProfile()
 
 		// Things to do at the end of a model run
 		if model.Parameters["track_DNA"] == 1 {

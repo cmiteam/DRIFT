@@ -10,6 +10,16 @@ import (
 	"strings"
 )
 
+var genomemask1, genomemask2 []uint64
+var centsmask1, centsmask2 uint64
+
+func InitGenome(model *types.Model) {
+	if model.Parameters["track_DNA"] > 0 || model.Parameters["track_mutations"] > 0 {
+		genomemask1, centsmask1 = createMask(model, 0)
+		genomemask2, centsmask2 = createMask(model, 1)
+	}
+}
+
 func Birth(model *types.Model, pop *types.Pop) {
 
 	// First, find eligible females and roll the dice
@@ -66,11 +76,6 @@ func Birth(model *types.Model, pop *types.Pop) {
 			// them up once and use them at will.
 
 			if model.Parameters["track_DNA"] > 0 || model.Parameters["track_mutations"] > 0 {
-				var genomemask1, genomemask2 []uint64
-				//TODO var centsmask1, centsmask2 uint64
-				//TODO genomemask1, centsmask1 = createMask(model, 0)
-				//TODO genomemask2, centsmask2 = createMask(model, 1)
-
 				// Add tracked DNA
 				if model.Parameters["track_DNA"] > 0 {
 					// only create a child's chromosomes if there is something to track at least one parent
@@ -98,7 +103,9 @@ func Birth(model *types.Model, pop *types.Pop) {
 
 					// inherit centromeres if mom or dad have a set bit in their centromeres
 					if pop.IndData[dad][individual.NumCentromeres] > 0 || pop.IndData[mom][individual.NumCentromeres] > 0 {
-						//TODO inheritCentromeres(model, pop, centsmask1, centsmask2, dad, mom, child)
+						inheritCentromeres(model, pop, centsmask1, centsmask2, dad, mom, child)
+					} else {
+						pop.Centromeres[child] = make([]uint64, 2)
 					}
 
 					// track avenues of descent from the seed individual(s)
@@ -171,13 +178,14 @@ func createChild(model *types.Model, pop *types.Pop, dad, mom, child int) {
 	pop.IndData[child][individual.Lifespan] = lifespan
 	pop.IndData[child][individual.Lat] = childLat
 	pop.IndData[child][individual.Lon] = childLon
-	//TODO fitness?
+	pop.IndData[child][individual.NumCentromeres] = 0 //TODO guessing
 
 	pop.IndData[mom][individual.LastBirthYear] = model.FreeParameters["year"]
 	if numBirths := pop.IndData[mom][individual.NumBirths]; numBirths == individual.EmptyField {
 		pop.IndData[mom][individual.NumBirths] = 0
 	}
 	pop.IndData[mom][individual.NumBirths]++
+	pop.Centromeres[child] = make([]uint64, 2) //TODO not always necessary
 }
 
 func createMask(model *types.Model, sex int) ([]uint64, uint64) {
@@ -295,9 +303,19 @@ func uint64ArrayToBitString(genomesegment []uint64) string {
 }
 
 func inheritCentromeres(model *types.Model, pop *types.Pop, centsmask1 uint64, centsmask2 uint64, dad int, mom int, child int) {
-
 	if pop.IndData[dad][individual.NumCentromeres] > 0 || pop.IndData[mom][individual.NumCentromeres] > 0 {
-		pop.Centromeres[child] = make([]uint64, 2)
+		if exists := pop.Centromeres[dad]; exists == nil {
+			fmt.Println("missing centromeres for dad", dad)
+			if indExists := pop.IndData[dad]; indExists == nil {
+				fmt.Println("he is also dead")
+			}
+		}
+		if exists := pop.Centromeres[mom]; exists == nil {
+			fmt.Println("missing centromeres for mom", mom)
+			if indExists := pop.IndData[mom]; indExists == nil {
+				fmt.Println("she is also dead")
+			}
+		}
 		for i := 0; i < len(model.ChromosomeArms); i++ {
 			if centsmask1&(1<<i) == 0 {
 				pop.Centromeres[child][0] |= (pop.Centromeres[dad][0] & (1 << i))
@@ -315,7 +333,7 @@ func inheritCentromeres(model *types.Model, pop *types.Pop, centsmask1 uint64, c
 		centromereCount += countSetBitsSingleVar(pop.Centromeres[child][1])
 		pop.IndData[child][individual.NumCentromeres] = centromereCount
 		if centromereCount == 0 {
-			delete(pop.Centromeres, child)
+			//TODO delete(pop.Centromeres, child)
 		}
 	}
 }

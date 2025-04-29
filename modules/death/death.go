@@ -15,7 +15,7 @@ func Death(model *types.Model, pop *types.Pop) int {
 	rand.Seed(time.Now().UnixNano())
 	deaths := 0
 	var deadPeopleData string
-	keyList := generateKeyList(&pop.IndData)
+	keyList := generateKeyList(&pop.IndData, -1)
 
 	// Step 1: Random actuarial deaths
 	for _, ind := range keyList {
@@ -63,13 +63,9 @@ func Death(model *types.Model, pop *types.Pop) int {
 
 	// Step 2: Trim excess population by randomly culling individuals
 	excess := len(pop.IndData) - maxPopSize
-	for excess > 0 {
-		keyList = generateKeyList(&pop.IndData)
-		randomIndex := rand.Intn(len(keyList))
-		ind := keyList[randomIndex]
-		if ind == model.FreeParameters["seed"] { // Don't kill off the seed
-			continue
-		}
+	keyList = generateKeyList(&pop.IndData, model.FreeParameters["seed"])
+	keyList = pickVictims(excess, keyList)
+	for _, ind := range keyList {
 		if int(model.Parameters["track_dead"]) == 1 {
 			deadPersonString := deadString(model, pop, ind)
 			deadPersonString += ",R\n"
@@ -78,7 +74,6 @@ func Death(model *types.Model, pop *types.Pop) int {
 		RIP(ind, pop, model)
 		deaths++
 		pop.Tracking["cull_deaths"]++
-		excess = len(pop.IndData) - maxPopSize
 	}
 
 	// Step 3: Tamp down population growth rate by randomly culling individuals
@@ -88,13 +83,9 @@ func Death(model *types.Model, pop *types.Pop) int {
 	}
 
 	diff := len(pop.IndData) - allowedNumInds
-	for diff > 0 {
-		keyList = generateKeyList(&pop.IndData)
-		randomIndex := rand.Intn(len(keyList))
-		ind := keyList[randomIndex]
-		if ind == model.FreeParameters["seed"] { // Don't kill off the seed
-			continue
-		}
+	keyList = generateKeyList(&pop.IndData, model.FreeParameters["seed"])
+	keyList = pickVictims(diff, keyList)
+	for _, ind := range keyList {
 		if int(model.Parameters["track_dead"]) == 1 {
 			deadPersonString := deadString(model, pop, ind)
 			deadPersonString += ",R\n"
@@ -103,28 +94,24 @@ func Death(model *types.Model, pop *types.Pop) int {
 		RIP(ind, pop, model)
 		deaths++
 		pop.Tracking["cull_deaths"]++
-		diff = len(pop.IndData) - allowedNumInds
 	}
 
 	// Step 4: Reduce population to specified number of breeding individuals, if called for, by randomly culling individuals
 	if model.Parameters["max_breeding_inds"] > -1 {
-		keyList = generateKeyList(&pop.IndData)
-		breeders := countBreedingIndividuals(model, pop)
-		for breeders > int(model.Parameters["max_breeding_inds"]) {
-			randomIndex := rand.Intn(len(keyList))
-			ind := keyList[randomIndex]
-			if ind == model.FreeParameters["seed"] { // Don't kill off the seed
-				continue
+		if breeders := countBreedingIndividuals(model, pop); breeders > int(model.Parameters["max_breeding_inds"]) {
+			keyList := generateKeyList(&pop.IndData, model.FreeParameters["seed"])
+			keyList = pickVictims(breeders-int(model.Parameters["max_breeding_inds"]), keyList)
+			for _, ind := range keyList {
+				if int(model.Parameters["track_dead"]) == 1 {
+					deadPersonString := deadString(model, pop, ind)
+					deadPersonString += ",R\n"
+					deadPeopleData += deadPersonString
+				}
+				RIP(ind, pop, model)
+				deaths++
+				pop.Tracking["cull_deaths"]++
+				breeders = countBreedingIndividuals(model, pop)
 			}
-			if int(model.Parameters["track_dead"]) == 1 {
-				deadPersonString := deadString(model, pop, ind)
-				deadPersonString += ",R\n"
-				deadPeopleData += deadPersonString
-			}
-			RIP(ind, pop, model)
-			deaths++
-			pop.Tracking["cull_deaths"]++
-			breeders = countBreedingIndividuals(model, pop)
 		}
 	}
 
@@ -139,12 +126,28 @@ func Death(model *types.Model, pop *types.Pop) int {
 }
 
 // generateKeyList creates a slice of all individual IDs
-func generateKeyList(indData *map[int][]int) []int {
+func generateKeyList(indData *map[int][]int, seed int) []int {
 	keyList := make([]int, 0, len(*indData))
 	for key := range *indData {
+		if key == seed {
+			continue
+		}
 		keyList = append(keyList, key)
 	}
 	return keyList
+}
+
+func pickVictims(excess int, keyList []int) []int {
+	if excess <= 0 {
+		return []int{}
+	}
+	victimList := make([]int, excess)
+	for i := 0; i < excess; i++ {
+		randomIndex := i + rand.Intn(len(keyList)-i)
+		victimList[i] = keyList[randomIndex]
+		keyList[randomIndex] = keyList[i] // haha, figure dat out
+	}
+	return victimList
 }
 
 // RIP removes a deceased individual and updates related data
@@ -173,6 +176,7 @@ func RIP(ind int, pop *types.Pop, model *types.Model) {
 	}
 	delete(pop.IndMutations, ind)
 	delete(pop.IndData, ind)
+	delete(pop.Centromeres, ind)
 }
 
 // deadString formats individual data for death records
