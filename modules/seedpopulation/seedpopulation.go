@@ -2,6 +2,7 @@ package seedpopulation
 
 import (
 	"drift/types"
+	"drift/modules/individual"
 	"fmt"
 	"math/rand"
 )
@@ -38,14 +39,14 @@ func SeedThePopulation(model *types.Model, pop *types.Pop) {
 		pop.Centromeres[seed][0] = setBit(pop.Centromeres[seed][0], i)
 		pop.Centromeres[seed][1] = setBit(pop.Centromeres[seed][1], i)
 	}
-	pop.IndData[seed]["Y_gens"] = 0
-	pop.IndData[seed]["mt_gens"] = 0
-	pop.IndData[seed]["max_genealo_gens"] = 0
-	pop.IndData[seed]["min_genealo_gens"] = 0
-	pop.IndData[seed]["allele_count"] = model.FreeParameters["NumBits"] * 2
-	pop.IndData[seed]["num_centomeres"] = countSetBitsSingleVar(pop.Centromeres[seed][0])
-	pop.IndData[seed]["lat"] = 0
-	pop.IndData[seed]["lon"] = 0
+	pop.IndData[seed][individual.YGens] = 0
+	pop.IndData[seed][individual.MtGens] = 0
+	pop.IndData[seed][individual.MaxGenealoGens] = 0
+	pop.IndData[seed][individual.MinGenealoGens] = 0
+	pop.IndData[seed][individual.AlleleCount] = model.FreeParameters["NumBits"] * 2
+	pop.IndData[seed][individual.NumCentromeres] = countSetBitsSingleVar(pop.Centromeres[seed][0])
+	pop.IndData[seed][individual.Lat] = 0
+	pop.IndData[seed][individual.Lon] = 0
 
 }
 
@@ -53,8 +54,8 @@ func chooseRandomSeed(model *types.Model, pop *types.Pop) int {
 	year := model.FreeParameters["year"]
 	matureMales := []int{}
 	for id, data := range pop.IndData {
-		age := year - data["birth_year"]
-		if data["sex"] == 0 && age >= int(model.Parameters["maturity"]) {
+		age := year - data[individual.BirthYear]
+		if data[individual.Sex] == 0 && age >= int(model.Parameters["maturity"]) {
 			matureMales = append(matureMales, id)
 		}
 	}

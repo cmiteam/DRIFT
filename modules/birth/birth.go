@@ -1,6 +1,7 @@
 package birth
 
 import (
+	"drift/modules/individual"
 	"drift/modules/mutation"
 	"drift/types"
 	"fmt"
@@ -14,24 +15,24 @@ func Birth(model *types.Model, pop *types.Pop) {
 	// First, find eligible females and roll the dice
 	for ind := range pop.IndData {
 		// skip males
-		if pop.IndData[ind]["sex"] == 0 {
+		if pop.IndData[ind][individual.Sex] == 0 {
 			continue
 		}
 		// skip unmarried women
-		if pop.IndData[ind]["marriage_state"] == -1 {
+		if pop.IndData[ind][individual.MarriageState] == -1 {
 			continue
 		}
-		age := model.FreeParameters["year"] - pop.IndData[ind]["birth_year"]
+		age := model.FreeParameters["year"] - pop.IndData[ind][individual.BirthYear]
 		// skip adolescent girls
 		if age < int(model.Parameters["maturity"]) {
 			continue
 		}
 		// skip women in menopause
-		if float64(age) > float64(pop.IndData[ind]["lifespan"])*model.Parameters["menopause"] {
+		if float64(age) > float64(pop.IndData[ind][individual.Lifespan])*model.Parameters["menopause"] {
 			continue
 		}
 		// skip women with young children
-		if int(pop.IndData[ind]["last_birth_year"])+int(model.Parameters["spacing"]) >= model.FreeParameters["year"] {
+		if int(pop.IndData[ind][individual.LastBirthYear])+int(model.Parameters["spacing"]) >= model.FreeParameters["year"] {
 			continue
 		}
 		// Failed to get pregnant this year
@@ -41,15 +42,15 @@ func Birth(model *types.Model, pop *types.Pop) {
 
 		// Next, put 'em in the oven
 		mom := ind
-		dad := pop.IndData[ind]["marriage_state"]
+		dad := pop.IndData[ind][individual.MarriageState]
 		// TO DO: fitness ALSO affects survivorship each year, work out a way to
 		// use fitness for birth OR survivorship OR both
 
 		// the average of the maternal and paternal fitness affects birth probability
 		fitness := 1.0
 		if model.Parameters["track_mutations"] == 1 {
-			pfit := float64(pop.IndData[dad]["fitness"])
-			mfit := float64(pop.IndData[mom]["fitness"])
+			pfit := float64(pop.IndData[dad][individual.Fitness])
+			mfit := float64(pop.IndData[mom][individual.Fitness])
 			fitness = (pfit + mfit) / 2
 			fitness = fitness / model.Parameters["mu_Scale_factor"]
 		}
@@ -66,66 +67,66 @@ func Birth(model *types.Model, pop *types.Pop) {
 
 			if model.Parameters["track_DNA"] > 0 || model.Parameters["track_mutations"] > 0 {
 				var genomemask1, genomemask2 []uint64
-				var centsmask1, centsmask2 uint64
-				genomemask1, centsmask1 = createMask(model, 0)
-				genomemask2, centsmask2 = createMask(model, 1)
+				//TODO var centsmask1, centsmask2 uint64
+				//TODO genomemask1, centsmask1 = createMask(model, 0)
+				//TODO genomemask2, centsmask2 = createMask(model, 1)
 
 				// Add tracked DNA
 				if model.Parameters["track_DNA"] > 0 {
 					// only create a child's chromosomes if there is something to track at least one parent
-					if pop.IndData[dad]["allele_count"] > 0 || pop.IndData[mom]["allele_count"] > 0 {
+					if pop.IndData[dad][individual.AlleleCount] > 0 || pop.IndData[mom][individual.AlleleCount] > 0 {
 						pop.Chromosomes[child] = [][]uint64{make([]uint64, (model.FreeParameters["NumBits"]+63)/64), make([]uint64, (model.FreeParameters["NumBits"]+63)/64)}
 					}
 					numSetBits := 0
 					// only go through meiosis if there is a set bit in mom or dad
-					if pop.IndData[dad]["allele_count"] > 0 {
+					if pop.IndData[dad][individual.AlleleCount] > 0 {
 						meiosis(pop, genomemask1, dad, child, 0)
 						numSetBits += countSetBits(pop.Chromosomes[child][0])
 					}
-					if pop.IndData[mom]["allele_count"] > 0 {
+					if pop.IndData[mom][individual.AlleleCount] > 0 {
 						meiosis(pop, genomemask2, mom, child, 1)
 						numSetBits += countSetBits(pop.Chromosomes[child][1])
 					}
-					pop.IndData[child]["allele_count"] = numSetBits
+					pop.IndData[child][individual.AlleleCount] = numSetBits
 					// delete the child's chromosomes if they inherited zero set bits
-					if pop.IndData[child]["allele_count"] < 1 {
+					if pop.IndData[child][individual.AlleleCount] < 1 {
 						delete(pop.Chromosomes, child)
 					} else {
-						pop.IndData[child]["num_blocks"] = countContiguousBlocks(model, pop, child, 0)
-						pop.IndData[child]["num_blocks"] += countContiguousBlocks(model, pop, child, 1)
+						pop.IndData[child][individual.NumBlocks] = countContiguousBlocks(model, pop, child, 0)
+						pop.IndData[child][individual.NumBlocks] += countContiguousBlocks(model, pop, child, 1)
 					}
 
 					// inherit centromeres if mom or dad have a set bit in their centromeres
-					if pop.IndData[dad]["centromere_count"] > 0 || pop.IndData[mom]["centromere_count"] > 0 {
-						inheritCentromeres(model, pop, centsmask1, centsmask2, dad, mom, child)
+					if pop.IndData[dad][individual.NumCentromeres] > 0 || pop.IndData[mom][individual.NumCentromeres] > 0 {
+						//TODO inheritCentromeres(model, pop, centsmask1, centsmask2, dad, mom, child)
 					}
 
 					// track avenues of descent from the seed individual(s)
-					pop.IndData[child]["Y_gens"] = -1
-					if pop.IndData[dad]["Y_gens"] > -1 && pop.IndData[child]["sex"] == 0 {
-						pop.IndData[child]["Y_gens"] = pop.IndData[dad]["Y_gens"] + 1
+					pop.IndData[child][individual.YGens] = -1
+					if pop.IndData[dad][individual.YGens] > -1 && pop.IndData[child][individual.Sex] == 0 {
+						pop.IndData[child][individual.YGens] = pop.IndData[dad][individual.YGens] + 1
 					}
-					pop.IndData[child]["mt_gens"] = -1
-					if pop.IndData[mom]["mt_gens"] > -1 {
-						pop.IndData[child]["mt_gens"] = pop.IndData[mom]["mt_gens"] + 1
+					pop.IndData[child][individual.MtGens] = -1
+					if pop.IndData[mom][individual.MtGens] > -1 {
+						pop.IndData[child][individual.MtGens] = pop.IndData[mom][individual.MtGens] + 1
 					}
 
-					pop.IndData[child]["min_genealo_gens"] = -1
-					minGenealo := pop.IndData[dad]["min_genealo_gens"]
-					if pop.IndData[mom]["min_genealo_gens"] > minGenealo {
-						minGenealo = pop.IndData[mom]["min_genealo_gens"]
+					pop.IndData[child][individual.MinGenealoGens] = -1
+					minGenealo := pop.IndData[dad][individual.MinGenealoGens]
+					if pop.IndData[mom][individual.MinGenealoGens] > minGenealo {
+						minGenealo = pop.IndData[mom][individual.MinGenealoGens]
 					}
 					if minGenealo > -1 {
-						pop.IndData[child]["min_genealo_gens"] = minGenealo + 1
+						pop.IndData[child][individual.MinGenealoGens] = minGenealo + 1
 					}
 
-					pop.IndData[child]["max_genealo_gens"] = -1
-					maxGenealo := pop.IndData[dad]["max_genealo_gens"]
-					if pop.IndData[mom]["max_genealo_gens"] > maxGenealo {
-						maxGenealo = pop.IndData[mom]["max_genealo_gens"]
+					pop.IndData[child][individual.MaxGenealoGens] = -1
+					maxGenealo := pop.IndData[dad][individual.MaxGenealoGens]
+					if pop.IndData[mom][individual.MaxGenealoGens] > maxGenealo {
+						maxGenealo = pop.IndData[mom][individual.MaxGenealoGens]
 					}
 					if maxGenealo > -1 {
-						pop.IndData[child]["max_genealo_gens"] = maxGenealo + 1
+						pop.IndData[child][individual.MaxGenealoGens] = maxGenealo + 1
 					}
 				}
 
@@ -136,8 +137,8 @@ func Birth(model *types.Model, pop *types.Pop) {
 					mutation.GenerateNewMutations(model, pop, child)
 					numMutations, mutationLoad := mutation.CountFitnessAndMutations(pop, child)
 					fitness := 1 + mutationLoad
-					pop.IndData[child]["fitness"] = int(float64(fitness) * model.Parameters["mu_scale_factor"])
-					pop.IndData[child]["num_mutations"] = numMutations
+					pop.IndData[child][individual.Fitness] = int(float64(fitness) * model.Parameters["mu_scale_factor"])
+					pop.IndData[child][individual.NumMutations] = numMutations
 				}
 			}
 			pop.Tracking["births"]++
@@ -148,36 +149,35 @@ func Birth(model *types.Model, pop *types.Pop) {
 func createChild(model *types.Model, pop *types.Pop, dad, mom, child int) {
 
 	// potential lifespan is the average of the parents X the lifespan drop per generation, but it bottoms out at min_lifespan
-	lifespan := int((pop.IndData[dad]["lifespan"] + pop.IndData[mom]["lifespan"]) / 2 * int(model.Parameters["lifespan_drop"]))
+	lifespan := int((pop.IndData[dad][individual.Lifespan] + pop.IndData[mom][individual.Lifespan]) / 2 * int(model.Parameters["lifespan_drop"]))
 	if lifespan < int(model.Parameters["min_lifespan"]) {
 		lifespan = int(model.Parameters["min_lifespan"])
 	}
 	childLat, childLon := placeChildWithSpread(model, pop, dad, child)
-	//momLat := pop.IndData[mom]["lat"]
-	//momLon := pop.IndData[mom]["lon"]
+	//momLat := pop.IndData[mom][individual.Lat]
+	//momLon := pop.IndData[mom][individual.Lon]
 	//r := rand.Float64() // Random value between 0 and 1
 	//childLat := dadLat
 	//childLon := dadLon
 	// Calculate child's position using linear interpolation
 	//childLat := int(float64(momLat) + r*float64(dadLat-momLat))
 	//childLon := int(float64(momLon) + r*float64(dadLon-momLon))
+  pop.IndData[child] = individual.MakeIndData()
+	
+	pop.IndData[child][individual.Dad] = dad
+	pop.IndData[child][individual.Mom] = mom
+	pop.IndData[child][individual.Sex] = rand.Intn(2)
+	pop.IndData[child][individual.BirthYear] = model.FreeParameters["year"]
+	pop.IndData[child][individual.Lifespan] = lifespan
+	pop.IndData[child][individual.Lat] = childLat
+	pop.IndData[child][individual.Lon] = childLon
+	//TODO fitness?
 
-	pop.IndData[child] = map[string]int{
-		"dad":            dad,
-		"mom":            mom,
-		"sex":            rand.Intn(2),
-		"birth_year":     model.FreeParameters["year"],
-		"lifespan":       lifespan,
-		"marriage_state": -1,
-		"lat":            childLat,
-		"lon":            childLon,
+	pop.IndData[mom][individual.LastBirthYear] = model.FreeParameters["year"]
+	if numBirths := pop.IndData[mom][individual.NumBirths]; numBirths == individual.EmptyField {
+		pop.IndData[mom][individual.NumBirths] = 0
 	}
-
-	pop.IndData[mom]["last_birth_year"] = model.FreeParameters["year"]
-	if _, exists := pop.IndData[mom]["numbirths"]; !exists {
-		pop.IndData[mom]["numbirths"] = 0
-	}
-	pop.IndData[mom]["numbirths"]++
+	pop.IndData[mom][individual.NumBirths]++
 }
 
 func createMask(model *types.Model, sex int) ([]uint64, uint64) {
@@ -296,7 +296,7 @@ func uint64ArrayToBitString(genomesegment []uint64) string {
 
 func inheritCentromeres(model *types.Model, pop *types.Pop, centsmask1 uint64, centsmask2 uint64, dad int, mom int, child int) {
 
-	if pop.IndData[dad]["num_centromeres"] > 0 || pop.IndData[mom]["num_centromeres"] > 0 {
+	if pop.IndData[dad][individual.NumCentromeres] > 0 || pop.IndData[mom][individual.NumCentromeres] > 0 {
 		pop.Centromeres[child] = make([]uint64, 2)
 		for i := 0; i < len(model.ChromosomeArms); i++ {
 			if centsmask1&(1<<i) == 0 {
@@ -313,7 +313,7 @@ func inheritCentromeres(model *types.Model, pop *types.Pop, centsmask1 uint64, c
 
 		centromereCount := countSetBitsSingleVar(pop.Centromeres[child][0])
 		centromereCount += countSetBitsSingleVar(pop.Centromeres[child][1])
-		pop.IndData[child]["num_centromeres"] = centromereCount
+		pop.IndData[child][individual.NumCentromeres] = centromereCount
 		if centromereCount == 0 {
 			delete(pop.Centromeres, child)
 		}
@@ -342,8 +342,8 @@ func countSetBitsSingleVar(n uint64) int {
 func placeChildWithSpread(model *types.Model, pop *types.Pop, dad, child int) (int, int) {
 	spread := 100
 	// Get the father's location
-	dadLat := pop.IndData[dad]["lat"]
-	dadLon := pop.IndData[dad]["lon"]
+	dadLat := pop.IndData[dad][individual.Lat]
+	dadLon := pop.IndData[dad][individual.Lon]
 
 	// Generate a random direction by picking a random angle
 	angle := rand.Float64() * 2 * math.Pi // Random angle in radians (0 to 2π)
