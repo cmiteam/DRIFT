@@ -1,8 +1,8 @@
 package seedpopulation
 
 import (
-	"drift/types"
 	"drift/modules/individual"
+	"drift/types"
 	"fmt"
 	"math/rand"
 )

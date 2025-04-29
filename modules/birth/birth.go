@@ -162,8 +162,8 @@ func createChild(model *types.Model, pop *types.Pop, dad, mom, child int) {
 	// Calculate child's position using linear interpolation
 	//childLat := int(float64(momLat) + r*float64(dadLat-momLat))
 	//childLon := int(float64(momLon) + r*float64(dadLon-momLon))
-  pop.IndData[child] = individual.MakeIndData()
-	
+	pop.IndData[child] = individual.MakeIndData()
+
 	pop.IndData[child][individual.Dad] = dad
 	pop.IndData[child][individual.Mom] = mom
 	pop.IndData[child][individual.Sex] = rand.Intn(2)

@@ -19,7 +19,7 @@ func InitializePop(model *types.Model) *types.Pop {
 		MutationHist: make(map[int]int),
 		Tracking:     make(map[string]int),
 	}
-	
+
 	// Reset run-specific parameters
 	model.FreeParameters["indID"] = 0 // Starting ID for individuals
 	model.FreeParameters["seed"] = -1 // No seed initially
@@ -74,18 +74,18 @@ func InitializePop(model *types.Model) *types.Pop {
 		}
 
 		pop.IndData[i] = individual.MakeIndData()
-		
-		pop.IndData[i][individual.BirthYear] = -age // the person was born before the model began to be run
+
+		pop.IndData[i][individual.BirthYear] = -age                             // the person was born before the model began to be run
 		pop.IndData[i][individual.Lifespan] = int(model.Parameters["lifespan"]) // initial theoretical lifespans
-		pop.IndData[i][individual.Sex] = rand.Intn(2) // 0 = male, 1 = female
-		pop.IndData[i][individual.MarriageState] = -1 // will be set to the ID # of the spouse
-		pop.IndData[i][individual.NumBirths] = 0 // tracks number of children for females
-		pop.IndData[i][individual.LastBirthYear] = 0 // to allow for spacing between children
-		pop.IndData[i][individual.Fitness] = fitness // used for survival calculations
-		pop.IndData[i][individual.AlleleCount] = 0 // tracking descent from seed individual(s)
+		pop.IndData[i][individual.Sex] = rand.Intn(2)                           // 0 = male, 1 = female
+		pop.IndData[i][individual.MarriageState] = -1                           // will be set to the ID # of the spouse
+		pop.IndData[i][individual.NumBirths] = 0                                // tracks number of children for females
+		pop.IndData[i][individual.LastBirthYear] = 0                            // to allow for spacing between children
+		pop.IndData[i][individual.Fitness] = fitness                            // used for survival calculations
+		pop.IndData[i][individual.AlleleCount] = 0                              // tracking descent from seed individual(s)
 		pop.IndData[i][individual.Lat] = lat
 		pop.IndData[i][individual.Lon] = lon
-		
+
 		//print("Individual", i, " position: ", lat, ",", lon, "\n")
 		model.FreeParameters["indID"]++ // each ind gets a unique ID
 	}

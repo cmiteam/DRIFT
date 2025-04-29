@@ -18,12 +18,12 @@ type Model struct {
 }
 
 type Pop struct {
-	IndData       map[int][]int // Individual data
-	Chromosomes   map[int][][]uint64      // Genetic data
-	Centromeres   map[int][]uint64        // Centromere information
-	IndMutations  map[int]map[int][]int   // Mutations per individual
-	MutationPool  map[int]Mutation        // Global pool of mutations
-	MutationHist  map[int]int             // Mutation history/statistics
+	IndData       map[int][]int         // Individual data
+	Chromosomes   map[int][][]uint64    // Genetic data
+	Centromeres   map[int][]uint64      // Centromere information
+	IndMutations  map[int]map[int][]int // Mutations per individual
+	MutationPool  map[int]Mutation      // Global pool of mutations
+	MutationHist  map[int]int           // Mutation history/statistics
 	MutationCount int
 	Tracking      map[string]int
 }

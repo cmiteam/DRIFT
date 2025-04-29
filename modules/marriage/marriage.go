@@ -1,8 +1,8 @@
 package marriage
 
 import (
-	"drift/types"
 	"drift/modules/individual"
+	"drift/types"
 	"math"
 	"math/rand"
 	"time"

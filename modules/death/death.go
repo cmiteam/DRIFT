@@ -1,8 +1,8 @@
 package death
 
 import (
-	"drift/types"
 	"drift/modules/individual"
+	"drift/types"
 	"fmt"
 	"math/rand"
 	"os"
@@ -199,7 +199,7 @@ func deadString(model *types.Model, pop *types.Pop, ind int) string {
 			indInfo[individual.YGens],
 			indInfo[individual.MtGens],
 			indInfo[individual.MinGenealoGens],
-			indInfo[individual.MaxGenealoGens],													 
+			indInfo[individual.MaxGenealoGens],
 			indInfo[individual.AlleleCount],
 			indInfo[individual.NumBlocks],
 			indInfo[individual.NumCentromeres],
