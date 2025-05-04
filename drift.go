@@ -70,9 +70,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize the genome masks
-	birth.InitGenome(model)
-
 	// Initialize the animations
 	animContainer, err := animations.Initialize(model, *mapRootArg)
 	if err != nil {

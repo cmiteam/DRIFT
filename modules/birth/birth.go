@@ -10,16 +10,6 @@ import (
 	"strings"
 )
 
-var genomemask1, genomemask2 []uint64
-var centsmask1, centsmask2 uint64
-
-func InitGenome(model *types.Model) {
-	if model.Parameters["track_DNA"] > 0 || model.Parameters["track_mutations"] > 0 {
-		genomemask1, centsmask1 = createMask(model, 0)
-		genomemask2, centsmask2 = createMask(model, 1)
-	}
-}
-
 func Birth(model *types.Model, pop *types.Pop) {
 
 	// First, find eligible females and roll the dice
@@ -76,6 +66,11 @@ func Birth(model *types.Model, pop *types.Pop) {
 			// them up once and use them at will.
 
 			if model.Parameters["track_DNA"] > 0 || model.Parameters["track_mutations"] > 0 {
+				var genomemask1, genomemask2 []uint64
+				var centsmask1, centsmask2 uint64
+				genomemask1, centsmask1 = createMask(model, 0)
+				genomemask2, centsmask2 = createMask(model, 1)
+				
 				// Add tracked DNA
 				if model.Parameters["track_DNA"] > 0 {
 					// only create a child's chromosomes if there is something to track at least one parent
