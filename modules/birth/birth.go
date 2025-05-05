@@ -192,7 +192,7 @@ func createMask(model *types.Model, sex int) ([]uint64, uint64) {
 	genomemask := make([]uint64, numUint64s)
 	var centromask uint64
 
-	for chrom := 1; chrom < len(model.ChromosomeArms); chrom++ {
+	for chrom := 1; chrom <= len(model.ChromosomeArms); chrom++ {
 		// in biology, chromosomes generally have a shorter 'p' arm and a longer 'q' arm', the lengths were loaded previously
 		// chromosomeArms[chrom][0] = p, chromosomeArms[chrom][1] = q
 		// chromosomeArms[chrom][0][0] = start of p arm in bits, chromosomeArms[chrom][0][1] = length of p arm in bits
