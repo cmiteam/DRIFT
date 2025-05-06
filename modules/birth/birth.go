@@ -67,10 +67,10 @@ func Birth(model *types.Model, pop *types.Pop) {
 
 			if model.Parameters["track_DNA"] > 0 || model.Parameters["track_mutations"] > 0 {
 				var genomemask1, genomemask2 []uint64
-				var centsmask1, centsmask2 uint64
+				var centsmask1, centsmask2 []uint64
 				genomemask1, centsmask1 = createMask(model, 0)
 				genomemask2, centsmask2 = createMask(model, 1)
-				
+
 				// Add tracked DNA
 				if model.Parameters["track_DNA"] > 0 {
 					// only create a child's chromosomes if there is something to track at least one parent
@@ -99,8 +99,6 @@ func Birth(model *types.Model, pop *types.Pop) {
 					// inherit centromeres if mom or dad have a set bit in their centromeres
 					if pop.IndData[dad][individual.NumCentromeres] > 0 || pop.IndData[mom][individual.NumCentromeres] > 0 {
 						inheritCentromeres(model, pop, centsmask1, centsmask2, dad, mom, child)
-					} else {
-						pop.Centromeres[child] = make([]uint64, 2)
 					}
 
 					// track avenues of descent from the seed individual(s)
@@ -180,17 +178,17 @@ func createChild(model *types.Model, pop *types.Pop, dad, mom, child int) {
 		pop.IndData[mom][individual.NumBirths] = 0
 	}
 	pop.IndData[mom][individual.NumBirths]++
-	pop.Centromeres[child] = make([]uint64, 2) //TODO not always necessary
 }
 
-func createMask(model *types.Model, sex int) ([]uint64, uint64) {
+func createMask(model *types.Model, sex int) ([]uint64, []uint64) {
 
 	// masks are uint64 (8-byte unsigned integers with 64 bits of memory). It takes about 50 uint64 to code for one copy of a 3,100 bit genome
 	// the centromere mask is a single uint64, therefore models with up to 64 chromosomes can be handled
 
-	numUint64s := (model.FreeParameters["numbits"] + 63) / 64
-	genomemask := make([]uint64, numUint64s)
-	var centromask uint64
+	genomeArrSize := (model.FreeParameters["numbits"] + 63) / 64
+	genomemask := make([]uint64, genomeArrSize)
+	centromereArrSize := 1 + len(model.ChromosomeArms)/64 // silly 1-based chromosome indexing make me mad >:(
+	centromask := make([]uint64, centromereArrSize)
 
 	for chrom := 1; chrom <= len(model.ChromosomeArms); chrom++ {
 		// in biology, chromosomes generally have a shorter 'p' arm and a longer 'q' arm', the lengths were loaded previously
@@ -216,7 +214,8 @@ func createMask(model *types.Model, sex int) ([]uint64, uint64) {
 			for i := pstart + ploc; i < qstart+qloc; i++ {
 				genomemask[i/64] |= (1 << (i % 64))
 			}
-			centromask |= (1 << (chrom % 64))
+			// we are wasting one bit because 1-based indexing but whatever
+			centromask[chrom/64] |= (1 << (chrom % 64))
 		} else {
 			// example: 11110000x00001111
 			for i := pstart; i < pstart+ploc; i++ {
@@ -229,9 +228,12 @@ func createMask(model *types.Model, sex int) ([]uint64, uint64) {
 	}
 
 	if sex == 0 {
-		// males don't inherit the father's X chromosome
-		xstart := model.ChromosomeArms[23][0][0]
-		xend := model.ChromosomeArms[23][1][0] + model.ChromosomeArms[23][1][1]
+		// males don't inherit the father's X 
+		//TODO can we make an executive decision to label sex chromosomes as chromosome 0 please
+		//TODO sexIdx := model.FreeParameters["sex_chromosome_idx"]
+		sexIdx := 23
+		xstart := model.ChromosomeArms[sexIdx][0][0]
+		xend := model.ChromosomeArms[1][1][0] + model.ChromosomeArms[1][1][1]
 		for i := xstart; i < xend; i++ {
 			genomemask[i/64] &^= (1 << (i % 64))
 		}
@@ -297,38 +299,40 @@ func uint64ArrayToBitString(genomesegment []uint64) string {
 	return bitString.String()
 }
 
-func inheritCentromeres(model *types.Model, pop *types.Pop, centsmask1 uint64, centsmask2 uint64, dad int, mom int, child int) {
+func inheritCentromeres(model *types.Model, pop *types.Pop, centsmask1 []uint64, centsmask2 []uint64, dad int, mom int, child int) {
 	if pop.IndData[dad][individual.NumCentromeres] > 0 || pop.IndData[mom][individual.NumCentromeres] > 0 {
-		if exists := pop.Centromeres[dad]; exists == nil {
-			fmt.Println("missing centromeres for dad", dad)
-			if indExists := pop.IndData[dad]; indExists == nil {
-				fmt.Println("he is also dead")
+		_, dadExists := pop.Centromeres[dad]
+		_, momExists := pop.Centromeres[mom]
+
+		var blankCentromeres [2][]uint64
+		blankCentromeres[0] = make([]uint64, len(model.ChromosomeArms)+63/64)
+		blankCentromeres[1] = make([]uint64, len(model.ChromosomeArms)+63/64)
+		pop.Centromeres[child] = blankCentromeres
+
+		for chrom := 1; chrom <= len(model.ChromosomeArms); chrom++ {
+			idx := chrom / 64
+			bit := chrom % 64
+			if dadExists {
+				if centsmask1[idx] & (1 << bit) == 0 {
+					pop.Centromeres[child][0][idx] |= (pop.Centromeres[dad][0][idx] & (1 << bit))
+				} else {
+					pop.Centromeres[child][0][idx] |= (pop.Centromeres[dad][1][idx] & (1 << bit))
+				}
 			}
-		}
-		if exists := pop.Centromeres[mom]; exists == nil {
-			fmt.Println("missing centromeres for mom", mom)
-			if indExists := pop.IndData[mom]; indExists == nil {
-				fmt.Println("she is also dead")
-			}
-		}
-		for i := 0; i < len(model.ChromosomeArms); i++ {
-			if centsmask1&(1<<i) == 0 {
-				pop.Centromeres[child][0] |= (pop.Centromeres[dad][0] & (1 << i))
-			} else {
-				pop.Centromeres[child][0] |= (pop.Centromeres[dad][1] & (1 << i))
-			}
-			if centsmask2&(1<<i) == 0 {
-				pop.Centromeres[child][1] |= (pop.Centromeres[mom][0] & (1 << i))
-			} else {
-				pop.Centromeres[child][1] |= (pop.Centromeres[mom][1] & (1 << i))
+			if momExists {
+				if centsmask2[idx] & (1 << bit) == 0 {
+					pop.Centromeres[child][1][idx] |= (pop.Centromeres[mom][0][idx] & (1 << bit))
+				} else {
+					pop.Centromeres[child][1][idx] |= (pop.Centromeres[mom][1][idx] & (1 << bit))
+				}
 			}
 		}
 
-		centromereCount := countSetBitsSingleVar(pop.Centromeres[child][0])
-		centromereCount += countSetBitsSingleVar(pop.Centromeres[child][1])
+		centromereCount := countSetBits(pop.Centromeres[child][0])
+		centromereCount += countSetBits(pop.Centromeres[child][1])
 		pop.IndData[child][individual.NumCentromeres] = centromereCount
 		if centromereCount == 0 {
-			//TODO delete(pop.Centromeres, child)
+			delete(pop.Centromeres, child) // child has been a disappointment
 		}
 	}
 }

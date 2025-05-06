@@ -13,7 +13,7 @@ func InitializePop(model *types.Model) *types.Pop {
 	pop := &types.Pop{
 		IndData:      make(map[int][]int),
 		Chromosomes:  make(map[int][][]uint64),
-		Centromeres:  make(map[int][]uint64),
+		Centromeres:  make(map[int][2][]uint64),
 		IndMutations: make(map[int]map[int][]int),
 		MutationPool: make(map[int]types.Mutation),
 		MutationHist: make(map[int]int),
@@ -86,8 +86,6 @@ func InitializePop(model *types.Model) *types.Pop {
 		pop.IndData[i][individual.Lat] = lat
 		pop.IndData[i][individual.Lon] = lon
 		pop.IndData[i][individual.NumCentromeres] = 0 //TODO guessing
-
-		pop.Centromeres[i] = make([]uint64, 2)
 
 		//print("Individual", i, " position: ", lat, ",", lon, "\n")
 		model.FreeParameters["indID"]++ // each ind gets a unique ID
