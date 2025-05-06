@@ -66,10 +66,10 @@ func Birth(model *types.Model, pop *types.Pop) {
 			// them up once and use them at will.
 
 			if model.Parameters["track_DNA"] > 0 || model.Parameters["track_mutations"] > 0 {
-				var genomemask1, genomemask2 []uint64
-				var centsmask1, centsmask2 []uint64
-				genomemask1, centsmask1 = createMask(model, 0)
-				genomemask2, centsmask2 = createMask(model, 1)
+				var genomemask0, genomemask1 []uint64
+				var centsmask0, centsmask1 []uint64
+				genomemask0, centsmask0 = createMask(model, 0)
+				genomemask1, centsmask1 = createMask(model, 1)
 
 				// Add tracked DNA
 				if model.Parameters["track_DNA"] > 0 {
@@ -80,11 +80,11 @@ func Birth(model *types.Model, pop *types.Pop) {
 					numSetBits := 0
 					// only go through meiosis if there is a set bit in mom or dad
 					if pop.IndData[dad][individual.AlleleCount] > 0 {
-						meiosis(pop, genomemask1, dad, child, 0)
+						meiosis(pop, genomemask0, dad, child, 0)
 						numSetBits += countSetBits(pop.Chromosomes[child][0])
 					}
 					if pop.IndData[mom][individual.AlleleCount] > 0 {
-						meiosis(pop, genomemask2, mom, child, 1)
+						meiosis(pop, genomemask1, mom, child, 1)
 						numSetBits += countSetBits(pop.Chromosomes[child][1])
 					}
 					pop.IndData[child][individual.AlleleCount] = numSetBits
@@ -98,7 +98,7 @@ func Birth(model *types.Model, pop *types.Pop) {
 
 					// inherit centromeres if mom or dad have a set bit in their centromeres
 					if pop.IndData[dad][individual.NumCentromeres] > 0 || pop.IndData[mom][individual.NumCentromeres] > 0 {
-						inheritCentromeres(model, pop, centsmask1, centsmask2, dad, mom, child)
+						inheritCentromeres(model, pop, centsmask0, centsmask1, dad, mom, child)
 					}
 
 					// track avenues of descent from the seed individual(s)
@@ -132,8 +132,8 @@ func Birth(model *types.Model, pop *types.Pop) {
 
 				// Assign mutations, both inherited and de novo
 				if model.Parameters["track_mutations"] > 0 {
-					mutation.InheritMutations(pop, genomemask1, dad, child, 0)
-					mutation.InheritMutations(pop, genomemask2, mom, child, 1)
+					mutation.InheritMutations(pop, genomemask0, dad, child, 0)
+					mutation.InheritMutations(pop, genomemask1, mom, child, 1)
 					mutation.GenerateNewMutations(model, pop, child)
 					numMutations, mutationLoad := mutation.CountFitnessAndMutations(pop, child)
 					fitness := 1 + mutationLoad
@@ -187,10 +187,9 @@ func createMask(model *types.Model, sex int) ([]uint64, []uint64) {
 
 	genomeArrSize := (model.FreeParameters["numbits"] + 63) / 64
 	genomemask := make([]uint64, genomeArrSize)
-	centromereArrSize := 1 + len(model.ChromosomeArms)/64 // silly 1-based chromosome indexing make me mad >:(
-	centromask := make([]uint64, centromereArrSize)
+	centromask := []uint64{ 0 }
 
-	for chrom := 1; chrom <= len(model.ChromosomeArms); chrom++ {
+	for chrom, _ := range model.ChromosomeArms {
 		// in biology, chromosomes generally have a shorter 'p' arm and a longer 'q' arm', the lengths were loaded previously
 		// chromosomeArms[chrom][0] = p, chromosomeArms[chrom][1] = q
 		// chromosomeArms[chrom][0][0] = start of p arm in bits, chromosomeArms[chrom][0][1] = length of p arm in bits
@@ -214,7 +213,10 @@ func createMask(model *types.Model, sex int) ([]uint64, []uint64) {
 			for i := pstart + ploc; i < qstart+qloc; i++ {
 				genomemask[i/64] |= (1 << (i % 64))
 			}
-			// we are wasting one bit because 1-based indexing but whatever
+			// make sure we have enough space in the centromask
+			for len(centromask) < chrom/64 {
+				centromask = append(centromask, uint64(0))
+			}
 			centromask[chrom/64] |= (1 << (chrom % 64))
 		} else {
 			// example: 11110000x00001111
@@ -262,7 +264,7 @@ func meiosis(pop *types.Pop, mask []uint64, parent int, child int, copy int) {
 func countContiguousBlocks(model *types.Model, pop *types.Pop, ind int, copy int) int {
 	blockCount := 0
 	genomestring := uint64ArrayToBitString(pop.Chromosomes[ind][copy])
-	for chrom := 1; chrom < len(model.ChromosomeArms); chrom++ {
+	for chrom,_ := range model.ChromosomeArms {
 		pstart := model.ChromosomeArms[chrom][0][0]
 		plen := model.ChromosomeArms[chrom][0][1]
 		if pstart+plen <= len(genomestring) {
@@ -299,28 +301,28 @@ func uint64ArrayToBitString(genomesegment []uint64) string {
 	return bitString.String()
 }
 
-func inheritCentromeres(model *types.Model, pop *types.Pop, centsmask1 []uint64, centsmask2 []uint64, dad int, mom int, child int) {
+func inheritCentromeres(model *types.Model, pop *types.Pop, centsmask0 []uint64, centsmask1 []uint64, dad int, mom int, child int) {
 	if pop.IndData[dad][individual.NumCentromeres] > 0 || pop.IndData[mom][individual.NumCentromeres] > 0 {
 		_, dadExists := pop.Centromeres[dad]
 		_, momExists := pop.Centromeres[mom]
 
 		var blankCentromeres [2][]uint64
-		blankCentromeres[0] = make([]uint64, len(model.ChromosomeArms)+63/64)
-		blankCentromeres[1] = make([]uint64, len(model.ChromosomeArms)+63/64)
+		blankCentromeres[0] = make([]uint64, len(centsmask0))
+		blankCentromeres[1] = make([]uint64, len(centsmask1))
 		pop.Centromeres[child] = blankCentromeres
 
-		for chrom := 1; chrom <= len(model.ChromosomeArms); chrom++ {
+		for chrom,_ := range model.ChromosomeArms {
 			idx := chrom / 64
 			bit := chrom % 64
 			if dadExists {
-				if centsmask1[idx] & (1 << bit) == 0 {
+				if centsmask0[idx] & (1 << bit) == 0 {
 					pop.Centromeres[child][0][idx] |= (pop.Centromeres[dad][0][idx] & (1 << bit))
 				} else {
 					pop.Centromeres[child][0][idx] |= (pop.Centromeres[dad][1][idx] & (1 << bit))
 				}
 			}
 			if momExists {
-				if centsmask2[idx] & (1 << bit) == 0 {
+				if centsmask1[idx] & (1 << bit) == 0 {
 					pop.Centromeres[child][1][idx] |= (pop.Centromeres[mom][0][idx] & (1 << bit))
 				} else {
 					pop.Centromeres[child][1][idx] |= (pop.Centromeres[mom][1][idx] & (1 << bit))
