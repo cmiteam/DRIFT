@@ -187,7 +187,7 @@ func createMask(model *types.Model, sex int) ([]uint64, []uint64) {
 
 	genomeArrSize := (model.FreeParameters["genome_bits"] + 63) / 64
 	genomemask := make([]uint64, genomeArrSize)
-	centromask := []uint64{ 0 }
+	centromask := []uint64{0}
 
 	for chrom, _ := range model.ChromosomeArms {
 		// in biology, chromosomes generally have a shorter 'p' arm and a longer 'q' arm', the lengths were loaded previously
@@ -229,11 +229,9 @@ func createMask(model *types.Model, sex int) ([]uint64, []uint64) {
 		}
 	}
 
-	if sex == 0 {
-		// males don't inherit the father's X 
-		//TODO can we make an executive decision to label sex chromosomes as chromosome 0 please
-		//TODO sexIdx := model.FreeParameters["sex_chromosome_idx"]
-		sexIdx := 23
+	if sex == 0 && model.Parameters["sex_chrom_index"] > 0 {
+		// males don't inherit the father's X
+		sexIdx := int(model.Parameters["sex_chrom_index"])
 		xstart := model.ChromosomeArms[sexIdx][0][0]
 		xend := model.ChromosomeArms[1][1][0] + model.ChromosomeArms[1][1][1]
 		for i := xstart; i < xend; i++ {
@@ -264,7 +262,7 @@ func meiosis(pop *types.Pop, mask []uint64, parent int, child int, copy int) {
 func countContiguousBlocks(model *types.Model, pop *types.Pop, ind int, copy int) int {
 	blockCount := 0
 	genomestring := uint64ArrayToBitString(pop.Chromosomes[ind][copy])
-	for chrom,_ := range model.ChromosomeArms {
+	for chrom, _ := range model.ChromosomeArms {
 		pstart := model.ChromosomeArms[chrom][0][0]
 		plen := model.ChromosomeArms[chrom][0][1]
 		if pstart+plen <= len(genomestring) {
@@ -311,18 +309,18 @@ func inheritCentromeres(model *types.Model, pop *types.Pop, centsmask0 []uint64,
 		blankCentromeres[1] = make([]uint64, len(centsmask1))
 		pop.Centromeres[child] = blankCentromeres
 
-		for chrom,_ := range model.ChromosomeArms {
+		for chrom, _ := range model.ChromosomeArms {
 			idx := chrom / 64
 			bit := chrom % 64
 			if dadExists {
-				if centsmask0[idx] & (1 << bit) == 0 {
+				if centsmask0[idx]&(1<<bit) == 0 {
 					pop.Centromeres[child][0][idx] |= (pop.Centromeres[dad][0][idx] & (1 << bit))
 				} else {
 					pop.Centromeres[child][0][idx] |= (pop.Centromeres[dad][1][idx] & (1 << bit))
 				}
 			}
 			if momExists {
-				if centsmask1[idx] & (1 << bit) == 0 {
+				if centsmask1[idx]&(1<<bit) == 0 {
 					pop.Centromeres[child][1][idx] |= (pop.Centromeres[mom][0][idx] & (1 << bit))
 				} else {
 					pop.Centromeres[child][1][idx] |= (pop.Centromeres[mom][1][idx] & (1 << bit))
