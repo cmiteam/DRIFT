@@ -75,7 +75,7 @@ func Birth(model *types.Model, pop *types.Pop) {
 				if model.Parameters["track_DNA"] > 0 {
 					// only create a child's chromosomes if there is something to track at least one parent
 					if pop.IndData[dad][individual.AlleleCount] > 0 || pop.IndData[mom][individual.AlleleCount] > 0 {
-						pop.Chromosomes[child] = [][]uint64{make([]uint64, (model.FreeParameters["NumBits"]+63)/64), make([]uint64, (model.FreeParameters["NumBits"]+63)/64)}
+						pop.Chromosomes[child] = [][]uint64{make([]uint64, (model.FreeParameters["genome_bits"]+63)/64), make([]uint64, (model.FreeParameters["genome_bits"]+63)/64)}
 					}
 					numSetBits := 0
 					// only go through meiosis if there is a set bit in mom or dad
@@ -185,7 +185,7 @@ func createMask(model *types.Model, sex int) ([]uint64, []uint64) {
 	// masks are uint64 (8-byte unsigned integers with 64 bits of memory). It takes about 50 uint64 to code for one copy of a 3,100 bit genome
 	// the centromere mask is a single uint64, therefore models with up to 64 chromosomes can be handled
 
-	genomeArrSize := (model.FreeParameters["numbits"] + 63) / 64
+	genomeArrSize := (model.FreeParameters["genome_bits"] + 63) / 64
 	genomemask := make([]uint64, genomeArrSize)
 	centromask := []uint64{ 0 }
 

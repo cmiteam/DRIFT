@@ -21,8 +21,8 @@ func SeedThePopulation(model *types.Model, pop *types.Pop) {
 
 	// Create chromosomes
 	pop.Chromosomes[seed] = [][]uint64{
-		make([]uint64, (model.FreeParameters["NumBits"]+63)/64),
-		make([]uint64, (model.FreeParameters["NumBits"]+63)/64),
+		make([]uint64, (model.FreeParameters["genome_bits"]+63)/64),
+		make([]uint64, (model.FreeParameters["genome_bits"]+63)/64),
 	}
 
 	// Set all bits to 1 in chromosomes
@@ -49,7 +49,7 @@ func SeedThePopulation(model *types.Model, pop *types.Pop) {
 	pop.IndData[seed][individual.MtGens] = 0
 	pop.IndData[seed][individual.MaxGenealoGens] = 0
 	pop.IndData[seed][individual.MinGenealoGens] = 0
-	pop.IndData[seed][individual.AlleleCount] = model.FreeParameters["NumBits"] * 2
+	pop.IndData[seed][individual.AlleleCount] = model.FreeParameters["genome_bits"] * 2
 	pop.IndData[seed][individual.NumCentromeres] = countSetBits(pop.Centromeres[seed][0])
 	pop.IndData[seed][individual.Lat] = 0
 	pop.IndData[seed][individual.Lon] = 0

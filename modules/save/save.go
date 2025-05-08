@@ -52,7 +52,7 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 	if model.Parameters["track_DNA"] == 1 {
 		YDescends, mtDescends, genealoDescends, geneticDescends, numAlleles, numBlocks, numCentromeres = calculateMiscStats(&pop.IndData)
 		numbitsRetained, totHet, totHomMin, totHomMaj = seedCounts(model, pop)
-		percSeedGenomeRetained = float64(numbitsRetained) / float64(model.FreeParameters["NumBits"]) * 100
+		percSeedGenomeRetained = float64(numbitsRetained) / float64(model.FreeParameters["genome_bits"]) * 100
 		avSeedGenomeCoverage = 0
 	}
 
@@ -378,9 +378,9 @@ func calculateMiscStats(indData *map[int][]int) (int, int, int, int, int, int, i
 
 func seedCounts(model *types.Model, pop *types.Pop) (int, int, int, int) {
 
-	bitCounts := make([]int, model.FreeParameters["NumBits"])
+	bitCounts := make([]int, model.FreeParameters["genome_bits"])
 	totHet, totHomMin, totHomMaj := 0, 0, 0
-	seedGenomeRetained := make([]uint64, (model.FreeParameters["NumBits"]+63)/64)
+	seedGenomeRetained := make([]uint64, (model.FreeParameters["genome_bits"]+63)/64)
 
 	for _, chromosomePairs := range pop.Chromosomes {
 		if len(chromosomePairs) > 0 && len(chromosomePairs[0]) > 0 && len(chromosomePairs[1]) > 0 {

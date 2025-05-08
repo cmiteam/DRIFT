@@ -61,7 +61,7 @@ func LoadChromosomeArms(model *types.Model, configRoot string) error {
 		totallen += model.ChromosomeArms[chromosome][arm][1]
 	}
 
-	model.FreeParameters["numbits"] = totallen
+	model.FreeParameters["genome_bits"] = totallen
 
 	return nil
 }
