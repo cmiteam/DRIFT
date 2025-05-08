@@ -28,6 +28,9 @@ const defaultMapRoot = "maps"
 // Default value for the results parameter, relative path to results files
 const defaultResults = "results"
 
+// Default value for the cpu-profile parameter, relative path to cpu profile file
+const defaultCpuProfile = ""
+
 // Main function does the following:
 // 1. Parses command-line arguments
 // 2. Initializes the model
@@ -48,6 +51,9 @@ func main() {
 	resultsArg := flag.String("results",
 		defaultResults,
 		"path to directory containing results files")
+	cpuProfileArg := flag.String("cpu-profile",
+		defaultCpuProfile,
+		"path to CPU profile file (empty will disable CPU profiling)")
 
 	// Add more parameters as needed
 
@@ -78,12 +84,15 @@ func main() {
 	}
 
 	// Start CPU profiling
-	cpuFile, err := os.Create("cpu.prof")
-	if err != nil {
-		panic(err)
+	if *cpuProfileArg != "" {
+		cpuFile, err := os.Create(*cpuProfileArg)
+		if err != nil {
+			panic(err)
+		}
+		defer cpuFile.Close()
+		pprof.StartCPUProfile(cpuFile)
+		defer pprof.StopCPUProfile()
 	}
-	defer cpuFile.Close()
-	pprof.StartCPUProfile(cpuFile)
 
 	// Loop over the number of model runs
 	for run := 1; run <= int(model.Parameters["num_runs"]); run++ {
@@ -111,8 +120,6 @@ func main() {
 				save.Save(model, pop, animContainer)
 			}
 		}
-
-		pprof.StopCPUProfile()
 
 		// Things to do at the end of a model run
 		if model.Parameters["track_DNA"] == 1 {
