@@ -52,7 +52,7 @@ func Birth(model *types.Model, pop *types.Pop) {
 			pfit := float64(pop.IndData[dad][individual.Fitness])
 			mfit := float64(pop.IndData[mom][individual.Fitness])
 			fitness = (pfit + mfit) / 2
-			fitness = fitness / model.Parameters["mu_Scale_factor"]
+			fitness = fitness / model.Parameters["mu_scale_factor"]
 		}
 		chance := rand.Float64()
 		if chance < fitness {
