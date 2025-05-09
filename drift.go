@@ -15,6 +15,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime/pprof"
 	"time"
 )
 
@@ -23,6 +24,12 @@ const defaultConfigRoot = "static"
 
 // Default value for the map-root parameter, relative path to map files
 const defaultMapRoot = "maps"
+
+// Default value for the results parameter, relative path to results files
+const defaultResults = "results"
+
+// Default value for the cpu-profile parameter, relative path to cpu profile file
+const defaultCpuProfile = ""
 
 // Main function does the following:
 // 1. Parses command-line arguments
@@ -41,6 +48,13 @@ func main() {
 	mapRootArg := flag.String("map-root",
 		defaultMapRoot,
 		"path to directory containing map files")
+	resultsArg := flag.String("results",
+		defaultResults,
+		"path to directory containing results files")
+	cpuProfileArg := flag.String("cpu-profile",
+		defaultCpuProfile,
+		"path to CPU profile file (empty will disable CPU profiling)")
+
 	// Add more parameters as needed
 
 	// Parse the command-line arguments
@@ -53,11 +67,31 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Create the results directory if it doesn't exist
+	if _, err := os.Stat(*resultsArg); os.IsNotExist(err) {
+		err = os.Mkdir(*resultsArg, 0755)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating results directory: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Initialize the animations
 	animContainer, err := animations.Initialize(model, *mapRootArg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing animations: %v\n", err)
 		os.Exit(1)
+	}
+
+	// Start CPU profiling
+	if *cpuProfileArg != "" {
+		cpuFile, err := os.Create(*cpuProfileArg)
+		if err != nil {
+			panic(err)
+		}
+		defer cpuFile.Close()
+		pprof.StartCPUProfile(cpuFile)
+		defer pprof.StopCPUProfile()
 	}
 
 	// Loop over the number of model runs
@@ -95,7 +129,7 @@ func main() {
 		}
 		if model.Parameters["track_map"] == 1 {
 			print("Saving map...\n")
-			err := animations.SaveAllGIFs(animContainer)
+			err := animations.SaveAllGIFs(animContainer, *resultsArg)
 			if err != nil {
 				log.Printf("Error saving animation: %v", err)
 			}

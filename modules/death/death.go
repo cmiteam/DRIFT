@@ -1,6 +1,7 @@
 package death
 
 import (
+	"drift/modules/individual"
 	"drift/types"
 	"fmt"
 	"math/rand"
@@ -14,7 +15,7 @@ func Death(model *types.Model, pop *types.Pop) int {
 	rand.Seed(time.Now().UnixNano())
 	deaths := 0
 	var deadPeopleData string
-	keyList := generateKeyList(pop.IndData)
+	keyList := generateKeyList(&pop.IndData, -1)
 
 	// Step 1: Random actuarial deaths
 	for _, ind := range keyList {
@@ -30,17 +31,17 @@ func Death(model *types.Model, pop *types.Pop) int {
 		// The death risk is really high at 85 already, so anyone who makes it to
 		// >= 85 has the same risk of dying each year.
 
-		age := model.FreeParameters["year"] - pop.IndData[ind]["birth_year"]
-		ageGroup := int((float64(age)/float64(pop.IndData[ind]["lifespan"]))*model.Parameters["min_lifespan"]/5) * 5
+		age := model.FreeParameters["year"] - pop.IndData[ind][individual.BirthYear]
+		ageGroup := int((float64(age)/float64(pop.IndData[ind][individual.Lifespan]))*model.Parameters["min_lifespan"]/5) * 5
 		if ageGroup > 85 {
 			ageGroup = 85
 		}
 		deathrisk := model.DeathRisk[ageGroup]
 		die := rand.Float64() // low roll = death
-		riskModification := model.Parameters["min_lifespan"] / float64(pop.IndData[ind]["lifespan"])
+		riskModification := model.Parameters["min_lifespan"] / float64(pop.IndData[ind][individual.Lifespan])
 		fitness := 1.0
 		if model.Parameters["track_mutations"] == 1 {
-			fitness = float64(pop.IndData[ind]["fitness"]) / model.Parameters["mu_scale_factor"]
+			fitness = float64(pop.IndData[ind][individual.Fitness]) / model.Parameters["mu_scale_factor"]
 		}
 		adjustedDeathRisk := deathrisk * riskModification * fitness
 		if die < adjustedDeathRisk {
@@ -62,13 +63,9 @@ func Death(model *types.Model, pop *types.Pop) int {
 
 	// Step 2: Trim excess population by randomly culling individuals
 	excess := len(pop.IndData) - maxPopSize
-	for excess > 0 {
-		keyList = generateKeyList(pop.IndData)
-		randomIndex := rand.Intn(len(keyList))
-		ind := keyList[randomIndex]
-		if ind == model.FreeParameters["seed"] { // Don't kill off the seed
-			continue
-		}
+	keyList = generateKeyList(&pop.IndData, model.FreeParameters["seed"])
+	keyList = pickVictims(excess, keyList)
+	for _, ind := range keyList {
 		if int(model.Parameters["track_dead"]) == 1 {
 			deadPersonString := deadString(model, pop, ind)
 			deadPersonString += ",R\n"
@@ -77,7 +74,6 @@ func Death(model *types.Model, pop *types.Pop) int {
 		RIP(ind, pop, model)
 		deaths++
 		pop.Tracking["cull_deaths"]++
-		excess = len(pop.IndData) - maxPopSize
 	}
 
 	// Step 3: Tamp down population growth rate by randomly culling individuals
@@ -87,13 +83,9 @@ func Death(model *types.Model, pop *types.Pop) int {
 	}
 
 	diff := len(pop.IndData) - allowedNumInds
-	for diff > 0 {
-		keyList = generateKeyList(pop.IndData)
-		randomIndex := rand.Intn(len(keyList))
-		ind := keyList[randomIndex]
-		if ind == model.FreeParameters["seed"] { // Don't kill off the seed
-			continue
-		}
+	keyList = generateKeyList(&pop.IndData, model.FreeParameters["seed"])
+	keyList = pickVictims(diff, keyList)
+	for _, ind := range keyList {
 		if int(model.Parameters["track_dead"]) == 1 {
 			deadPersonString := deadString(model, pop, ind)
 			deadPersonString += ",R\n"
@@ -102,28 +94,24 @@ func Death(model *types.Model, pop *types.Pop) int {
 		RIP(ind, pop, model)
 		deaths++
 		pop.Tracking["cull_deaths"]++
-		diff = len(pop.IndData) - allowedNumInds
 	}
 
 	// Step 4: Reduce population to specified number of breeding individuals, if called for, by randomly culling individuals
 	if model.Parameters["max_breeding_inds"] > -1 {
-		keyList = generateKeyList(pop.IndData)
-		breeders := countBreedingIndividuals(model, pop)
-		for breeders > int(model.Parameters["max_breeding_inds"]) {
-			randomIndex := rand.Intn(len(keyList))
-			ind := keyList[randomIndex]
-			if ind == model.FreeParameters["seed"] { // Don't kill off the seed
-				continue
+		if breeders := countBreedingIndividuals(model, pop); breeders > int(model.Parameters["max_breeding_inds"]) {
+			keyList := generateKeyList(&pop.IndData, model.FreeParameters["seed"])
+			keyList = pickVictims(breeders-int(model.Parameters["max_breeding_inds"]), keyList)
+			for _, ind := range keyList {
+				if int(model.Parameters["track_dead"]) == 1 {
+					deadPersonString := deadString(model, pop, ind)
+					deadPersonString += ",R\n"
+					deadPeopleData += deadPersonString
+				}
+				RIP(ind, pop, model)
+				deaths++
+				pop.Tracking["cull_deaths"]++
+				breeders = countBreedingIndividuals(model, pop)
 			}
-			if int(model.Parameters["track_dead"]) == 1 {
-				deadPersonString := deadString(model, pop, ind)
-				deadPersonString += ",R\n"
-				deadPeopleData += deadPersonString
-			}
-			RIP(ind, pop, model)
-			deaths++
-			pop.Tracking["cull_deaths"]++
-			breeders = countBreedingIndividuals(model, pop)
 		}
 	}
 
@@ -138,20 +126,36 @@ func Death(model *types.Model, pop *types.Pop) int {
 }
 
 // generateKeyList creates a slice of all individual IDs
-func generateKeyList(indData map[int]map[string]int) []int {
-	keyList := make([]int, 0, len(indData))
-	for key := range indData {
+func generateKeyList(indData *map[int][]int, seed int) []int {
+	keyList := make([]int, 0, len(*indData))
+	for key := range *indData {
+		if key == seed {
+			continue
+		}
 		keyList = append(keyList, key)
 	}
 	return keyList
 }
 
+func pickVictims(excess int, keyList []int) []int {
+	if excess <= 0 {
+		return []int{}
+	}
+	victimList := make([]int, excess)
+	for i := 0; i < excess; i++ {
+		randomIndex := i + rand.Intn(len(keyList)-i)
+		victimList[i] = keyList[randomIndex]
+		keyList[randomIndex] = keyList[i] // haha, figure dat out
+	}
+	return victimList
+}
+
 // RIP removes a deceased individual and updates related data
 func RIP(ind int, pop *types.Pop, model *types.Model) {
 	if _, exists := pop.IndData[ind]; exists {
-		if pop.IndData[ind]["marriage_state"] > -1 {
-			spouse := pop.IndData[ind]["marriage_state"]
-			pop.IndData[spouse]["marriage_state"] = -1
+		if pop.IndData[ind][individual.MarriageState] > -1 {
+			spouse := pop.IndData[ind][individual.MarriageState]
+			pop.IndData[spouse][individual.MarriageState] = -1
 		}
 	}
 	delete(pop.Chromosomes, ind)
@@ -172,6 +176,7 @@ func RIP(ind int, pop *types.Pop, model *types.Model) {
 	}
 	delete(pop.IndMutations, ind)
 	delete(pop.IndData, ind)
+	delete(pop.Centromeres, ind)
 }
 
 // deadString formats individual data for death records
@@ -180,35 +185,30 @@ func deadString(model *types.Model, pop *types.Pop, ind int) string {
 	var info strings.Builder
 	indInfo, exists := pop.IndData[ind]
 	if exists {
-		getValue := func(key string, defaultVal int) int {
-			if val, ok := indInfo[key]; ok {
-				return val
-			}
-			return defaultVal
-		}
+		// Append individual data to the string
 		info.WriteString(fmt.Sprintf("%d,%d,%d,%d,%d,%d,%d,",
 			ind,
-			getValue("birth_year", -1),
+			indInfo[individual.BirthYear],
 			model.FreeParameters["year"],
-			getValue("sex", -1),
-			getValue("dad", -1),
-			getValue("mom", -1),
-			getValue("lifespan", -1),
+			indInfo[individual.Sex],
+			indInfo[individual.Dad],
+			indInfo[individual.Mom],
+			indInfo[individual.Lifespan],
 		))
 		info.WriteString(fmt.Sprintf("%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",
-			getValue("lat", -1),
-			getValue("lon", -1),
-			getValue("marriage_state", -1),
-			getValue("numbirths", -1),
-			getValue("Y_gens", -1),
-			getValue("mt_gens", -1),
-			getValue("min_genealo_gens", -1),
-			getValue("max_genealo_gens", -1),
-			getValue("allele_count", -1),
-			getValue("num_blocks", -1),
-			getValue("centromeres", -1),
-			getValue("fitness", -1),
-			getValue("mutations", -1),
+			indInfo[individual.Lat],
+			indInfo[individual.Lon],
+			indInfo[individual.MarriageState],
+			indInfo[individual.NumBirths],
+			indInfo[individual.YGens],
+			indInfo[individual.MtGens],
+			indInfo[individual.MinGenealoGens],
+			indInfo[individual.MaxGenealoGens],
+			indInfo[individual.AlleleCount],
+			indInfo[individual.NumBlocks],
+			indInfo[individual.NumCentromeres],
+			indInfo[individual.Fitness],
+			indInfo[individual.NumMutations],
 		))
 	}
 	return info.String()
@@ -219,15 +219,16 @@ func personDataString(model *types.Model, pop *types.Pop, ind int, state string)
 	var info strings.Builder
 	indInfo, exists := pop.IndData[ind]
 	if exists {
-		fields := []string{
-			"birth_year", "sex", "dad", "mom", "lifespan",
-			"lat", "lon", "marriage_state", "numbirths",
-			"Y_gens", "mt_gens", "min_genealo_gens", "max_genealo_gens",
-			"allele_count", "num_blocks", "centromeres", "fitness", "mutations",
+		fields := []individual.IndData{
+			individual.BirthYear, individual.Sex, individual.Dad, individual.Mom, individual.Lifespan,
+			individual.Lat, individual.Lon, individual.MarriageState, individual.NumBirths,
+			individual.YGens, individual.MtGens, individual.MinGenealoGens, individual.MaxGenealoGens,
+			individual.AlleleCount, individual.NumBlocks, individual.NumCentromeres, individual.Fitness,
+			individual.NumMutations,
 		}
-		info.WriteString(fmt.Sprintf("%d,%d,%d,", ind, getOrDefault(indInfo, "birth_year", -1), model.FreeParameters["year"]))
-		for _, field := range fields {
-			info.WriteString(fmt.Sprintf("%d,", getOrDefault(indInfo, field, -1)))
+		info.WriteString(fmt.Sprintf("%d,%d,%d,", ind, indInfo[individual.BirthYear], model.FreeParameters["year"]))
+		for field := range fields {
+			info.WriteString(fmt.Sprintf("%d,", indInfo[field]))
 		}
 		info.WriteString(state) // Append state ('R' for removed, 'A' for alive)
 		info.WriteString("\n")
@@ -247,7 +248,7 @@ func getOrDefault(data map[string]int, key string, defaultVal int) int {
 func countBreedingIndividuals(model *types.Model, pop *types.Pop) int {
 	count := 0
 	for _, data := range pop.IndData {
-		age := model.FreeParameters["year"] - data["birth_year"]
+		age := model.FreeParameters["year"] - data[individual.BirthYear]
 		if age >= int(model.Parameters["maturity"]) {
 			count++
 		}

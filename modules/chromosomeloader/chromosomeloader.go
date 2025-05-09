@@ -22,7 +22,7 @@ func LoadChromosomeArms(model *types.Model, configRoot string) error {
 	}
 
 	// Skip the header row and process each record
-	var totallen int
+	var maxStart, maxStartLength int
 	for _, record := range records[1:] {
 		// Ensure the record has at least 4 fields
 		err := csvLoader.CheckRecord(record, 4)
@@ -50,6 +50,12 @@ func LoadChromosomeArms(model *types.Model, configRoot string) error {
 			return err
 		}
 
+		// Check if this is the highest start position so we can see how many bits we need
+		if start > maxStart {
+			maxStart = start
+			maxStartLength = length
+		}
+
 		if model.ChromosomeArms[chromosome] == nil {
 			model.ChromosomeArms[chromosome] = make(map[int][]int)
 		}
@@ -58,10 +64,9 @@ func LoadChromosomeArms(model *types.Model, configRoot string) error {
 		}
 		model.ChromosomeArms[chromosome][arm][0] = start * int(model.Parameters["multiplier"])
 		model.ChromosomeArms[chromosome][arm][1] = length * int(model.Parameters["multiplier"])
-		totallen += model.ChromosomeArms[chromosome][arm][1]
 	}
 
-	model.FreeParameters["numbits"] = totallen
+	model.FreeParameters["genome_bits"] = maxStart + maxStartLength
 
 	return nil
 }

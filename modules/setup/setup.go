@@ -60,7 +60,7 @@ func InitializeOutputFiles(modelParameters map[string]float64, run int, resultsD
 
 	if modelParameters["track_dead"] == 1 {
 		filename := filepath.Join(resultsDirectory, fmt.Sprintf("%s-%s_deaths.csv", modelID, runStr))
-		headers := []string{"ID", "birthyear", "deathyear", "sex", "father", "mother", "lifespan", "lat", "lon", "married", "numbirths", "Ygens", "MTgens", "MinGenealGens", "MaxGenealGens", "SeedAlleles", "CentromereCount", "blocks", "fitness", "NumMuts", "CauseOfDeath"}
+		headers := []string{"ID", "birthyear", "deathyear", individual.Sex, "father", "mother", individual.Lifespan, individual.Lat, individual.Lon, "married", individual.NumBirths, "Ygens", "MTgens", "MinGenealGens", "MaxGenealGens", "SeedAlleles", "CentromereCount", "blocks", individual.Fitness, "NumMuts", "CauseOfDeath"}
 		err := createCSV(filename, headers)
 		if err != nil {
 			return err

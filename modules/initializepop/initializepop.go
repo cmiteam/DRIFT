@@ -1,6 +1,7 @@
 package initializepop
 
 import (
+	"drift/modules/individual"
 	"drift/types"
 	"math/rand"
 	"time"
@@ -10,9 +11,9 @@ func InitializePop(model *types.Model) *types.Pop {
 
 	// Create a new population
 	pop := &types.Pop{
-		IndData:      make(map[int]map[string]int),
+		IndData:      make(map[int][]int),
 		Chromosomes:  make(map[int][][]uint64),
-		Centromeres:  make(map[int][]uint64),
+		Centromeres:  make(map[int][2][]uint64),
 		IndMutations: make(map[int]map[int][]int),
 		MutationPool: make(map[int]types.Mutation),
 		MutationHist: make(map[int]int),
@@ -72,24 +73,20 @@ func InitializePop(model *types.Model) *types.Pop {
 			}
 		}
 
-		pop.IndData[i] = map[string]int{
-			"dad":              -1,                                // -1 is used often in this program as a placeholder
-			"mom":              -1,                                // ditto
-			"birth_year":       -age,                              // the person was born before the model began to be run
-			"lifespan":         int(model.Parameters["lifespan"]), // initial theoretical lifespans
-			"sex":              rand.Intn(2),                      // 0 = male, 1 = female
-			"marriage_state":   -1,                                // will be set to the ID # of the spouse
-			"num_births":       0,                                 // tracks number of children for females
-			"last_birth_year":  0,                                 // to allow for spacing between children
-			"fitness":          fitness,                           // used for survival calculations
-			"allele_count":     0,                                 // tracking descent from seed individual(s)
-			"Y_gens":           -1,                                // generations from male seed
-			"mt_gens":          -1,                                // generations from female seed
-			"min_genealo_gens": -1,                                // shortest path on family tree to seed
-			"max_genealo_gens": -1,                                // longest path on family tree to seed
-			"lat":              lat,
-			"lon":              lon,
-		}
+		pop.IndData[i] = individual.MakeIndData()
+
+		pop.IndData[i][individual.BirthYear] = -age                             // the person was born before the model began to be run
+		pop.IndData[i][individual.Lifespan] = int(model.Parameters["lifespan"]) // initial theoretical lifespans
+		pop.IndData[i][individual.Sex] = rand.Intn(2)                           // 0 = male, 1 = female
+		pop.IndData[i][individual.MarriageState] = -1                           // will be set to the ID # of the spouse
+		pop.IndData[i][individual.NumBirths] = 0                                // tracks number of children for females
+		pop.IndData[i][individual.LastBirthYear] = 0                            // to allow for spacing between children
+		pop.IndData[i][individual.Fitness] = fitness                            // used for survival calculations
+		pop.IndData[i][individual.AlleleCount] = 0                              // tracking descent from seed individual(s)
+		pop.IndData[i][individual.Lat] = lat
+		pop.IndData[i][individual.Lon] = lon
+		pop.IndData[i][individual.NumCentromeres] = 0 //TODO guessing
+
 		//print("Individual", i, " position: ", lat, ",", lon, "\n")
 		model.FreeParameters["indID"]++ // each ind gets a unique ID
 	}

@@ -31,6 +31,7 @@ max_breeding_inds,Max Breeding Inds,Check,int,-1,Main
 scenario,Scenario,Dropdown,int,2,Main
 map_width,Map Width,Text,int,3840,Main
 map_height,Map Height,Text,int,2160,Main
+sex_chrom_index,Sex Chromosome Index,Text,int,23,Main
 seed_year,Seed Year,Text,int,1,DNA
 multiplier,Multiplier,Text,int,1,DNA
 init_heterozygosity,Init Heterozygosity,Text,float,0,DNA

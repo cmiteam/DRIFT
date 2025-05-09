@@ -2,6 +2,7 @@ package save
 
 import (
 	"drift/modules/animations"
+	"drift/modules/individual"
 	"drift/types"
 	"encoding/csv"
 	"fmt"
@@ -49,9 +50,9 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 	var totHet, totHomMin, totHomMaj, numbitsRetained int
 
 	if model.Parameters["track_DNA"] == 1 {
-		YDescends, mtDescends, genealoDescends, geneticDescends, numAlleles, numBlocks, numCentromeres = calculateMiscStats(pop.IndData)
+		YDescends, mtDescends, genealoDescends, geneticDescends, numAlleles, numBlocks, numCentromeres = calculateMiscStats(&pop.IndData)
 		numbitsRetained, totHet, totHomMin, totHomMaj = seedCounts(model, pop)
-		percSeedGenomeRetained = float64(numbitsRetained) / float64(model.FreeParameters["NumBits"]) * 100
+		percSeedGenomeRetained = float64(numbitsRetained) / float64(model.FreeParameters["genome_bits"]) * 100
 		avSeedGenomeCoverage = 0
 	}
 
@@ -68,17 +69,17 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 		model.FreeParameters["progressPercent"] = int(progressPercent * 100)
 
 		// Count individuals with genetic markers at each location
-		for _, individual := range pop.IndData {
-			lat := float64(individual["lat"]) / 10.0
-			lon := float64(individual["lon"]) / 10.0
+		for _, indData := range pop.IndData {
+			lat := float64(indData[individual.Lat]) / 10.0
+			lon := float64(indData[individual.Lon]) / 10.0
 			allPoints[[2]float64{lat, lon}] = color.RGBA{255, 255, 255, 255}
 
 			// Check if this individual has any of the genetic markers we're tracking
-			hasMarker := individual["Y_gens"] > 0 ||
-				individual["mt_gens"] > 0 ||
-				individual["allele_count"] > 0 ||
-				individual["num_centromeres"] > 0 ||
-				individual["num_blocks"] > 0
+			hasMarker := indData[individual.YGens] > 0 ||
+				indData[individual.MtGens] > 0 ||
+				indData[individual.AlleleCount] > 0 ||
+				indData[individual.NumCentromeres] > 0 ||
+				indData[individual.NumBlocks] > 0
 
 			if hasMarker {
 				// Initialize the inner map if needed
@@ -126,16 +127,16 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 			changePoints[coords] = color
 		}
 
-		for _, individual := range pop.IndData {
+		for _, indData := range pop.IndData {
 			// Check if this individual has any of the genealogical markers we're tracking
-			hasMarker := individual["Y_gens"] > 0 ||
-				individual["mt_gens"] > 0 ||
-				individual["min_genealo_gens"] > 0 ||
-				individual["max_genealo_gens"] > 0
+			hasMarker := indData[individual.YGens] > 0 ||
+				indData[individual.MtGens] > 0 ||
+				indData[individual.MinGenealoGens] > 0 ||
+				indData[individual.MaxGenealoGens] > 0
 
 			if hasMarker {
-				lat := float64(individual["lat"] / 10.0)
-				lon := float64(individual["lon"] / 10.0)
+				lat := float64(indData[individual.Lat] / 10.0)
+				lon := float64(indData[individual.Lon] / 10.0)
 
 				// Initialize the inner map if needed
 				if _, exists := freqMap[lat]; !exists {
@@ -218,28 +219,21 @@ func personDataString(model *types.Model, pop *types.Pop, ind int, state string)
 	var info strings.Builder
 	indInfo, exists := pop.IndData[ind]
 	if exists {
-		fields := []string{
-			"birth_year", "sex", "dad", "mom", "lifespan",
-			"lat", "lon", "marriage_state", "numbirths",
-			"Y_gens", "mt_gens", "min_genealo_gens", "max_genealo_gens",
-			"allele_count", "num_blocks", "centromeres", "fitness", "mutations",
+		fields := []individual.IndData{
+			individual.BirthYear, individual.Sex, individual.Dad, individual.Mom, individual.Lifespan,
+			individual.Lat, individual.Lon, individual.MarriageState, individual.NumBirths,
+			individual.YGens, individual.MtGens, individual.MinGenealoGens, individual.MaxGenealoGens,
+			individual.AlleleCount, individual.NumBlocks, individual.NumCentromeres, individual.Fitness,
+			individual.NumMutations,
 		}
-		info.WriteString(fmt.Sprintf("%d,%d,%d,", ind, getOrDefault(indInfo, "birth_year", -1), model.FreeParameters["year"]))
+		info.WriteString(fmt.Sprintf("%d,%d,%d,", ind, indInfo[individual.BirthYear], model.FreeParameters["year"]))
 		for _, field := range fields {
-			info.WriteString(fmt.Sprintf("%d,", getOrDefault(indInfo, field, -1)))
+			info.WriteString(fmt.Sprintf("%d,", indInfo[field]))
 		}
 		info.WriteString(state) // Append state ('R' for removed, 'A' for alive)
 		info.WriteString("\n")
 	}
 	return info.String()
-}
-
-// getOrDefault retrieves a value from a map with a default fallback
-func getOrDefault(data map[string]int, key string, defaultVal int) int {
-	if val, ok := data[key]; ok {
-		return val
-	}
-	return defaultVal
 }
 
 // writeToFile writes content to a file
@@ -356,27 +350,27 @@ func SaveGenomeMap(
 	return nil
 }
 
-func calculateMiscStats(indData map[int]map[string]int) (int, int, int, int, int, int, int) {
+func calculateMiscStats(indData *map[int][]int) (int, int, int, int, int, int, int) {
 	var Y, mt, genealo, genetic, alleles, blocks, cents int
-	for _, ind := range indData {
-		if ind["Y_gens"] > 0 {
+	for _, ind := range *indData {
+		if ind[individual.YGens] > 0 {
 			Y += 1
 		}
-		if ind["mt_gens"] > 0 {
+		if ind[individual.MtGens] > 0 {
 			mt += 1
 		}
-		if ind["max_genealo_gens"] > -1 {
+		if ind[individual.MaxGenealoGens] > -1 {
 			genealo++
 		}
-		if ind["allele_count"] > 0 {
-			alleles += ind["allele_count"]
+		if ind[individual.AlleleCount] > 0 {
+			alleles += ind[individual.AlleleCount]
 			genetic++
 		}
-		if ind["num_blocks"] > 0 {
-			blocks += ind["num_blocks"]
+		if ind[individual.NumBlocks] > 0 {
+			blocks += ind[individual.NumBlocks]
 		}
-		if ind["num_centromeres"] > 0 {
-			cents += ind["num_centromeres"]
+		if ind[individual.NumCentromeres] > 0 {
+			cents += ind[individual.NumCentromeres]
 		}
 	}
 	return Y, mt, genealo, genetic, alleles, blocks, cents
@@ -384,9 +378,9 @@ func calculateMiscStats(indData map[int]map[string]int) (int, int, int, int, int
 
 func seedCounts(model *types.Model, pop *types.Pop) (int, int, int, int) {
 
-	bitCounts := make([]int, model.FreeParameters["NumBits"])
+	bitCounts := make([]int, model.FreeParameters["genome_bits"])
 	totHet, totHomMin, totHomMaj := 0, 0, 0
-	seedGenomeRetained := make([]uint64, (model.FreeParameters["NumBits"]+63)/64)
+	seedGenomeRetained := make([]uint64, (model.FreeParameters["genome_bits"]+63)/64)
 
 	for _, chromosomePairs := range pop.Chromosomes {
 		if len(chromosomePairs) > 0 && len(chromosomePairs[0]) > 0 && len(chromosomePairs[1]) > 0 {
@@ -411,8 +405,8 @@ func seedCounts(model *types.Model, pop *types.Pop) (int, int, int, int) {
 
 func calculateFitnessStats(model *types.Model, pop *types.Pop) (numMuts int, totalFitness int) {
 	for _, ind := range pop.IndData {
-		numMuts += ind["num_mutations"]
-		totalFitness += ind["fitness"]
+		numMuts += ind[individual.NumMutations]
+		totalFitness += ind[individual.Fitness]
 	}
 	return numMuts, totalFitness
 }
