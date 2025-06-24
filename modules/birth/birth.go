@@ -3,9 +3,9 @@ package birth
 import (
 	"drift/modules/individual"
 	"drift/modules/mutation"
+	"drift/modules/utils"
 	"drift/types"
 	"fmt"
-	"math"
 	"math/rand"
 	"strings"
 )
@@ -153,15 +153,8 @@ func createChild(model *types.Model, pop *types.Pop, dad, mom, child int) {
 	if lifespan < int(model.Parameters["min_lifespan"]) {
 		lifespan = int(model.Parameters["min_lifespan"])
 	}
-	childLat, childLon := placeChildWithSpread(model, pop, dad, child)
-	//momLat := pop.IndData[mom][individual.Lat]
-	//momLon := pop.IndData[mom][individual.Lon]
-	//r := rand.Float64() // Random value between 0 and 1
-	//childLat := dadLat
-	//childLon := dadLon
-	// Calculate child's position using linear interpolation
-	//childLat := int(float64(momLat) + r*float64(dadLat-momLat))
-	//childLon := int(float64(momLon) + r*float64(dadLon-momLon))
+	childLat, childLon := utils.Wander(model, pop.IndData[dad][individual.Lat], pop.IndData[dad][individual.Lon])
+
 	pop.IndData[child] = individual.MakeIndData()
 
 	pop.IndData[child][individual.Dad] = dad
@@ -172,6 +165,37 @@ func createChild(model *types.Model, pop *types.Pop, dad, mom, child int) {
 	pop.IndData[child][individual.Lat] = childLat
 	pop.IndData[child][individual.Lon] = childLon
 	pop.IndData[child][individual.NumCentromeres] = 0 //TODO guessing
+
+	// Track lines of descent from the seed individual(s)
+	pop.IndData[child][individual.YGens] = -1
+	if pop.IndData[dad][individual.YGens] >= 0 && pop.IndData[child][individual.Sex] == 0 {
+		pop.IndData[child][individual.YGens] = pop.IndData[dad][individual.YGens] + 1
+	}
+
+	pop.IndData[child][individual.MtGens] = -1
+	if pop.IndData[mom][individual.MtGens] >= 0 {
+		pop.IndData[child][individual.MtGens] = pop.IndData[mom][individual.MtGens] + 1
+	}
+
+	pop.IndData[child][individual.MinGenealoGens] = -1
+	minGenealo := pop.IndData[dad][individual.MinGenealoGens]
+	if pop.IndData[mom][individual.MinGenealoGens] < minGenealo && pop.IndData[mom][individual.MinGenealoGens] >= 0 {
+		minGenealo = pop.IndData[mom][individual.MinGenealoGens]
+	} else if minGenealo < 0 && pop.IndData[mom][individual.MinGenealoGens] >= 0 {
+		minGenealo = pop.IndData[mom][individual.MinGenealoGens]
+	}
+	if minGenealo >= 0 {
+		pop.IndData[child][individual.MinGenealoGens] = minGenealo + 1
+	}
+
+	pop.IndData[child][individual.MaxGenealoGens] = -1
+	maxGenealo := pop.IndData[dad][individual.MaxGenealoGens]
+	if pop.IndData[mom][individual.MaxGenealoGens] > maxGenealo {
+		maxGenealo = pop.IndData[mom][individual.MaxGenealoGens]
+	}
+	if maxGenealo >= 0 {
+		pop.IndData[child][individual.MaxGenealoGens] = maxGenealo + 1
+	}
 
 	pop.IndData[mom][individual.LastBirthYear] = model.FreeParameters["year"]
 	if numBirths := pop.IndData[mom][individual.NumBirths]; numBirths == individual.EmptyField {
@@ -352,64 +376,4 @@ func countSetBitsSingleVar(n uint64) int {
 		n >>= 1
 	}
 	return count
-}
-
-// placeChildWithSpread places a child at a random location around the father
-// with a specified spread distance, ensuring the location is on land
-func placeChildWithSpread(model *types.Model, pop *types.Pop, dad, child int) (int, int) {
-	spread := 100
-	// Get the father's location
-	dadLat := pop.IndData[dad][individual.Lat]
-	dadLon := pop.IndData[dad][individual.Lon]
-
-	// Generate a random direction by picking a random angle
-	angle := rand.Float64() * 2 * math.Pi // Random angle in radians (0 to 2π)
-
-	// Calculate offset using trigonometry
-	// sin and cos give us a point on the unit circle, multiply by spread to get desired distance
-	latOffset := int(math.Sin(angle) * float64(spread))
-	lonOffset := int(math.Cos(angle) * float64(spread))
-
-	// Calculate child's position with offset from father's location
-	childLat := dadLat + latOffset
-	childLon := dadLon + lonOffset
-
-	// Check if the new location is land
-	mapLat := float64(childLat) / 10.0
-	mapLon := float64(childLon) / 10.0
-
-	// If location is not land, try a few more times
-	maxAttempts := 5
-	attempts := 0
-	isValidLocation := false
-
-	for attempts < maxAttempts && !isValidLocation {
-		// Check if location is land
-		if innerMap, exists := model.Map[mapLat]; exists {
-			if terrain, exists := innerMap[mapLon]; exists && terrain == 1 {
-				isValidLocation = true
-				break
-			}
-		}
-
-		// Try a new direction
-		angle = rand.Float64() * 2 * math.Pi
-		latOffset = int(math.Sin(angle) * float64(spread))
-		lonOffset = int(math.Cos(angle) * float64(spread))
-
-		childLat = dadLat + latOffset
-		childLon = dadLon + lonOffset
-		mapLat = float64(childLat) / 10.0
-		mapLon = float64(childLon) / 10.0
-
-		attempts++
-	}
-
-	// If we couldn't find a valid land location, just use the father's location
-	if !isValidLocation {
-		childLat = dadLat
-		childLon = dadLon
-	}
-
-	return childLat, childLon
 }

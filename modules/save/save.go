@@ -35,13 +35,6 @@ func SaveHeaders(modelName string) error {
 
 // Save writes the current simulation state to a CSV file
 func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsContainer) {
-	fmt.Printf("   Year: %d  n: %d  b: %d  m: %d c: %d\n",
-		model.FreeParameters["year"],
-		model.FreeParameters["last_pop_size"],
-		pop.Tracking["births"],
-		pop.Tracking["marriages"],
-		pop.Tracking["cull_deaths"],
-	)
 
 	filename := fmt.Sprintf("results/%s_results.csv", model.ModelName)
 	numInds := len(pop.IndData)
@@ -62,17 +55,17 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 
 	if model.Parameters["track_map"] == 1 {
 
-		allPoints := make(map[[2]float64]color.RGBA)
-		freqMap := make(map[float64]map[float64]int)
-		changePoints := make(map[[2]float64]color.RGBA)
+		allPoints := make(map[[2]int]color.RGBA)
+		freqMap := make(map[int]map[int]int)
+		changePoints := make(map[[2]int]color.RGBA)
 		progressPercent := float64(model.FreeParameters["year"]) / float64(model.Parameters["end_year"])
 		model.FreeParameters["progressPercent"] = int(progressPercent * 100)
 
 		// Count individuals with genetic markers at each location
 		for _, indData := range pop.IndData {
-			lat := float64(indData[individual.Lat]) / 10.0
-			lon := float64(indData[individual.Lon]) / 10.0
-			allPoints[[2]float64{lat, lon}] = color.RGBA{255, 255, 255, 255}
+			lat := indData[individual.Lat]
+			lon := indData[individual.Lon]
+			allPoints[[2]int{lat, lon}] = color.RGBA{255, 255, 255, 255}
 
 			// Check if this individual has any of the genetic markers we're tracking
 			hasMarker := indData[individual.YGens] > 0 ||
@@ -84,7 +77,7 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 			if hasMarker {
 				// Initialize the inner map if needed
 				if _, exists := freqMap[lat]; !exists {
-					freqMap[lat] = make(map[float64]int)
+					freqMap[lat] = make(map[int]int)
 				}
 				// Increment the counter
 				freqMap[lat][lon]++
@@ -95,21 +88,10 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 		}
 
 		// Add your specific data points based on population data
-		//totalPopSize := model.FreeParameters["last_pop_size"]
 		for lat, innerMap := range freqMap {
 			for lon, count := range innerMap {
 				if count > 0 {
-					changePoints[[2]float64{lat, lon}] = color.RGBA{255, 0, 0, 255}
-					// Calculate color based on frequency
-					//ratio := float64(count) / float64(totalPopSize)
-					//					minRedness := 50
-					//intensity := 255 - int(ratio*255)
-					//colorValue := (0xFF << 16) | (intensity << 8) | intensity
-					//r := uint8((colorValue >> 16) & 0xFF)
-					//g := uint8((colorValue >> 8) & 0xFF)
-					//b := uint8(colorValue & 0xFF)
-					// Add this point to our changed points
-					//changePoints[[2]float64{lat, lon}] = color.RGBA{r, g, b, 255}
+					changePoints[[2]int{lat, lon}] = color.RGBA{255, 0, 0, 255}
 				}
 			}
 		}
@@ -121,8 +103,8 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 		}
 
 		// Count individuals with genealogical markers at each location
-		freqMap = make(map[float64]map[float64]int)
-		changePoints = make(map[[2]float64]color.RGBA)
+		freqMap = make(map[int]map[int]int)
+		changePoints = make(map[[2]int]color.RGBA)
 		for coords, color := range allPoints {
 			changePoints[coords] = color
 		}
@@ -135,12 +117,12 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 				indData[individual.MaxGenealoGens] > 0
 
 			if hasMarker {
-				lat := float64(indData[individual.Lat] / 10.0)
-				lon := float64(indData[individual.Lon] / 10.0)
+				lat := indData[individual.Lat]
+				lon := indData[individual.Lon]
 
 				// Initialize the inner map if needed
 				if _, exists := freqMap[lat]; !exists {
-					freqMap[lat] = make(map[float64]int)
+					freqMap[lat] = make(map[int]int)
 				}
 
 				// Increment the counter
@@ -149,27 +131,13 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 		}
 
 		// Prepare data points for genealogical animation
-		//totalPopSize = model.FreeParameters["last_pop_size"]
 		for lat, innerMap := range freqMap {
 			for lon, count := range innerMap {
 				if count > 0 {
-					changePoints[[2]float64{lat, lon}] = color.RGBA{255, 0, 0, 255}
-					// Calculate color based on frequency
-					//ratio := float64(count) / float64(totalPopSize)
-					//intensity := 255 - int(ratio*255)
-					//colorValue := (0xFF << 16) | (intensity << 8) | intensity
-					//r := uint8((colorValue >> 16) & 0xFF)
-					//g := uint8((colorValue >> 8) & 0xFF)
-					//b := uint8(colorValue & 0xFF)
-
-					// Add this point to our changed points
-					//changePoints[[2]float64{lat, lon}] = color.RGBA{r, g, b, 255}
+					changePoints[[2]int{lat, lon}] = color.RGBA{255, 0, 0, 255}
 				}
 			}
 		}
-		// For testing purposes, set a bright red pixel at (year, year)
-		//		xy := float64(model.FreeParameters["year"]) / 100.0
-		//		changePoints[[2]float64{xy, xy}] = color.RGBA{255, 0, 0, 255}
 
 		err = animations.AddFrame(model, animManager, "genealogical", changePoints)
 		if err != nil {
@@ -206,6 +174,16 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 		fmt.Sprintf("%.2f", totHomMaj),
 	}
 	writer.Write(data)
+
+	fmt.Printf("   Year: %d  n: %d  b: %d  m: %d c: %d g: %d g: %d\n",
+		model.FreeParameters["year"],
+		model.FreeParameters["last_pop_size"],
+		pop.Tracking["births"],
+		pop.Tracking["marriages"],
+		pop.Tracking["cull_deaths"],
+		genealoDescends,
+		geneticDescends,
+	)
 
 	pop.Tracking["births"] = 0
 	pop.Tracking["deaths"] = 0

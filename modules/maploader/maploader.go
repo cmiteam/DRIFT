@@ -22,13 +22,13 @@ const (
 )
 
 // Load the map from a CSV file and populate the model's Map map.
-func LoadMap(model *types.Model, mapRoot string) (error, float64, float64, float64, float64) {
-	minLat, minLon := 1000000.0, 1000000.0
-	maxLat, maxLon := -1000000.0, -1000000.0
+func LoadMap(model *types.Model, mapRoot string) (error, int, int, int, int) {
+	minLat, minLon := 1000000, 1000000
+	maxLat, maxLon := 0, 0
 
 	// Initialize the map if it's nil
 	if model.Map == nil {
-		model.Map = make(map[float64]map[float64]int)
+		model.Map = make(map[int]map[int]int)
 	}
 
 	// Derive the filename from the model and load the CSV file
@@ -44,12 +44,12 @@ func LoadMap(model *types.Model, mapRoot string) (error, float64, float64, float
 	}
 
 	for _, record := range records[1:] {
-		lat, err := strconv.ParseFloat(record[0], 64)
+		lat, err := strconv.Atoi(record[0])
 		if err != nil {
 			return err, minLat, minLon, maxLat, maxLon
 		}
 
-		lon, err := strconv.ParseFloat(record[1], 64)
+		lon, err := strconv.Atoi(record[1])
 		if err != nil {
 			return err, minLat, minLon, maxLat, maxLon
 		}
@@ -75,10 +75,15 @@ func LoadMap(model *types.Model, mapRoot string) (error, float64, float64, float
 
 		// Store coordinates in model.Map
 		if model.Map[lat] == nil {
-			model.Map[lat] = make(map[float64]int)
+			model.Map[lat] = make(map[int]int)
 		}
 		model.Map[lat][lon] = int(terrain)
 	}
+
+	fmt.Println("=== MAP VISUALIZATION DIAGNOSTICS ===")
+	fmt.Printf("Map dimensions: %d x %d\n", maxLon-minLon+1, maxLat-minLat+1)
+	fmt.Printf("Map boundaries: minLat=%d, minLon=%d, maxLat=%d, maxLon=%d\n",
+		minLat, minLon, maxLat, maxLon)
 
 	return err, minLat, minLon, maxLat, maxLon
 }

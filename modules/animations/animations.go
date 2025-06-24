@@ -54,7 +54,7 @@ func CreateAnimation(container *types.AnimationsContainer, name string) {
 
 // CreateBaseMap transforms terrain data into a 2D color array
 
-func CreateBaseMap(model *types.Model, terrainColors map[int]color.RGBA, mapRoot string) (*image.RGBA, float64, float64, float64, float64) {
+func CreateBaseMap(model *types.Model, terrainColors map[int]color.RGBA, mapRoot string) (*image.RGBA, int, int, int, int) {
 	err, minLat, minLon, maxLat, maxLon := maploader.LoadMap(model, mapRoot)
 	if err != nil {
 		return nil, 0, 0, 0, 0
@@ -69,8 +69,8 @@ func CreateBaseMap(model *types.Model, terrainColors map[int]color.RGBA, mapRoot
 		}
 	}
 
-	imgWidth := int((maxLon - minLon + 1) * float64(pixelSize))
-	imgHeight := int((maxLat-minLat+1)*float64(pixelSize)) + 10 // +10 for progress bar
+	imgWidth := (maxLon - minLon + 1) * pixelSize
+	imgHeight := (maxLat-minLat+1)*pixelSize + 10 // +10 for progress bar
 
 	// Create the base map image with scaled dimensions
 	bounds := image.Rect(0, 0, imgWidth, imgHeight)
@@ -110,7 +110,7 @@ func CreateBaseMap(model *types.Model, terrainColors map[int]color.RGBA, mapRoot
 }
 
 // AddFrame adds a new frame to an animation
-func AddFrame(model *types.Model, container *types.AnimationsContainer, animName string, updates map[[2]float64]color.RGBA) error {
+func AddFrame(model *types.Model, container *types.AnimationsContainer, animName string, updates map[[2]int]color.RGBA) error {
 
 	// Find the animation
 	anim, exists := container.Collection[animName]
@@ -233,26 +233,27 @@ func SaveAllGIFs(container *types.AnimationsContainer, results string) error {
 }
 
 // Transform from geographic coordinates to image pixel coordinates
-func TransformCoordinates(lat, lon float64, minLat, minLon, maxLat, maxLon float64, pixelSize int) (x, y int) {
+func TransformCoordinates(lat, lon, minLat, minLon, maxLat, maxLon, pixelSize int) (x, y int) {
 
-	//	fmt.Printf("Input values: lat=%f, lon=%f, minLat=%f, minLon=%f, maxLat=%f, maxLon=%f, pixelSize=%d\n",
-	//		lat, lon, minLat, minLon, maxLat, maxLon, pixelSize)
+	latRange := maxLat - minLat
+	if latRange <= 0 {
+		latRange = 1
+	}
+	lonRange := maxLon - minLon
+	if lonRange <= 0 {
+		lonRange = 1
+	}
 	// Calculate normalized position within bounds (0.0 to 1.0)
-	normalizedX := (lon - minLon) / (maxLon - minLon)
-	normalizedY := (lat - minLat) / (maxLat - minLat) // Note: Not inverting Y yet
+	normalizedX := float64(lon-minLon) / float64(lonRange)
+	normalizedY := float64(lat-minLat) / float64(latRange)
 
 	// Calculate image dimensions
-	imgWidth := int((maxLon - minLon) * float64(pixelSize))
-	imgHeight := int((maxLat - minLat) * float64(pixelSize))
+	imgWidth := lonRange * pixelSize
+	imgHeight := latRange * pixelSize
 
 	// Convert to pixel coordinates and scale by pixelSize
-	// For Y, we invert to match image coordinates (0,0 at top-left)
-	//	x = int(math.Floor(normalizedX * float64(imgWidth)))
-	//	y = int(math.Floor((1.0 - normalizedY) * float64(imgHeight)))
-	rawX := normalizedX * float64(imgWidth)
-	rawY := (1.0 - normalizedY) * float64(imgHeight)
-	x = int(math.Round(rawX))
-	y = int(math.Round(rawY))
+	x = int(math.Round(normalizedX * float64(imgWidth)))
+	y = int(math.Round((1.0 - normalizedY) * float64(imgHeight)))
 	return x, y
 }
 

@@ -1,5 +1,7 @@
 // go run drift3.go
 
+// Drift
+
 package main
 
 import (
@@ -11,6 +13,7 @@ import (
 	"drift/modules/marriage"
 	"drift/modules/save"
 	"drift/modules/seedpopulation"
+	"drift/types"
 	"flag"
 	"fmt"
 	"log"
@@ -76,11 +79,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize the animations
-	animContainer, err := animations.Initialize(model, *mapRootArg)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error initializing animations: %v\n", err)
-		os.Exit(1)
+	// Initialize the animations only if tracking map is enabled
+	var animContainer *types.AnimationsContainer
+	if model.Parameters["track_map"] == 1 {
+		animContainer, err = animations.Initialize(model, *mapRootArg)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error initializing animations: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	// Start CPU profiling

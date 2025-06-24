@@ -36,18 +36,18 @@ func InitializePop(model *types.Model) *types.Pop {
 	rand.Seed(time.Now().UnixNano())
 
 	// Find all land squares in the map
-	var landCoordinates [][2]float64
+	var landCoordinates [][2]int
 	for lat := range model.Map {
 		for lon := range model.Map[lat] {
 			// Check if this is land (terrain type 1)
 			if model.Map[lat][lon] == 1 {
-				landCoordinates = append(landCoordinates, [2]float64{lat, lon})
+				landCoordinates = append(landCoordinates, [2]int{lat, lon})
 				//print("appending land coordinate: ", lat, ",", lon, "\n")
 			}
 		}
 	}
 	if len(landCoordinates) == 0 {
-		landCoordinates = append(landCoordinates, [2]float64{0, 0})
+		landCoordinates = append(landCoordinates, [2]int{0, 0})
 	}
 
 	// Set up the individuals
@@ -60,8 +60,8 @@ func InitializePop(model *types.Model) *types.Pop {
 		randomLoc := landCoordinates[randomIndex]
 
 		// Convert to integer coordinates with 10x multiplier for precision
-		lat := int(randomLoc[0] * 10.0)
-		lon := int(randomLoc[1] * 10.0)
+		lat := randomLoc[0]
+		lon := randomLoc[1]
 
 		// assign data to each individual
 		age := 0
@@ -86,6 +86,10 @@ func InitializePop(model *types.Model) *types.Pop {
 		pop.IndData[i][individual.Lat] = lat
 		pop.IndData[i][individual.Lon] = lon
 		pop.IndData[i][individual.NumCentromeres] = 0 //TODO guessing
+		pop.IndData[i][individual.YGens] = -1
+		pop.IndData[i][individual.MtGens] = -1
+		pop.IndData[i][individual.MinGenealoGens] = -1
+		pop.IndData[i][individual.MaxGenealoGens] = -1
 
 		//print("Individual", i, " position: ", lat, ",", lon, "\n")
 		model.FreeParameters["indID"]++ // each ind gets a unique ID

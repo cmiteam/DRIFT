@@ -1,0 +1,17 @@
+Todo:
+1. All-or-nothing issues
+1a. Allele counter: bad columns in results csv, genome size = # alleles
+1b. Number of centromeres is also setting to 23 (max)
+1c. Percent of the seed genome still surviving = 100.9% 
+2. Genetic and genealogical descendants should not always be the same, it looks like genealogical is not being counted correctly (too small)
+4. Fix speed of animations: 1-second frames?
+5. Maps don't overwrite
+6. Make seed individual a big red pixel so he/she can be seen
+7. Fix non-showing red ancestry dots (in both maps)
+8. Gauge the size of wander units (in pixels vs map dimensions)
+9. Assess the effects of mating styles 
+
+
+
+Later:
+1. Tribal migration
