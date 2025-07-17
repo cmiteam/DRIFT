@@ -58,10 +58,10 @@ func InitializePop(model *types.Model) *types.Pop {
 		// Choose a random land location
 		randomIndex := rand.Intn(len(landCoordinates))
 		randomLoc := landCoordinates[randomIndex]
-
-		// Convert to integer coordinates with 10x multiplier for precision
 		lat := randomLoc[0]
 		lon := randomLoc[1]
+		//lat := 25
+		//lon := 25
 
 		// assign data to each individual
 		age := 0
@@ -74,7 +74,6 @@ func InitializePop(model *types.Model) *types.Pop {
 		}
 
 		pop.IndData[i] = individual.MakeIndData()
-
 		pop.IndData[i][individual.BirthYear] = -age                             // the person was born before the model began to be run
 		pop.IndData[i][individual.Lifespan] = int(model.Parameters["lifespan"]) // initial theoretical lifespans
 		pop.IndData[i][individual.Sex] = rand.Intn(2)                           // 0 = male, 1 = female

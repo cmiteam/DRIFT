@@ -122,6 +122,13 @@ func main() {
 				save.Save(model, pop, animContainer)
 				break
 			}
+			if model.Parameters["track_map"] == 1 && year%int(model.Parameters["animation_save_interval"]) == 0 {
+				print(year)
+				err := animations.AddAnimationFrames(model, pop, animContainer)
+				if err != nil {
+					log.Printf("Error adding animation frames: %v", err)
+				}
+			}
 			if year%int(model.Parameters["save_interval"]) == 0 {
 				save.Save(model, pop, animContainer)
 			}

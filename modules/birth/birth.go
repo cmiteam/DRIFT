@@ -156,7 +156,6 @@ func createChild(model *types.Model, pop *types.Pop, dad, mom, child int) {
 	childLat, childLon := utils.Wander(model, pop.IndData[dad][individual.Lat], pop.IndData[dad][individual.Lon])
 
 	pop.IndData[child] = individual.MakeIndData()
-
 	pop.IndData[child][individual.Dad] = dad
 	pop.IndData[child][individual.Mom] = mom
 	pop.IndData[child][individual.Sex] = rand.Intn(2)

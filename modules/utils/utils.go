@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"drift/modules/maploader"
 	"drift/types"
 	"math/rand"
 )
@@ -22,14 +23,10 @@ func Wander(model *types.Model, lat, lon int) (int, int) {
 	newLat := lat + offsetLat
 	newLon := lon + offsetLon
 
-	// Check if the new position is on land
-	if innerMap, exists := model.Map[newLat]; exists {
-		if terrain, exists := innerMap[newLon]; exists && terrain == 1 {
-			// Valid land location, return new coordinates
-			return newLat, newLon
-		}
+	if maploader.IsLand(model, newLat, newLon) {
+		// Valid land location, return new coordinates
+		return newLat, newLon
 	}
-
 	// If not land or not valid, return original coordinates
 	return lat, lon
 }

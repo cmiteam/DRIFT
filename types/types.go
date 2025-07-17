@@ -11,7 +11,7 @@ type Model struct {
 	ChromosomeArms map[int]map[int][]int
 	DeathRisk      map[int]float64
 	CumulativeProb map[int]float64
-	Map            map[int]map[int]int
+	Map            [][]int
 	ModelName      string
 	MapName        string
 	MatingStyle    string
@@ -41,12 +41,7 @@ type Mutation struct {
 type AnimationsContainer struct {
 	BaseMap    *image.RGBA
 	Collection map[string]*AnimationWriter
-	MinLat     int
-	MaxLat     int
-	MinLon     int
-	MaxLon     int
-	MapWidth   int
-	MapHeight  int
+	TileSize   int // Calculated once during initialization
 }
 
 // AnimationWriter tracks and creates a single animation

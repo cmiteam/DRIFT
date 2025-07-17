@@ -25,26 +25,20 @@ func Marriage(model *types.Model, pop *types.Pop) {
 		}
 	}
 
-	// Get mating style from model parameters
-	matingStyle := "age_distance" // Default
-	if style, ok := model.Parameters["mating_style"]; ok {
-		if style == 0 {
-			matingStyle = "random"
-		} else if style == 1 {
-			matingStyle = "distance"
-		} else if style == 2 {
-			matingStyle = "age_distance"
-		}
+	// Get mating style from parameters (default to 0 = random)
+	matingStyle := 0
+	if style, exists := model.Parameters["mating_style"]; exists {
+		matingStyle = int(style)
 	}
-
-	// Apply the selected mating algorithm
 	switch matingStyle {
-	case "random":
+	case 0:
 		randomMating(model, pop, availableMen, availableWomen)
-	case "distance":
+	case 1:
 		distanceMating(model, pop, availableMen, availableWomen)
-	case "age_distance":
-		ageDistanceMatingOptimized(model, pop, availableMen, availableWomen)
+	case 2:
+		ageDistanceMating(model, pop, availableMen, availableWomen)
+	default:
+		randomMating(model, pop, availableMen, availableWomen) // fallback
 	}
 }
 
@@ -77,47 +71,82 @@ func randomMating(model *types.Model, pop *types.Pop, availableMen, availableWom
 // distanceMating pairs individuals based on proximity
 func distanceMating(model *types.Model, pop *types.Pop, availableMen, availableWomen []int) {
 	maxDistance := int(model.Parameters["max_mating_distance"])
-	matched := make(map[int]bool) // Track who's already matched
 
-	// Create a spatial index for faster proximity lookups
-	womenLocations := createSpatialIndex(pop, availableWomen)
+	// Create matches based on distance constraints
+	var matches [][2]int // Stores pairs of [womanID, manID]
 
-	// For each man, find women within distance threshold
-	for _, manID := range availableMen {
-		if matched[manID] {
-			continue
-		}
+	// For each woman, find eligible men within distance threshold
+	for _, womanID := range availableWomen {
+		womanLat := pop.IndData[womanID][individual.Lat]
+		womanLon := pop.IndData[womanID][individual.Lon]
 
-		manLat := pop.IndData[manID][individual.Lat]
-		manLon := pop.IndData[manID][individual.Lon]
+		// Debug: Count potential matches for this woman
+		potentialMatches := 0
 
-		// Find eligible women within range
-		nearbyWomen := getNearbyWomen(womenLocations, manLat, manLon, maxDistance)
+		// For each man, check if within range using Manhattan distance
+		for _, manID := range availableMen {
+			manLat := pop.IndData[manID][individual.Lat]
+			manLon := pop.IndData[manID][individual.Lon]
 
-		// Filter out already matched women
-		var eligibleWomen []int
-		for _, womanID := range nearbyWomen {
-			if !matched[womanID] {
-				eligibleWomen = append(eligibleWomen, womanID)
+			// Calculate Manhattan distance
+			manhattanDist := abs(womanLat-manLat) + abs(womanLon-manLon)
+
+			if manhattanDist <= maxDistance {
+				// Within range, add as potential match
+				matches = append(matches, [2]int{womanID, manID})
+				potentialMatches++
 			}
 		}
 
-		if len(eligibleWomen) > 0 {
-			// Select a random woman from those nearby
-			womanID := eligibleWomen[rand.Intn(len(eligibleWomen))]
+		if potentialMatches == 0 && len(availableMen) > 0 {
+			closestDist := math.MaxInt32
+			//closestManID := -1
 
-			// Create marriage
-			pop.IndData[manID][individual.MarriageState] = womanID
-			pop.IndData[womanID][individual.MarriageState] = manID
-			matched[manID] = true
-			matched[womanID] = true
-			pop.Tracking["marriages"]++
+			for _, manID := range availableMen {
+				manLat := pop.IndData[manID][individual.Lat]
+				manLon := pop.IndData[manID][individual.Lon]
+
+				latDiff := abs(womanLat - manLat)
+				lonDiff := abs(womanLon - manLon)
+				dist := latDiff + lonDiff
+
+				if dist < closestDist {
+					closestDist = dist
+					//closestManID = manID
+				}
+			}
 		}
 	}
+
+	// Process matches (simple greedy algorithm for now)
+	matched := make(map[int]bool) // Track who's already matched
+
+	for _, match := range matches {
+		womanID, manID := match[0], match[1]
+
+		// If neither person is matched yet, create the marriage
+		if !matched[womanID] && !matched[manID] {
+			pop.IndData[womanID][individual.MarriageState] = manID
+			pop.IndData[manID][individual.MarriageState] = womanID
+			pop.Tracking["marriages"]++
+
+			matched[womanID] = true
+			matched[manID] = true
+		}
+	}
+
+	// fmt.Printf("Created %d marriages based on distance constraints\n",
+}
+
+func abs(x int) int {
+	if x < 0 {
+		return -x
+	}
+	return x
 }
 
 // ageDistanceMatingOptimized pairs individuals based on distance and age preference with optimizations
-func ageDistanceMatingOptimized(model *types.Model, pop *types.Pop, availableMen, availableWomen []int) {
+func ageDistanceMating(model *types.Model, pop *types.Pop, availableMen, availableWomen []int) {
 	maxDistance := int(model.Parameters["max_mating_distance"])
 	currentYear := model.FreeParameters["year"]
 

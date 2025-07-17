@@ -4,7 +4,7 @@ num_runs,Num Runs,Text,int,1,Main
 start_pop_size,Start Pop Size,Text,int,1000,Main
 max_pop_size,Max Pop Size,Text,int,1000,Main
 max_growth_rate,Max Growth Rate,Text,float,10,Main
-end_year,End Year,Text,int,1000,Main
+end_year,End Year,Text,int,100,Main
 lifespan,Init Lifespan,Text,int,850,Main
 min_lifespan,Min Lifespan,Text,int,85,Main
 lifespan_drop,Lifespan Drop,Text,float,0.85,Main
@@ -12,11 +12,12 @@ maturity,Maturity,Text,int,20,Main
 spacing,Spacing,Text,int,2,Main
 birth_prob,Birth Probability,Text,int,2,Main
 residence_style,Residence Style,Text,int,1,Main
-wander,Wander,Text,int,10,Main
+wander,Wander,Text,int,1,Main
 save_interval,Save Interval,Text,int,100,Main
+animation_save_interval,Animation Save Interval,Text,int,10,Main
 menopause,Menopause,Text,float,0.5,Main
 mating_style,Mating Style,Dropdown,string,2,Main
-max_mating_distance,Max Mating Distance,Text,int,100,Main
+max_mating_distance,Max Mating Distance,Text,int,1,Main
 bottleneck_start,Bottleneck Start,Text,int,-1,Main
 bottleneck_end,Bottleneck End,Text,int,10000,Main
 bottleneck_size,Bottleneck Size,Text,int,10000,Main
@@ -24,7 +25,7 @@ track_DNA,Track DNA,Check,bool,1,Main
 track_mutations,Track Mutations,Check,bool,0,Main
 track_dead,Track Dead,Check,bool,0,Main
 track_map,Track on Map,Check,bool,1,Main
-map_name,Map Name,Text,string,earth_0.5pos.deg,Main
+map_name,Map Name,Text,string,partition,Main
 frame_rate,Frame Rate,Text,float,1,Main
 pixel_size,Pixel Size,Text,int,10,Main
 point_size,Pixel Size,Text,int,10,Main

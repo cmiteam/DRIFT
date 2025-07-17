@@ -18,7 +18,7 @@ func InitializeModel(configRoot string) (*types.Model, error) {
 		DeathRisk:      make(map[int]float64),
 		CumulativeProb: make(map[int]float64),
 		FreeParameters: make(map[string]int),
-		Map:            make(map[int]map[int]int),
+		Map:            nil, // this will be set later, once the dimensions are known
 	}
 
 	// Attempt to load each config file. Failure will be fatal.

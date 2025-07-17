@@ -1,7 +1,6 @@
 package save
 
 import (
-	"drift/modules/animations"
 	"drift/modules/individual"
 	"drift/types"
 	"encoding/csv"
@@ -51,98 +50,6 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 
 	if model.Parameters["track_mutations"] == 1 {
 		numMutations, popFitness = calculateFitnessStats(model, pop)
-	}
-
-	if model.Parameters["track_map"] == 1 {
-
-		allPoints := make(map[[2]int]color.RGBA)
-		freqMap := make(map[int]map[int]int)
-		changePoints := make(map[[2]int]color.RGBA)
-		progressPercent := float64(model.FreeParameters["year"]) / float64(model.Parameters["end_year"])
-		model.FreeParameters["progressPercent"] = int(progressPercent * 100)
-
-		// Count individuals with genetic markers at each location
-		for _, indData := range pop.IndData {
-			lat := indData[individual.Lat]
-			lon := indData[individual.Lon]
-			allPoints[[2]int{lat, lon}] = color.RGBA{255, 255, 255, 255}
-
-			// Check if this individual has any of the genetic markers we're tracking
-			hasMarker := indData[individual.YGens] > 0 ||
-				indData[individual.MtGens] > 0 ||
-				indData[individual.AlleleCount] > 0 ||
-				indData[individual.NumCentromeres] > 0 ||
-				indData[individual.NumBlocks] > 0
-
-			if hasMarker {
-				// Initialize the inner map if needed
-				if _, exists := freqMap[lat]; !exists {
-					freqMap[lat] = make(map[int]int)
-				}
-				// Increment the counter
-				freqMap[lat][lon]++
-			}
-		}
-		for coords, color := range allPoints {
-			changePoints[coords] = color
-		}
-
-		// Add your specific data points based on population data
-		for lat, innerMap := range freqMap {
-			for lon, count := range innerMap {
-				if count > 0 {
-					changePoints[[2]int{lat, lon}] = color.RGBA{255, 0, 0, 255}
-				}
-			}
-		}
-
-		err := animations.AddFrame(model, animManager, "genetic", changePoints)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error adding frame to Genetic animation: %v\n", err)
-			os.Exit(1)
-		}
-
-		// Count individuals with genealogical markers at each location
-		freqMap = make(map[int]map[int]int)
-		changePoints = make(map[[2]int]color.RGBA)
-		for coords, color := range allPoints {
-			changePoints[coords] = color
-		}
-
-		for _, indData := range pop.IndData {
-			// Check if this individual has any of the genealogical markers we're tracking
-			hasMarker := indData[individual.YGens] > 0 ||
-				indData[individual.MtGens] > 0 ||
-				indData[individual.MinGenealoGens] > 0 ||
-				indData[individual.MaxGenealoGens] > 0
-
-			if hasMarker {
-				lat := indData[individual.Lat]
-				lon := indData[individual.Lon]
-
-				// Initialize the inner map if needed
-				if _, exists := freqMap[lat]; !exists {
-					freqMap[lat] = make(map[int]int)
-				}
-
-				// Increment the counter
-				freqMap[lat][lon]++
-			}
-		}
-
-		// Prepare data points for genealogical animation
-		for lat, innerMap := range freqMap {
-			for lon, count := range innerMap {
-				if count > 0 {
-					changePoints[[2]int{lat, lon}] = color.RGBA{255, 0, 0, 255}
-				}
-			}
-		}
-
-		err = animations.AddFrame(model, animManager, "genealogical", changePoints)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error adding frame to Genetic animation: %v\n", err)
-		}
 	}
 
 	file, _ := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)

@@ -5,6 +5,7 @@ import (
 	"drift/types"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // Terrain types
@@ -21,69 +22,155 @@ const (
 	InvalidTerrainHigh
 )
 
-// Load the map from a CSV file and populate the model's Map map.
-func LoadMap(model *types.Model, mapRoot string) (error, int, int, int, int) {
-	minLat, minLon := 1000000, 1000000
-	maxLat, maxLon := 0, 0
-
-	// Initialize the map if it's nil
-	if model.Map == nil {
-		model.Map = make(map[int]map[int]int)
-	}
-
+// LoadMap loads the map from a CSV file in grid format where each row = latitude, each column = longitude
+// Expected format:
+// 1,1,1,1,1,1,1
+// 1,1,1,1,5,1,1
+// 1,1,1,1,1,1,1
+func LoadMap(model *types.Model, mapRoot string) error {
 	// Derive the filename from the model and load the CSV file
 	filename := fmt.Sprintf("%s.csv", model.MapName)
 	csvLoader := csvutils.CSVLoader{
 		FileName:   filename,
 		Dir:        mapRoot,
-		MinRecords: 2,
+		MinRecords: 1,
 	}
 	records, err := csvLoader.LoadCSV()
 	if err != nil {
-		return err, minLat, minLon, maxLat, maxLon
+		return err
+	}
+	fmt.Printf("CSV loaded - %d rows, first row: %v\n", len(records), records[0][:min(5, len(records[0]))])
+	// Get dimensions from the CSV data
+	mapHeight := len(records)
+	if mapHeight == 0 {
+		return fmt.Errorf("empty map file")
 	}
 
-	for _, record := range records[1:] {
-		lat, err := strconv.Atoi(record[0])
-		if err != nil {
-			return err, minLat, minLon, maxLat, maxLon
-		}
-
-		lon, err := strconv.Atoi(record[1])
-		if err != nil {
-			return err, minLat, minLon, maxLat, maxLon
-		}
-
-		terrain, err := strconv.ParseInt(record[2], 10, 64)
-		if err != nil {
-			return err, minLat, minLon, maxLat, maxLon
-		}
-
-		// Track min/max values
-		if lat < minLat {
-			minLat = lat
-		}
-		if lat > maxLat {
-			maxLat = lat
-		}
-		if lon < minLon {
-			minLon = lon
-		}
-		if lon > maxLon {
-			maxLon = lon
-		}
-
-		// Store coordinates in model.Map
-		if model.Map[lat] == nil {
-			model.Map[lat] = make(map[int]int)
-		}
-		model.Map[lat][lon] = int(terrain)
+	mapWidth := len(records[0])
+	if mapWidth == 0 {
+		return fmt.Errorf("empty map row")
 	}
 
-	fmt.Println("=== MAP VISUALIZATION DIAGNOSTICS ===")
-	fmt.Printf("Map dimensions: %d x %d\n", maxLon-minLon+1, maxLat-minLat+1)
-	fmt.Printf("Map boundaries: minLat=%d, minLon=%d, maxLat=%d, maxLon=%d\n",
-		minLat, minLon, maxLat, maxLon)
+	// Validate that all rows have the same width
+	for i, record := range records {
+		if len(record) != mapWidth {
+			return fmt.Errorf("inconsistent row width at row %d: expected %d, got %d", i, mapWidth, len(record))
+		}
+	}
 
-	return err, minLat, minLon, maxLat, maxLon
+	// Initialize the map as a 2D slice
+	model.Map = make([][]int, mapHeight)
+	for lat := 0; lat < mapHeight; lat++ {
+		model.Map[lat] = make([]int, mapWidth)
+	}
+
+	// Parse the terrain data
+	for lat, record := range records {
+		for lon, cellStr := range record {
+			cellStr = strings.TrimSpace(cellStr)
+			if lat == 0 && lon == 0 {
+				cellStr = strings.TrimPrefix(cellStr, "\ufeff") // Remove UTF-8 BOM
+			}
+			terrain, err := strconv.Atoi(cellStr)
+			if err != nil {
+				return fmt.Errorf("invalid terrain value '%s' at position (%d,%d): %v", cellStr, lat, lon, err)
+			}
+
+			// Validate terrain type
+			if terrain < int(InvalidTerrainLow) || terrain >= int(InvalidTerrainHigh) {
+				return fmt.Errorf("terrain value %d out of valid range at position (%d,%d)", terrain, lat, lon)
+			}
+
+			model.Map[lat][lon] = terrain
+		}
+	}
+
+	// Count terrain types for statistics
+	terrainCounts := make(map[int]int)
+	landCells := 0
+	for lat := 0; lat < mapHeight; lat++ {
+		for lon := 0; lon < mapWidth; lon++ {
+			terrain := model.Map[lat][lon]
+			terrainCounts[terrain]++
+			if terrain == int(Land) {
+				landCells++
+			}
+		}
+	}
+
+	model.Parameters["map_land_cells"] = float64(landCells)
+	model.Parameters["map_land_fraction"] = float64(landCells) / float64(mapWidth*mapHeight)
+
+	fmt.Println("=== MAP LOADED (Grid Format) ===")
+	fmt.Printf("Map dimensions: %d x %d cells\n", mapWidth, mapHeight)
+	fmt.Printf("Total cells: %d\n", mapWidth*mapHeight)
+	fmt.Printf("Land cells: %d (%.1f%%)\n", landCells, model.Parameters["map_land_fraction"]*100)
+	fmt.Printf("Terrain distribution:\n")
+	for terrain, count := range terrainCounts {
+		percentage := float64(count) / float64(mapWidth*mapHeight) * 100
+		fmt.Printf("  Type %d: %d cells (%.1f%%)\n", terrain, count, percentage)
+	}
+	return nil
+}
+
+// IsValidPosition checks if the given coordinates are within map bounds
+func IsValidPosition(model *types.Model, lat, lon int) bool {
+	if lat < 0 || lon < 0 {
+		return false
+	}
+	if lat >= len(model.Map) {
+		return false
+	}
+	if lon >= len(model.Map[0]) {
+		return false
+	}
+	return true
+}
+
+// GetTerrain returns the terrain type at the given coordinates
+func GetTerrain(model *types.Model, lat, lon int) int {
+	if !IsValidPosition(model, lat, lon) {
+		return int(InvalidTerrainLow)
+	}
+	return model.Map[lat][lon]
+}
+
+// IsLand checks if the given coordinates are on land
+func IsLand(model *types.Model, lat, lon int) bool {
+	return GetTerrain(model, lat, lon) == int(Land)
+}
+
+// FindLandCells returns all land cell coordinates
+func FindLandCells(model *types.Model) [][2]int {
+	var landCells [][2]int
+	for lat := 0; lat < len(model.Map); lat++ {
+		for lon := 0; lon < len(model.Map[lat]); lon++ {
+			if model.Map[lat][lon] == int(Land) {
+				landCells = append(landCells, [2]int{lat, lon})
+			}
+		}
+	}
+	return landCells
+}
+
+// GetPixelCoordinates converts map coordinates to pixel coordinates for image saving
+func GetPixelCoordinates(model *types.Model, mapLat, mapLon int) (int, int) {
+	pixelLat := int(float64(mapLat) * model.Parameters["save_lat_scale"])
+	pixelLon := int(float64(mapLon) * model.Parameters["save_lon_scale"])
+	return pixelLat, pixelLon
+}
+
+// GetMapCoordinates converts pixel coordinates back to map coordinates
+func GetMapCoordinates(model *types.Model, pixelLat, pixelLon int) (int, int) {
+	mapLat := int(float64(pixelLat) / model.Parameters["save_lat_scale"])
+	mapLon := int(float64(pixelLon) / model.Parameters["save_lon_scale"])
+	return mapLat, mapLon
+}
+
+// GetMapDimensions returns the map width and height
+func GetMapDimensions(model *types.Model) (int, int) {
+	if len(model.Map) == 0 {
+		return 0, 0
+	}
+	return len(model.Map[0]), len(model.Map)
 }
