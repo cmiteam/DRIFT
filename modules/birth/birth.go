@@ -6,6 +6,7 @@ import (
 	"drift/modules/utils"
 	"drift/types"
 	"fmt"
+	"math/bits"
 	"math/rand"
 	"strings"
 )
@@ -13,7 +14,12 @@ import (
 func Birth(model *types.Model, pop *types.Pop) {
 
 	// First, find eligible females and roll the dice
+	var currentInds []int
 	for ind := range pop.IndData {
+		currentInds = append(currentInds, ind)
+	}
+
+	for _, ind := range currentInds {
 		// skip males
 		if pop.IndData[ind][individual.Sex] == 0 {
 			continue
@@ -43,6 +49,12 @@ func Birth(model *types.Model, pop *types.Pop) {
 		// Next, put 'em in the oven
 		mom := ind
 		dad := pop.IndData[ind][individual.MarriageState]
+		if _, dadExists := pop.IndData[dad]; !dadExists {
+			fmt.Printf("WARNING: Woman %d claims to be married to non-existent man %d\n", ind, dad)
+			// Clear the invalid marriage state
+			pop.IndData[ind][individual.MarriageState] = -1
+			continue
+		}
 		// TO DO: fitness ALSO affects survivorship each year, work out a way to
 		// use fitness for birth OR survivorship OR both
 
@@ -64,7 +76,6 @@ func Birth(model *types.Model, pop *types.Pop) {
 			// will be used to control meiosis and mutation inheritance. These will
 			// be used for both meiosis and mutation inheritance, so we will set
 			// them up once and use them at will.
-
 			if model.Parameters["track_DNA"] > 0 || model.Parameters["track_mutations"] > 0 {
 				var genomemask0, genomemask1 []uint64
 				var centsmask0, centsmask1 []uint64
@@ -73,7 +84,7 @@ func Birth(model *types.Model, pop *types.Pop) {
 
 				// Add tracked DNA
 				if model.Parameters["track_DNA"] > 0 {
-					// only create a child's chromosomes if there is something to track at least one parent
+					// only create a child's chromosomes if there is something to track in at least one parent
 					if pop.IndData[dad][individual.AlleleCount] > 0 || pop.IndData[mom][individual.AlleleCount] > 0 {
 						pop.Chromosomes[child] = [][]uint64{make([]uint64, (model.FreeParameters["genome_bits"]+63)/64), make([]uint64, (model.FreeParameters["genome_bits"]+63)/64)}
 					}
@@ -149,7 +160,7 @@ func Birth(model *types.Model, pop *types.Pop) {
 func createChild(model *types.Model, pop *types.Pop, dad, mom, child int) {
 
 	// potential lifespan is the average of the parents X the lifespan drop per generation, but it bottoms out at min_lifespan
-	lifespan := int((pop.IndData[dad][individual.Lifespan] + pop.IndData[mom][individual.Lifespan]) / 2 * int(model.Parameters["lifespan_drop"]))
+	lifespan := int(float64(pop.IndData[dad][individual.Lifespan]+pop.IndData[mom][individual.Lifespan]) / 2.0 * model.Parameters["lifespan_drop"])
 	if lifespan < int(model.Parameters["min_lifespan"]) {
 		lifespan = int(model.Parameters["min_lifespan"])
 	}
@@ -360,10 +371,10 @@ func inheritCentromeres(model *types.Model, pop *types.Pop, centsmask0 []uint64,
 	}
 }
 
-func countSetBits(bits []uint64) int {
+func countSetBits(words []uint64) int {
 	count := 0
-	for _, b := range bits {
-		count += countSetBitsSingleVar(b)
+	for _, word := range words {
+		count += bits.OnesCount64(word)
 	}
 	return count
 }

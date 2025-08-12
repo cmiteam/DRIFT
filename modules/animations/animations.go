@@ -93,10 +93,7 @@ func CreateBaseMap(model *types.Model, terrainColors map[int]color.RGBA, mapRoot
 			}
 		}
 	}
-	fmt.Printf("BaseMap bounds: %v\n", baseMap.Bounds())
-	fmt.Printf("Calculated tileSize: %d\n", tileSize)
 	fmt.Printf("Map has %d rows, %d columns\n", len(model.Map), len(model.Map[0]))
-	fmt.Printf("First few terrain values: %v\n", model.Map[0][:min(5, len(model.Map[0]))])
 	return baseMap, tileSize
 }
 

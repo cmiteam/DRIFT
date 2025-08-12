@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"drift/modules/individual"
 	"drift/modules/maploader"
 	"drift/types"
 	"math/rand"
@@ -24,10 +25,8 @@ func Wander(model *types.Model, lat, lon int) (int, int) {
 	newLon := lon + offsetLon
 
 	if maploader.IsLand(model, newLat, newLon) {
-		// Valid land location, return new coordinates
 		return newLat, newLon
 	}
-	// If not land or not valid, return original coordinates
 	return lat, lon
 }
 
@@ -45,4 +44,14 @@ func Min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func CountGenealo(indData *map[int][]int) int {
+	var genealo int
+	for _, ind := range *indData {
+		if ind[individual.MaxGenealoGens] > -1 {
+			genealo++
+		}
+	}
+	return genealo
 }

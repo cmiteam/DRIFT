@@ -32,6 +32,16 @@ func SaveHeaders(modelName string) error {
 	return nil
 }
 
+func CreateReportFile(modelName string) error {
+	filename := fmt.Sprintf("results/%s_report.csv", modelName)
+	file, err := os.OpenFile(filename, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %v", err)
+	}
+	defer file.Close()
+	return nil
+}
+
 // Save writes the current simulation state to a CSV file
 func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsContainer) {
 
@@ -43,13 +53,17 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 
 	if model.Parameters["track_DNA"] == 1 {
 		YDescends, mtDescends, genealoDescends, geneticDescends, numAlleles, numBlocks, numCentromeres = calculateMiscStats(&pop.IndData)
-		numbitsRetained, totHet, totHomMin, totHomMaj = seedCounts(model, pop)
+		numbitsRetained, totHet, avHet, totHomMin, totHomMaj = seedCounts(model, pop)
 		percSeedGenomeRetained = float64(numbitsRetained) / float64(model.FreeParameters["genome_bits"]) * 100
 		avSeedGenomeCoverage = 0
 	}
 
 	if model.Parameters["track_mutations"] == 1 {
 		numMutations, popFitness = calculateFitnessStats(model, pop)
+	}
+
+	if model.Parameters["track_alleles"] == 1 {
+		SaveDriftSummary(model, pop)
 	}
 
 	file, _ := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -77,12 +91,13 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 		fmt.Sprintf("%.1f", percSeedGenomeRetained),
 		fmt.Sprintf("%.1f", avSeedGenomeCoverage),
 		fmt.Sprintf("%.2f", totHet),
+		fmt.Sprintf("%.2f", avHet),
 		fmt.Sprintf("%.2f", totHomMin),
 		fmt.Sprintf("%.2f", totHomMaj),
 	}
 	writer.Write(data)
 
-	fmt.Printf("   Year: %d  n: %d  b: %d  m: %d c: %d g: %d g: %d\n",
+	fmt.Printf("\n   Year: %d  n: %d  b: %d  m: %d c: %d g: %d g: %d",
 		model.FreeParameters["year"],
 		model.FreeParameters["last_pop_size"],
 		pop.Tracking["births"],
@@ -97,6 +112,41 @@ func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsConta
 	pop.Tracking["marriages"] = 0
 	pop.Tracking["random_deaths"] = 0
 	pop.Tracking["cull_deaths"] = 0
+}
+
+// SaveDriftSummary
+func SaveDriftSummary(model *types.Model, pop *types.Pop) {
+	filename := fmt.Sprintf("results/%s_drift_summary.csv", model.ModelName)
+
+	// Create headers if first time
+	if model.FreeParameters["year"] == int(model.Parameters["seed_year"]) {
+		file, _ := os.Create(filename)
+		defer file.Close()
+		writer := csv.NewWriter(file)
+		defer writer.Flush()
+		headers := []string{"run", "year", "num_seg_sites", "avg_het", "alleles_lost", "alleles_fixed", "avg_freq", "freq_variance"}
+		writer.Write(headers)
+	}
+
+	// Calculate summary stats
+	stats := calculateDriftStats(model, pop)
+
+	file, _ := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0644)
+	defer file.Close()
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	data := []string{
+		fmt.Sprintf("%d", model.FreeParameters["run"]),
+		fmt.Sprintf("%d", model.FreeParameters["year"]),
+		fmt.Sprintf("%d", stats.NumSegSites),
+		fmt.Sprintf("%.6f", stats.AvgHet),
+		fmt.Sprintf("%d", stats.AllelesLost),
+		fmt.Sprintf("%d", stats.AllelesFixed),
+		fmt.Sprintf("%.6f", stats.AvgFreq),
+		fmt.Sprintf("%.6f", stats.FreqVariance),
+	}
+	writer.Write(data)
 }
 
 // personDataString formats detailed individual data with state information
@@ -261,10 +311,10 @@ func calculateMiscStats(indData *map[int][]int) (int, int, int, int, int, int, i
 	return Y, mt, genealo, genetic, alleles, blocks, cents
 }
 
-func seedCounts(model *types.Model, pop *types.Pop) (int, int, int, int) {
+func seedCounts(model *types.Model, pop *types.Pop) (int, int, int, int, int) {
 
 	bitCounts := make([]int, model.FreeParameters["genome_bits"])
-	totHet, totHomMin, totHomMaj := 0, 0, 0
+	totHet, avHet, totHomMin, totHomMaj := 0, 0, 0, 0
 	seedGenomeRetained := make([]uint64, (model.FreeParameters["genome_bits"]+63)/64)
 
 	for _, chromosomePairs := range pop.Chromosomes {
@@ -279,13 +329,14 @@ func seedCounts(model *types.Model, pop *types.Pop) (int, int, int, int) {
 				andBits := b0 & b1
 				norBits := ^(b0 | b1)
 				totHet += countSetBitsSingleVar(xorBits)
+				avHet = 1
 				totHomMin += countSetBitsSingleVar(andBits)
 				totHomMaj += countSetBitsSingleVar(norBits)
 			}
 		}
 	}
 	numbitsRetained := countSetBits(seedGenomeRetained)
-	return numbitsRetained, totHet, totHomMin, totHomMaj
+	return numbitsRetained, totHet, avHet, totHomMin, totHomMaj
 }
 
 func calculateFitnessStats(model *types.Model, pop *types.Pop) (numMuts int, totalFitness int) {

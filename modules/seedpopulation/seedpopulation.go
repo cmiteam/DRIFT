@@ -4,12 +4,29 @@ import (
 	"drift/modules/individual"
 	"drift/types"
 	"fmt"
+	"math"
+	"math/bits"
 	"math/rand"
 )
 
 // SeedThePopulation chooses a random seed individual and sets up their genetic data
 
 func SeedThePopulation(model *types.Model, pop *types.Pop) {
+	seedStyle := int(model.Parameters["seed_style"])
+	switch seedStyle {
+	case 0:
+		seedSingleIndividual(model, pop)
+	case 1:
+		seedPopulation(model, pop)
+		//	case 2:
+		//		seedMaxHet(model, pop)
+	default:
+		fmt.Printf("Unknown seed style %d, using single seed\n", seedStyle)
+		seedSingleIndividual(model, pop)
+	}
+}
+
+func seedSingleIndividual(model *types.Model, pop *types.Pop) {
 	seed := chooseRandomSeed(model, pop)
 
 	if seed == -1 {
@@ -17,7 +34,7 @@ func SeedThePopulation(model *types.Model, pop *types.Pop) {
 	}
 
 	model.FreeParameters["seed"] = seed
-	fmt.Println("   Seed:", model.FreeParameters["seed"])
+	//	fmt.Println("   Seed:", model.FreeParameters["seed"])
 
 	// Create chromosomes
 	pop.Chromosomes[seed] = [][]uint64{
@@ -51,9 +68,6 @@ func SeedThePopulation(model *types.Model, pop *types.Pop) {
 	pop.IndData[seed][individual.MinGenealoGens] = 0
 	pop.IndData[seed][individual.AlleleCount] = model.FreeParameters["genome_bits"] * 2
 	pop.IndData[seed][individual.NumCentromeres] = countSetBits(pop.Centromeres[seed][0])
-	pop.IndData[seed][individual.Lat] = 0
-	pop.IndData[seed][individual.Lon] = 0
-
 }
 
 func chooseRandomSeed(model *types.Model, pop *types.Pop) int {
@@ -71,20 +85,79 @@ func chooseRandomSeed(model *types.Model, pop *types.Pop) int {
 	return matureMales[rand.Intn(len(matureMales))]
 }
 
-func countSetBitsSingleVar(n uint64) int {
-	// Counts the number of bits set to 1 in n
-	count := 0
-	for n > 0 {
-		count += int(n & 1)
-		n >>= 1
+func seedPopulation(model *types.Model, pop *types.Pop) {
+	hetLevel := model.Parameters["init_heterozygosity"]
+	if hetLevel <= 0 {
+		fmt.Println("   No genomic seeding (init_heterozygosity = 0)")
+		return
 	}
-	return count
+
+	totalBits := model.FreeParameters["genome_bits"]
+	variableSites := 0
+
+	// Initialize all chromosomes first
+	for id := range pop.IndData {
+		pop.Chromosomes[id] = [][]uint64{
+			make([]uint64, (totalBits+63)/64),
+			make([]uint64, (totalBits+63)/64),
+		}
+		// Initialize centromeres
+		var blankCentromeres [2][]uint64
+		blankCentromeres[0] = make([]uint64, (len(model.ChromosomeArms)+63)/64)
+		blankCentromeres[1] = make([]uint64, (len(model.ChromosomeArms)+63)/64)
+		pop.Centromeres[id] = blankCentromeres
+
+		// Initialize tracking
+		pop.IndData[id][individual.YGens] = 0
+		pop.IndData[id][individual.MtGens] = 0
+		pop.IndData[id][individual.MinGenealoGens] = 0
+		pop.IndData[id][individual.MaxGenealoGens] = 0
+		pop.IndData[id][individual.AlleleCount] = 0
+		pop.IndData[id][individual.NumCentromeres] = 0
+	}
+
+	// For each bit position in genome
+	for bitPosition := 0; bitPosition < totalBits; bitPosition++ {
+		// Is that bit going to be variable?
+		if rand.Float64() < hetLevel {
+			variableSites++
+
+			// Pick the frequency of the alt allele (exponential function, >0 to <= 0.5)
+			altFreq := -0.05 * math.Log(rand.Float64()) // Exponential decay
+			if altFreq > 0.5 {
+				altFreq = 1 - altFreq // Cap at 50%
+			}
+			if altFreq < 0.005 {
+				altFreq = 0.005 // Minimum 0.5%
+			}
+
+			// Scan through each individual
+			for id := range pop.IndData {
+				// For each chromosome
+				for chromosome := 0; chromosome < 2; chromosome++ {
+					// If rand < probability of bit being set, set the bit to 1
+					if rand.Float64() < altFreq {
+						wordIdx := bitPosition / 64
+						bitIdx := bitPosition % 64
+						pop.Chromosomes[id][chromosome][wordIdx] |= (1 << bitIdx)
+					}
+				}
+			}
+		}
+	}
+
+	// Update allele counts for each individual
+	for id := range pop.IndData {
+		count := countSetBits(pop.Chromosomes[id][0]) + countSetBits(pop.Chromosomes[id][1])
+		pop.IndData[id][individual.AlleleCount] = count
+	}
+
 }
 
-func countSetBits(bits []uint64) int {
+func countSetBits(words []uint64) int {
 	count := 0
-	for _, b := range bits {
-		count += countSetBitsSingleVar(b)
+	for _, word := range words {
+		count += bits.OnesCount64(word)
 	}
 	return count
 }

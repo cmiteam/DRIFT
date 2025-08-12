@@ -13,6 +13,7 @@ import (
 	"drift/modules/marriage"
 	"drift/modules/save"
 	"drift/modules/seedpopulation"
+	"drift/modules/utils"
 	"drift/types"
 	"flag"
 	"fmt"
@@ -104,6 +105,7 @@ func main() {
 	for run := 1; run <= int(model.Parameters["num_runs"]); run++ {
 		print("\nRun ", run, "\n")
 		model.FreeParameters["run"] = run
+
 		pop := initializepop.InitializePop(model)
 
 		// Loop over the number years in each model run
@@ -118,17 +120,28 @@ func main() {
 			marriage.Marriage(model, pop)
 			death.Death(model, pop)
 			model.FreeParameters["last_pop_size"] = len(pop.IndData) // save pop size for future growth rate calculations
-			if len(pop.IndData) <= 1 {                               // Save and quit if population extinct
+
+			// Escape clauses
+			// Save and quit if population extinct
+			if len(pop.IndData) <= 1 {
+				save.Save(model, pop, animContainer)
+				break
+			}
+			// Save and quit if genealo = pop size
+			genealo := utils.CountGenealo(&pop.IndData)
+
+			// Save and quit if genealo = 0
+			if genealo == 0 {
 				save.Save(model, pop, animContainer)
 				break
 			}
 			if model.Parameters["track_map"] == 1 && year%int(model.Parameters["animation_save_interval"]) == 0 {
-				print(year)
 				err := animations.AddAnimationFrames(model, pop, animContainer)
 				if err != nil {
 					log.Printf("Error adding animation frames: %v", err)
 				}
 			}
+			// Normal save at save interval
 			if year%int(model.Parameters["save_interval"]) == 0 {
 				save.Save(model, pop, animContainer)
 			}
@@ -141,7 +154,7 @@ func main() {
 			save.SaveGenomeMap(pop.Chromosomes, model.ChromosomeArms, filename, pixelSize, int(model.Parameters["NumBits"]))
 		}
 		if model.Parameters["track_map"] == 1 {
-			print("Saving map...\n")
+			//			print("Saving map...\n")
 			err := animations.SaveAllGIFs(animContainer, *resultsArg)
 			if err != nil {
 				log.Printf("Error saving animation: %v", err)
@@ -153,11 +166,4 @@ func main() {
 	elapsed := time.Since(starttime)
 	fmt.Printf("Execution time: %s\n", elapsed)
 	fmt.Print("\a")
-}
-
-func abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
 }

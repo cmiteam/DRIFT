@@ -45,6 +45,11 @@ func Death(model *types.Model, pop *types.Pop) int {
 		}
 		adjustedDeathRisk := deathrisk * riskModification * fitness
 		if die < adjustedDeathRisk {
+			if model.FreeParameters["seed"] == ind {
+				if age < pop.IndData[ind][individual.Lifespan] {
+					break
+				}
+			}
 			if int(model.Parameters["track_dead"]) == 1 {
 				deadPersonString := personDataString(model, pop, ind, "R")
 				deadPeopleData += deadPersonString
@@ -66,6 +71,9 @@ func Death(model *types.Model, pop *types.Pop) int {
 	keyList = generateKeyList(&pop.IndData, model.FreeParameters["seed"])
 	keyList = pickVictims(excess, keyList)
 	for _, ind := range keyList {
+		if model.FreeParameters["seed"] == ind {
+			break
+		}
 		if int(model.Parameters["track_dead"]) == 1 {
 			deadPersonString := deadString(model, pop, ind)
 			deadPersonString += ",R\n"
@@ -86,6 +94,9 @@ func Death(model *types.Model, pop *types.Pop) int {
 	keyList = generateKeyList(&pop.IndData, model.FreeParameters["seed"])
 	keyList = pickVictims(diff, keyList)
 	for _, ind := range keyList {
+		if model.FreeParameters["seed"] == ind {
+			break
+		}
 		if int(model.Parameters["track_dead"]) == 1 {
 			deadPersonString := deadString(model, pop, ind)
 			deadPersonString += ",R\n"
@@ -102,6 +113,9 @@ func Death(model *types.Model, pop *types.Pop) int {
 			keyList := generateKeyList(&pop.IndData, model.FreeParameters["seed"])
 			keyList = pickVictims(breeders-int(model.Parameters["max_breeding_inds"]), keyList)
 			for _, ind := range keyList {
+				if model.FreeParameters["seed"] == ind {
+					break
+				}
 				if int(model.Parameters["track_dead"]) == 1 {
 					deadPersonString := deadString(model, pop, ind)
 					deadPersonString += ",R\n"
@@ -145,7 +159,7 @@ func pickVictims(excess int, keyList []int) []int {
 	for i := 0; i < excess; i++ {
 		randomIndex := i + rand.Intn(len(keyList)-i)
 		victimList[i] = keyList[randomIndex]
-		keyList[randomIndex] = keyList[i] // haha, figure dat out
+		keyList[randomIndex] = keyList[i]
 	}
 	return victimList
 }
@@ -154,11 +168,18 @@ func pickVictims(excess int, keyList []int) []int {
 func RIP(ind int, pop *types.Pop, model *types.Model) {
 	if _, exists := pop.IndData[ind]; exists {
 		if pop.IndData[ind][individual.MarriageState] > -1 {
+			// Clear the dying person's spouse's marriage state
 			spouse := pop.IndData[ind][individual.MarriageState]
-			pop.IndData[spouse][individual.MarriageState] = -1
+			if _, spouseExists := pop.IndData[spouse]; spouseExists {
+				pop.IndData[spouse][individual.MarriageState] = -1
+			} else {
+				fmt.Printf("Cannot remove spouse %d of ind %d, already dead\n", spouse, ind)
+			}
 		}
+	} else {
+		fmt.Printf("Cannot kill %d, already dead\n", ind)
 	}
-	delete(pop.Chromosomes, ind)
+
 	// decrement mutation counts
 	for strand := 0; strand <= 1; strand++ {
 		if mutationIDs, exists := pop.IndMutations[ind][strand]; exists {
@@ -174,9 +195,16 @@ func RIP(ind int, pop *types.Pop, model *types.Model) {
 			}
 		}
 	}
+
+	//fmt.Printf("killing %d spouse %d,", ind, pop.IndData[ind][individual.MarriageState])
 	delete(pop.IndMutations, ind)
-	delete(pop.IndData, ind)
+	delete(pop.Chromosomes, ind)
 	delete(pop.Centromeres, ind)
+	delete(pop.IndData, ind)
+
+	//	if ind == model.FreeParameters["seed"] {
+	//		fmt.Printf("You just killed Adam in the year %d :(\n", model.FreeParameters["year"])
+	//	}
 }
 
 // deadString formats individual data for death records

@@ -65,23 +65,24 @@ func LoadMap(model *types.Model, mapRoot string) error {
 	}
 
 	// Parse the terrain data
-	for lat, record := range records {
+	for csvRow, record := range records {
+		flippedLat := mapHeight - 1 - csvRow // Calculate flipped latitude
 		for lon, cellStr := range record {
 			cellStr = strings.TrimSpace(cellStr)
-			if lat == 0 && lon == 0 {
+			if csvRow == 0 && lon == 0 { // Changed from 'lat' to 'csvRow'
 				cellStr = strings.TrimPrefix(cellStr, "\ufeff") // Remove UTF-8 BOM
 			}
 			terrain, err := strconv.Atoi(cellStr)
 			if err != nil {
-				return fmt.Errorf("invalid terrain value '%s' at position (%d,%d): %v", cellStr, lat, lon, err)
+				return fmt.Errorf("invalid terrain value '%s' at CSV position (%d,%d): %v", cellStr, csvRow, lon, err)
 			}
 
 			// Validate terrain type
 			if terrain < int(InvalidTerrainLow) || terrain >= int(InvalidTerrainHigh) {
-				return fmt.Errorf("terrain value %d out of valid range at position (%d,%d)", terrain, lat, lon)
+				return fmt.Errorf("terrain value %d out of valid range at CSV position (%d,%d)", terrain, csvRow, lon)
 			}
 
-			model.Map[lat][lon] = terrain
+			model.Map[flippedLat][lon] = terrain // Store at flipped position
 		}
 	}
 

@@ -2,6 +2,7 @@ package marriage
 
 import (
 	"drift/modules/individual"
+	"drift/modules/maploader"
 	"drift/modules/utils"
 	"drift/types"
 	"math"
@@ -25,24 +26,28 @@ func Marriage(model *types.Model, pop *types.Pop) {
 		}
 	}
 
-	// Get mating style from parameters (default to 0 = random)
-	matingStyle := 0
-	if style, exists := model.Parameters["mating_style"]; exists {
-		matingStyle = int(style)
-	}
-	switch matingStyle {
-	case 0:
-		randomMating(model, pop, availableMen, availableWomen)
-	case 1:
-		distanceMating(model, pop, availableMen, availableWomen)
-	case 2:
+	// Get mating style from parameters and execute directly
+	if styleFloat, exists := model.Parameters["mating_style"]; exists {
+		styleInt := int(styleFloat)
+		switch styleInt {
+		case 0:
+			randomMating(model, pop, availableMen, availableWomen)
+		case 1:
+			distanceMating(model, pop, availableMen, availableWomen)
+		case 2:
+			ageDistanceMating(model, pop, availableMen, availableWomen)
+		default:
+			randomMating(model, pop, availableMen, availableWomen) // fallback
+			print("Unknown mating style, defaulting to random\n")
+		}
+	} else {
+		// Default if parameter doesn't exist
 		ageDistanceMating(model, pop, availableMen, availableWomen)
-	default:
-		randomMating(model, pop, availableMen, availableWomen) // fallback
+		print("mating style not defined, using random mating (default)\n")
 	}
 }
 
-// randomMating pairs individuals randomly
+// randomMating pairs individuals randomly (no distance constraints)
 func randomMating(model *types.Model, pop *types.Pop, availableMen, availableWomen []int) {
 	// Randomize people
 	rand.Seed(time.Now().UnixNano())
@@ -53,316 +58,248 @@ func randomMating(model *types.Model, pop *types.Pop, availableMen, availableWom
 		availableWomen[i], availableWomen[j] = availableWomen[j], availableWomen[i]
 	})
 
-	// Trim to the shortest of the two lists
-	pairCount := min(len(availableMen), len(availableWomen))
+	// Pair up to the shortest list
+	pairCount := utils.Min(len(availableMen), len(availableWomen))
 
-	// Assign spouses
 	for i := 0; i < pairCount; i++ {
 		man := availableMen[i]
 		woman := availableWomen[i]
+
+		// Create marriage
 		pop.IndData[man][individual.MarriageState] = woman
 		pop.IndData[woman][individual.MarriageState] = man
-		pop.IndData[woman][individual.Lat] = pop.IndData[man][individual.Lat]
-		pop.IndData[woman][individual.Lon] = pop.IndData[man][individual.Lon]
+
+		// Woman moves to man's location
+		manLat := pop.IndData[man][individual.Lat]
+		manLon := pop.IndData[man][individual.Lon]
+
+		if maploader.IsLand(model, manLat, manLon) {
+			pop.IndData[woman][individual.Lat] = manLat
+			pop.IndData[woman][individual.Lon] = manLon
+		}
+		// If man's location is invalid, woman stays where she is
+
 		pop.Tracking["marriages"]++
 	}
 }
 
-// distanceMating pairs individuals based on proximity
+// distanceMating pairs individuals based on proximity using influence grid
 func distanceMating(model *types.Model, pop *types.Pop, availableMen, availableWomen []int) {
 	maxDistance := int(model.Parameters["max_mating_distance"])
-
-	// Create matches based on distance constraints
-	var matches [][2]int // Stores pairs of [womanID, manID]
-
-	// For each woman, find eligible men within distance threshold
-	for _, womanID := range availableWomen {
-		womanLat := pop.IndData[womanID][individual.Lat]
-		womanLon := pop.IndData[womanID][individual.Lon]
-
-		// Debug: Count potential matches for this woman
-		potentialMatches := 0
-
-		// For each man, check if within range using Manhattan distance
-		for _, manID := range availableMen {
-			manLat := pop.IndData[manID][individual.Lat]
-			manLon := pop.IndData[manID][individual.Lon]
-
-			// Calculate Manhattan distance
-			manhattanDist := abs(womanLat-manLat) + abs(womanLon-manLon)
-
-			if manhattanDist <= maxDistance {
-				// Within range, add as potential match
-				matches = append(matches, [2]int{womanID, manID})
-				potentialMatches++
-			}
-		}
-
-		if potentialMatches == 0 && len(availableMen) > 0 {
-			closestDist := math.MaxInt32
-			//closestManID := -1
-
-			for _, manID := range availableMen {
-				manLat := pop.IndData[manID][individual.Lat]
-				manLon := pop.IndData[manID][individual.Lon]
-
-				latDiff := abs(womanLat - manLat)
-				lonDiff := abs(womanLon - manLon)
-				dist := latDiff + lonDiff
-
-				if dist < closestDist {
-					closestDist = dist
-					//closestManID = manID
-				}
-			}
-		}
-	}
-
-	// Process matches (simple greedy algorithm for now)
 	matched := make(map[int]bool) // Track who's already matched
 
-	for _, match := range matches {
-		womanID, manID := match[0], match[1]
+	// Create influence grid for fast lookup
+	influenceGrid := createInfluenceGrid(model, pop, availableWomen, maxDistance)
 
-		// If neither person is matched yet, create the marriage
-		if !matched[womanID] && !matched[manID] {
-			pop.IndData[womanID][individual.MarriageState] = manID
-			pop.IndData[manID][individual.MarriageState] = womanID
-			pop.Tracking["marriages"]++
-
-			matched[womanID] = true
-			matched[manID] = true
-		}
-	}
-
-	// fmt.Printf("Created %d marriages based on distance constraints\n",
-}
-
-func abs(x int) int {
-	if x < 0 {
-		return -x
-	}
-	return x
-}
-
-// ageDistanceMatingOptimized pairs individuals based on distance and age preference with optimizations
-func ageDistanceMating(model *types.Model, pop *types.Pop, availableMen, availableWomen []int) {
-	maxDistance := int(model.Parameters["max_mating_distance"])
-	currentYear := model.FreeParameters["year"]
-
-	// Pre-calculate all ages to avoid repeated calculations
-	ages := make(map[int]int, len(pop.IndData))
-	for id, data := range pop.IndData {
-		ages[id] = currentYear - data[individual.BirthYear]
-	}
-
-	// Build spatial index for women
-	spatialIndex := make(map[spatialKey][]int)
-	cellSize := maxDistance // Cell size equal to max mating distance
-
-	for _, womanID := range availableWomen {
-		lat := pop.IndData[womanID][individual.Lat]
-		lon := pop.IndData[womanID][individual.Lon]
-		key := spatialKey{lat / cellSize, lon / cellSize}
-		spatialIndex[key] = append(spatialIndex[key], womanID)
-	}
-
-	// Shuffle men for random access order
+	// Shuffle for random processing order
 	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(len(availableMen), func(i, j int) {
 		availableMen[i], availableMen[j] = availableMen[j], availableMen[i]
 	})
 
-	// Track matched women
-	matchedWomen := make(map[int]bool, len(availableWomen))
-
-	// For each man, find a suitable woman
+	// For each man, pick a random eligible woman from his cell
 	for _, manID := range availableMen {
-		manLat := pop.IndData[manID][individual.Lat]
-		manLon := pop.IndData[manID][individual.Lon]
-		manAge := ages[manID]
-
-		// Get women in nearby cells
-		nearbyWomen := getNearbyWomenFromSpatialIndex(spatialIndex, manLat, manLon, cellSize, maxDistance)
-
-		// Filter for unmatched women and calculate actual distances
-		var eligibleWomen []struct {
-			id       int
-			distance int
-		}
-
-		for _, womanID := range nearbyWomen {
-			if !matchedWomen[womanID] {
-				womanLat := pop.IndData[womanID][individual.Lat]
-				womanLon := pop.IndData[womanID][individual.Lon]
-
-				// Calculate Manhattan distance
-				distance := utils.Abs(manLat-womanLat) + utils.Abs(manLon-womanLon)
-
-				if distance <= maxDistance {
-					eligibleWomen = append(eligibleWomen, struct {
-						id       int
-						distance int
-					}{womanID, distance})
-				}
-			}
-		}
-
-		// If no eligible women, make man wander (improved wandering logic)
-		if len(eligibleWomen) == 0 {
-			newLat, newLon := utils.Wander(model, manLat, manLon)
-			pop.IndData[manID][individual.Lat] = newLat
-			pop.IndData[manID][individual.Lon] = newLon
+		if matched[manID] {
 			continue
 		}
 
-		// Select woman based on age preference and distance
-		womanID := selectWomanByAgeDistanceScore(model, eligibleWomen, manAge, ages, pop)
+		manLat := pop.IndData[manID][individual.Lat]
+		manLon := pop.IndData[manID][individual.Lon]
 
-		// Create marriage
-		if womanID != -1 {
-			pop.IndData[manID][individual.MarriageState] = womanID
-			pop.IndData[womanID][individual.MarriageState] = manID
-			pop.IndData[womanID][individual.Lat] = pop.IndData[manID][individual.Lat]
-			pop.IndData[womanID][individual.Lon] = pop.IndData[manID][individual.Lon]
+		// Get all available women in this man's cell
+		availableInCell := influenceGrid[manLat][manLon]
 
-			matchedWomen[womanID] = true
+		// Filter out already matched women
+		var eligibleWomen []int
+		for _, womanID := range availableInCell {
+			if !matched[womanID] {
+				eligibleWomen = append(eligibleWomen, womanID)
+			}
+		}
+
+		// Pick random woman if any available
+		if len(eligibleWomen) > 0 {
+			randomIndex := rand.Intn(len(eligibleWomen))
+			bestWoman := eligibleWomen[randomIndex]
+
+			// Create marriage
+			pop.IndData[manID][individual.MarriageState] = bestWoman
+			pop.IndData[bestWoman][individual.MarriageState] = manID
+
+			// Woman moves to man's location (with terrain validation)
+			if maploader.IsLand(model, manLat, manLon) {
+				pop.IndData[bestWoman][individual.Lat] = manLat
+				pop.IndData[bestWoman][individual.Lon] = manLon
+			}
+
+			matched[manID] = true
+			matched[bestWoman] = true
 			pop.Tracking["marriages"]++
 		}
 	}
 }
 
-// Spatial indexing helpers
-type spatialKey struct {
-	cellX, cellY int
-}
+// ageDistanceMating pairs individuals based on age preference and distance
+func ageDistanceMating(model *types.Model, pop *types.Pop, availableMen, availableWomen []int) {
+	maxDistance := int(model.Parameters["max_mating_distance"])
+	currentYear := model.FreeParameters["year"]
 
-// createSpatialIndex builds a simple grid-based spatial index
-func createSpatialIndex(pop *types.Pop, individuals []int) map[spatialKey][]int {
-	index := make(map[spatialKey][]int)
-	cellSize := 50 // Adjust based on typical maxDistance
+	// Create influence grid for fast lookup
+	influenceGrid := createInfluenceGrid(model, pop, availableWomen, maxDistance)
 
-	for _, id := range individuals {
-		lat := pop.IndData[id][individual.Lat]
-		lon := pop.IndData[id][individual.Lon]
-		key := spatialKey{lat / cellSize, lon / cellSize}
-		index[key] = append(index[key], id)
-	}
+	// Shuffle men for random processing order
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(availableMen), func(i, j int) {
+		availableMen[i], availableMen[j] = availableMen[j], availableMen[i]
+	})
 
-	return index
-}
+	for _, manID := range availableMen {
 
-// getNearbyWomen returns women IDs within the maximum distance
-func getNearbyWomen(spatialIndex map[spatialKey][]int, lat, lon, maxDistance int) []int {
-	cellSize := 50 // Must match the value used in createSpatialIndex
-	centerCell := spatialKey{lat / cellSize, lon / cellSize}
+		manLat := pop.IndData[manID][individual.Lat]
+		manLon := pop.IndData[manID][individual.Lon]
+		manAge := currentYear - pop.IndData[manID][individual.BirthYear]
 
-	// Determine cell range to search
-	cellRange := (maxDistance / cellSize) + 1
-	var nearbyWomen []int
+		// Get all available women in this man's cell
+		availableInCell := influenceGrid[manLat][manLon]
 
-	// Search in neighboring cells
-	for dx := -cellRange; dx <= cellRange; dx++ {
-		for dy := -cellRange; dy <= cellRange; dy++ {
-			key := spatialKey{centerCell.cellX + dx, centerCell.cellY + dy}
-			if women, exists := spatialIndex[key]; exists {
-				nearbyWomen = append(nearbyWomen, women...)
-			}
+		// Find eligible candidates from women in this cell
+		type candidate struct {
+			id    int
+			age   int
+			score float64
 		}
-	}
 
-	return nearbyWomen
-}
+		var candidates []candidate
 
-// getNearbyWomenFromSpatialIndex returns women within range using spatial index
-func getNearbyWomenFromSpatialIndex(spatialIndex map[spatialKey][]int, lat, lon, cellSize, maxDistance int) []int {
-	centerCell := spatialKey{lat / cellSize, lon / cellSize}
-	cellRange := (maxDistance / cellSize) + 1
+		for _, womanID := range availableInCell {
 
-	var results []int
-	for dx := -cellRange; dx <= cellRange; dx++ {
-		for dy := -cellRange; dy <= cellRange; dy++ {
-			key := spatialKey{centerCell.cellX + dx, centerCell.cellY + dy}
-			if women, exists := spatialIndex[key]; exists {
-				results = append(results, women...)
+			womanAge := currentYear - pop.IndData[womanID][individual.BirthYear]
+
+			// Calculate age preference score (higher = better)
+			ageDiff := manAge - womanAge
+			var ageScore float64
+			if ageDiff >= 0 && ageDiff <= 5 {
+				// Ideal: woman 0-5 years younger
+				ageScore = 5.0 - float64(ageDiff)
+			} else if ageDiff < 0 {
+				// Woman older than man
+				ageScore = math.Max(0.1, 1.0+float64(ageDiff)/2.0)
+			} else {
+				// Woman much younger
+				ageScore = math.Max(0.1, 2.0-float64(ageDiff-5)/10.0)
 			}
+
+			candidates = append(candidates, candidate{
+				id:    womanID,
+				age:   womanAge,
+				score: ageScore,
+			})
 		}
-	}
 
-	return results
-}
+		// Select best candidate based on score
+		if len(candidates) > 0 {
+			// Use weighted random selection
+			totalScore := 0.0
+			for _, c := range candidates {
+				totalScore += c.score
+			}
 
-// selectWomanByAgeDistanceScore selects a woman based on a combined score of age preference and distance
-func selectWomanByAgeDistanceScore(model *types.Model, eligibleWomen []struct{ id, distance int }, manAge int, ages map[int]int, pop *types.Pop) int {
-	if len(eligibleWomen) == 0 {
-		return -1
-	}
+			var bestWoman int = -1
+			if totalScore > 0.001 {
+				// Weighted random selection
+				r := rand.Float64() * totalScore
+				cumulative := 0.0
+				for _, c := range candidates {
+					cumulative += c.score
+					if r <= cumulative {
+						bestWoman = c.id
+						break
+					}
+				}
+			}
 
-	// Calculate scores
-	type scoredWoman struct {
-		id    int
-		score float64
-	}
+			// Fallback to first candidate if selection failed
+			if bestWoman == -1 {
+				bestWoman = candidates[0].id
+			}
 
-	var scoredWomen []scoredWoman
-	totalScore := 0.0
+			// Create marriage
+			pop.IndData[manID][individual.MarriageState] = bestWoman
+			pop.IndData[bestWoman][individual.MarriageState] = manID
 
-	for _, woman := range eligibleWomen {
-		womanID := woman.id
-		distance := woman.distance
+			// Remove bestWoman from all cells in influence grid
+			removeWomanFromGrid(influenceGrid, bestWoman, pop.IndData[bestWoman][individual.Lat], pop.IndData[bestWoman][individual.Lon], maxDistance)
 
-		femaleAge := ages[womanID]
-		ageDiff := manAge - femaleAge
+			// Woman moves to man's location
+			pop.IndData[bestWoman][individual.Lat] = manLat
+			pop.IndData[bestWoman][individual.Lon] = manLon
 
-		// Age preference score (higher = better)
-		var ageScore float64
-		if ageDiff >= 0 && ageDiff <= 5 {
-			// Ideal age range: 0-5 years younger
-			ageScore = 5.0 - float64(ageDiff)
-		} else if ageDiff < 0 {
-			// Woman is older than man
-			ageScore = math.Max(0.1, 1.0+float64(ageDiff)/2.0)
+			pop.Tracking["marriages"]++
 		} else {
-			// Woman is more than 5 years younger
-			ageScore = math.Max(0.1, 2.0-float64(ageDiff-5)/10.0)
-		}
-
-		// Distance score (higher = better)
-		maxDistance := int(model.Parameters["max_mating_distance"])
-		distanceScore := float64(maxDistance-distance) / float64(maxDistance)
-
-		// Combined score (with weights)
-		// Adjust weights to prioritize age or distance
-		combinedScore := (ageScore * 0.7) + (distanceScore * 0.3)
-
-		scoredWomen = append(scoredWomen, scoredWoman{womanID, combinedScore})
-		totalScore += combinedScore
-	}
-
-	// If total score is effectively zero, return random woman
-	if totalScore < 0.001 {
-		randomIndex := rand.Intn(len(eligibleWomen))
-		return eligibleWomen[randomIndex].id
-	}
-
-	// Normalize scores and select using weighted probability
-	r := rand.Float64()
-	cumulativeProb := 0.0
-
-	for _, sw := range scoredWomen {
-		probability := sw.score / totalScore
-		cumulativeProb += probability
-		if r <= cumulativeProb {
-			return sw.id
+			// No eligible women found - make man wander to find new territory
+			newLat, newLon := utils.Wander(model, manLat, manLon)
+			pop.IndData[manID][individual.Lat] = newLat
+			pop.IndData[manID][individual.Lon] = newLon
 		}
 	}
-
-	// Fallback (rarely reached due to floating point rounding)
-	return eligibleWomen[len(eligibleWomen)-1].id
 }
 
-// MapBoundaries holds the extents of the map
-type MapBoundaries struct {
-	MinLat, MaxLat, MinLon, MaxLon int
-	TerrainMap                     map[spatialKey]int // Using spatialKey for coordinates
+// createInfluenceGrid creates a grid where each cell contains IDs of women who can mate there
+func createInfluenceGrid(model *types.Model, pop *types.Pop, availableWomen []int, maxDistance int) [][][]int {
+	// Get map dimensions
+	mapHeight := 101
+	mapWidth := 101
+	if model.Parameters["track_map"] == 1 {
+		mapHeight = len(model.Map)
+		mapWidth = len(model.Map[0])
+	}
+	// Create influence grid - each cell contains list of women who can mate there
+	influenceGrid := make([][][]int, mapHeight)
+	for i := range influenceGrid {
+		influenceGrid[i] = make([][]int, mapWidth)
+		for j := range influenceGrid[i] {
+			influenceGrid[i][j] = make([]int, 0)
+		}
+	}
+
+	// For each woman, add her ID to all cells within mating range
+	for _, womanID := range availableWomen {
+		womanLat := pop.IndData[womanID][individual.Lat]
+		womanLon := pop.IndData[womanID][individual.Lon]
+
+		// Add woman's ID to all cells within Manhattan distance
+		for lat := womanLat - maxDistance; lat <= womanLat+maxDistance; lat++ {
+			for lon := womanLon - maxDistance; lon <= womanLon+maxDistance; lon++ {
+				// Check bounds
+				if lat >= 0 && lat < mapHeight && lon >= 0 && lon < mapWidth {
+					influenceGrid[lat][lon] = append(influenceGrid[lat][lon], womanID)
+				}
+			}
+		}
+	}
+
+	return influenceGrid
+}
+
+func removeWomanFromGrid(influenceGrid [][][]int, womanID int, womanLat, womanLon, maxDistance int) {
+	// Remove woman's ID from all cells within Manhattan distance
+	for lat := womanLat - maxDistance; lat <= womanLat+maxDistance; lat++ {
+		for lon := womanLon - maxDistance; lon <= womanLon+maxDistance; lon++ {
+			// Check bounds
+			if lat >= 0 && lat < len(influenceGrid) && lon >= 0 && lon < len(influenceGrid[0]) {
+				influenceGrid[lat][lon] = removeFromSlice(influenceGrid[lat][lon], womanID)
+			}
+		}
+	}
+}
+
+func removeFromSlice(slice []int, value int) []int {
+	for i, v := range slice {
+		if v == value {
+			// Remove by swapping with last element and truncating
+			slice[i] = slice[len(slice)-1]
+			return slice[:len(slice)-1]
+		}
+	}
+	return slice // Not found, return unchanged
 }

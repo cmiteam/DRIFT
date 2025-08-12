@@ -21,7 +21,6 @@ func InitializePop(model *types.Model) *types.Pop {
 	}
 
 	// Reset run-specific parameters
-	model.FreeParameters["indID"] = 0 // Starting ID for individuals
 	model.FreeParameters["seed"] = -1 // No seed initially
 	model.FreeParameters["last_pop_size"] = 0
 
@@ -37,17 +36,18 @@ func InitializePop(model *types.Model) *types.Pop {
 
 	// Find all land squares in the map
 	var landCoordinates [][2]int
-	for lat := range model.Map {
-		for lon := range model.Map[lat] {
-			// Check if this is land (terrain type 1)
-			if model.Map[lat][lon] == 1 {
-				landCoordinates = append(landCoordinates, [2]int{lat, lon})
-				//print("appending land coordinate: ", lat, ",", lon, "\n")
+	if model.Parameters["track_map"] == 1 {
+		for lat := range model.Map {
+			for lon := range model.Map[lat] {
+				// Check if this is land (terrain type 1)
+				if model.Map[lat][lon] == 1 {
+					landCoordinates = append(landCoordinates, [2]int{lat, lon})
+				}
 			}
 		}
-	}
-	if len(landCoordinates) == 0 {
-		landCoordinates = append(landCoordinates, [2]int{0, 0})
+		if len(landCoordinates) == 0 {
+			landCoordinates = append(landCoordinates, [2]int{0, 0})
+		}
 	}
 
 	// Set up the individuals
@@ -55,14 +55,6 @@ func InitializePop(model *types.Model) *types.Pop {
 	fitness := int(model.Parameters["mu_scale_factor"])
 
 	for i := 0; i < popSize; i++ {
-		// Choose a random land location
-		randomIndex := rand.Intn(len(landCoordinates))
-		randomLoc := landCoordinates[randomIndex]
-		lat := randomLoc[0]
-		lon := randomLoc[1]
-		//lat := 25
-		//lon := 25
-
 		// assign data to each individual
 		age := 0
 		r := rand.Float64()
@@ -82,20 +74,43 @@ func InitializePop(model *types.Model) *types.Pop {
 		pop.IndData[i][individual.LastBirthYear] = 0                            // to allow for spacing between children
 		pop.IndData[i][individual.Fitness] = fitness                            // used for survival calculations
 		pop.IndData[i][individual.AlleleCount] = 0                              // tracking descent from seed individual(s)
-		pop.IndData[i][individual.Lat] = lat
-		pop.IndData[i][individual.Lon] = lon
-		pop.IndData[i][individual.NumCentromeres] = 0 //TODO guessing
+		pop.IndData[i][individual.NumCentromeres] = 0
 		pop.IndData[i][individual.YGens] = -1
 		pop.IndData[i][individual.MtGens] = -1
 		pop.IndData[i][individual.MinGenealoGens] = -1
 		pop.IndData[i][individual.MaxGenealoGens] = -1
+		// Choose a random land location
+		lat := rand.Intn(101)
+		lon := rand.Intn(101)
 
-		//print("Individual", i, " position: ", lat, ",", lon, "\n")
-		model.FreeParameters["indID"]++ // each ind gets a unique ID
+		if model.Parameters["track_map"] == 1 {
+			randomIndex := rand.Intn(len(landCoordinates))
+			randomLoc := landCoordinates[randomIndex]
+			lat = randomLoc[0]
+			lon = randomLoc[1]
+		}
+
+		pop.IndData[i][individual.Lat] = lat
+		pop.IndData[i][individual.Lon] = lon
+
+		// Create a paired individual and marry them if old enough
+		//		pop.IndData[i+1] = pop.IndData[i]
+		//		pop.IndData[i+1][individual.Sex] = 1
+		//		model.FreeParameters["indID"] = i + 1 // tracks highest ID used so far
+
+		//		if age >= int(model.Parameters["maturity"]) {
+		//			pop.IndData[i][individual.MarriageState] = i + 1
+		//			pop.IndData[i+1][individual.MarriageState] = i
+		//			pop.IndData[i+1][individual.LastBirthYear] = -rand.Intn(int(model.Parameters["spacing"]))
+		//		} else {
+		//			pop.IndData[i][individual.MarriageState] = -1
+		//			pop.IndData[i+1][individual.MarriageState] = -1
+		//		}
+		//		model.FreeParameters["indID"] = i + 1
 	}
 
 	model.FreeParameters["last_pop_size"] = len(pop.IndData) // needed to control population growth
+	model.FreeParameters["indID"] = popSize                  // Starting ID for individuals
 
 	return pop
-
 }
