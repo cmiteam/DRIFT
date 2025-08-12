@@ -1,8 +1,8 @@
 package initializepop
 
 import (
+	"drift/modules/individual"
 	"drift/types"
-	"fmt"
 	"math/rand"
 	"time"
 )
@@ -11,9 +11,9 @@ func InitializePop(model *types.Model) *types.Pop {
 
 	// Create a new population
 	pop := &types.Pop{
-		IndData:      make(map[int]map[string]int),
+		IndData:      make(map[int][]int),
 		Chromosomes:  make(map[int][][]uint64),
-		Centromeres:  make(map[int][]uint64),
+		Centromeres:  make(map[int][2][]uint64),
 		IndMutations: make(map[int]map[int][]int),
 		MutationPool: make(map[int]types.Mutation),
 		MutationHist: make(map[int]int),
@@ -21,7 +21,6 @@ func InitializePop(model *types.Model) *types.Pop {
 	}
 
 	// Reset run-specific parameters
-	model.FreeParameters["indID"] = 0 // Starting ID for individuals
 	model.FreeParameters["seed"] = -1 // No seed initially
 	model.FreeParameters["last_pop_size"] = 0
 
@@ -34,6 +33,22 @@ func InitializePop(model *types.Model) *types.Pop {
 
 	// Initialize the random number generator
 	rand.Seed(time.Now().UnixNano())
+
+	// Find all land squares in the map
+	var landCoordinates [][2]int
+	if model.Parameters["track_map"] == 1 {
+		for lat := range model.Map {
+			for lon := range model.Map[lat] {
+				// Check if this is land (terrain type 1)
+				if model.Map[lat][lon] == 1 {
+					landCoordinates = append(landCoordinates, [2]int{lat, lon})
+				}
+			}
+		}
+		if len(landCoordinates) == 0 {
+			landCoordinates = append(landCoordinates, [2]int{0, 0})
+		}
+	}
 
 	// Set up the individuals
 	popSize := int(model.Parameters["start_pop_size"])
@@ -50,42 +65,52 @@ func InitializePop(model *types.Model) *types.Pop {
 			}
 		}
 
-		pop.IndData[i] = map[string]int{
-			"dad":              -1,                                // -1 is used often in this program as a placeholder
-			"mom":              -1,                                // ditto
-			"birth_year":       -age,                              // the person was born before the model began to be run
-			"lifespan":         int(model.Parameters["lifespan"]), // initial theoretical lifespans
-			"sex":              rand.Intn(2),                      // 0 = male, 1 = female
-			"marriage_state":   -1,                                // will be set to the ID # of the spouse
-			"num_births":       0,                                 // tracks number of children for females
-			"last_birth_year":  0,                                 // to allow for spacing between children
-			"fitness":          fitness,                           // used for survival calculations
-			"allele_count":     0,                                 // tracking descent from seed individual(s)
-			"Y_gens":           -1,                                // generations from male seed
-			"mt_gens":          -1,                                // generations from female seed
-			"min_genealo_gens": -1,                                // shortest path on family tree to seed
-			"max_genealo_gens": -1,                                // longest path on family tree to seed
-			"lat":              rand.Intn(1000) - 500,             // for non-random mating or geography
-			"lon":              rand.Intn(1000) - 500,             // lat and lon are in a square centered on (0,0)
+		pop.IndData[i] = individual.MakeIndData()
+		pop.IndData[i][individual.BirthYear] = -age                             // the person was born before the model began to be run
+		pop.IndData[i][individual.Lifespan] = int(model.Parameters["lifespan"]) // initial theoretical lifespans
+		pop.IndData[i][individual.Sex] = rand.Intn(2)                           // 0 = male, 1 = female
+		pop.IndData[i][individual.MarriageState] = -1                           // will be set to the ID # of the spouse
+		pop.IndData[i][individual.NumBirths] = 0                                // tracks number of children for females
+		pop.IndData[i][individual.LastBirthYear] = 0                            // to allow for spacing between children
+		pop.IndData[i][individual.Fitness] = fitness                            // used for survival calculations
+		pop.IndData[i][individual.AlleleCount] = 0                              // tracking descent from seed individual(s)
+		pop.IndData[i][individual.NumCentromeres] = 0
+		pop.IndData[i][individual.YGens] = -1
+		pop.IndData[i][individual.MtGens] = -1
+		pop.IndData[i][individual.MinGenealoGens] = -1
+		pop.IndData[i][individual.MaxGenealoGens] = -1
+		// Choose a random land location
+		lat := rand.Intn(101)
+		lon := rand.Intn(101)
+
+		if model.Parameters["track_map"] == 1 {
+			randomIndex := rand.Intn(len(landCoordinates))
+			randomLoc := landCoordinates[randomIndex]
+			lat = randomLoc[0]
+			lon = randomLoc[1]
 		}
 
-		model.FreeParameters["indID"]++ // each ind gets a unique ID
+		pop.IndData[i][individual.Lat] = lat
+		pop.IndData[i][individual.Lon] = lon
+
+		// Create a paired individual and marry them if old enough
+		//		pop.IndData[i+1] = pop.IndData[i]
+		//		pop.IndData[i+1][individual.Sex] = 1
+		//		model.FreeParameters["indID"] = i + 1 // tracks highest ID used so far
+
+		//		if age >= int(model.Parameters["maturity"]) {
+		//			pop.IndData[i][individual.MarriageState] = i + 1
+		//			pop.IndData[i+1][individual.MarriageState] = i
+		//			pop.IndData[i+1][individual.LastBirthYear] = -rand.Intn(int(model.Parameters["spacing"]))
+		//		} else {
+		//			pop.IndData[i][individual.MarriageState] = -1
+		//			pop.IndData[i+1][individual.MarriageState] = -1
+		//		}
+		//		model.FreeParameters["indID"] = i + 1
 	}
 
 	model.FreeParameters["last_pop_size"] = len(pop.IndData) // needed to control population growth
+	model.FreeParameters["indID"] = popSize                  // Starting ID for individuals
 
-	//PrintPop(pop)  // For doublechecking purposes
 	return pop
-
-}
-
-func PrintPop(pop *types.Pop) {
-	fmt.Println("Individual Data:", pop.IndData)
-	fmt.Println("Chromosomes:", pop.Chromosomes)
-	fmt.Println("Centromeres:", pop.Centromeres)
-	fmt.Println("Individual Mutations:", pop.IndMutations)
-	fmt.Println("Mutation Pool Size:", len(pop.MutationPool))
-	fmt.Println("Mutation History Size:", len(pop.MutationHist))
-	fmt.Println("Total Mutation Count:", pop.MutationCount)
-	fmt.Println("Tracking Information:", pop.Tracking)
 }

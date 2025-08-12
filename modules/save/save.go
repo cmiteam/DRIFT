@@ -1,6 +1,7 @@
 package save
 
 import (
+	"drift/modules/individual"
 	"drift/types"
 	"encoding/csv"
 	"fmt"
@@ -31,16 +32,18 @@ func SaveHeaders(modelName string) error {
 	return nil
 }
 
-// Save writes the current simulation state to a CSV file
+func CreateReportFile(modelName string) error {
+	filename := fmt.Sprintf("results/%s_report.csv", modelName)
+	file, err := os.OpenFile(filename, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %v", err)
+	}
+	defer file.Close()
+	return nil
+}
 
-func Save(model *types.Model, pop *types.Pop, run int, year int) {
-	fmt.Printf("   Year: %d  n: %d  b: %d  m: %d c: %d\n",
-		year,
-		model.FreeParameters["last_pop_size"],
-		pop.Tracking["births"],
-		pop.Tracking["marriages"],
-		pop.Tracking["cull_deaths"],
-	)
+// Save writes the current simulation state to a CSV file
+func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsContainer) {
 
 	filename := fmt.Sprintf("results/%s_results.csv", model.ModelName)
 	numInds := len(pop.IndData)
@@ -49,9 +52,9 @@ func Save(model *types.Model, pop *types.Pop, run int, year int) {
 	var totHet, totHomMin, totHomMaj, numbitsRetained int
 
 	if model.Parameters["track_DNA"] == 1 {
-		YDescends, mtDescends, genealoDescends, geneticDescends, numAlleles, numBlocks, numCentromeres = calculateMiscStats(pop.IndData)
-		numbitsRetained, totHet, totHomMin, totHomMaj = seedCounts(model, pop)
-		percSeedGenomeRetained = float64(numbitsRetained) / float64(model.FreeParameters["NumBits"]) * 100
+		YDescends, mtDescends, genealoDescends, geneticDescends, numAlleles, numBlocks, numCentromeres = calculateMiscStats(&pop.IndData)
+		numbitsRetained, totHet, avHet, totHomMin, totHomMaj = seedCounts(model, pop)
+		percSeedGenomeRetained = float64(numbitsRetained) / float64(model.FreeParameters["genome_bits"]) * 100
 		avSeedGenomeCoverage = 0
 	}
 
@@ -59,8 +62,8 @@ func Save(model *types.Model, pop *types.Pop, run int, year int) {
 		numMutations, popFitness = calculateFitnessStats(model, pop)
 	}
 
-	if model.Parameters["track_map"] == 1 {
-
+	if model.Parameters["track_alleles"] == 1 {
+		SaveDriftSummary(model, pop)
 	}
 
 	file, _ := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
@@ -69,8 +72,8 @@ func Save(model *types.Model, pop *types.Pop, run int, year int) {
 	defer writer.Flush()
 
 	data := []string{
-		fmt.Sprintf("%d", run),
-		fmt.Sprintf("%d", year),
+		fmt.Sprintf("%d", model.FreeParameters["run"]),
+		fmt.Sprintf("%d", model.FreeParameters["year"]),
 		fmt.Sprintf("%d", numInds),
 		fmt.Sprintf("%d", pop.Tracking["marriages"]),
 		fmt.Sprintf("%d", pop.Tracking["births"]),
@@ -88,10 +91,21 @@ func Save(model *types.Model, pop *types.Pop, run int, year int) {
 		fmt.Sprintf("%.1f", percSeedGenomeRetained),
 		fmt.Sprintf("%.1f", avSeedGenomeCoverage),
 		fmt.Sprintf("%.2f", totHet),
+		fmt.Sprintf("%.2f", avHet),
 		fmt.Sprintf("%.2f", totHomMin),
 		fmt.Sprintf("%.2f", totHomMaj),
 	}
 	writer.Write(data)
+
+	fmt.Printf("\n   Year: %d  n: %d  b: %d  m: %d c: %d g: %d g: %d",
+		model.FreeParameters["year"],
+		model.FreeParameters["last_pop_size"],
+		pop.Tracking["births"],
+		pop.Tracking["marriages"],
+		pop.Tracking["cull_deaths"],
+		genealoDescends,
+		geneticDescends,
+	)
 
 	pop.Tracking["births"] = 0
 	pop.Tracking["deaths"] = 0
@@ -100,44 +114,61 @@ func Save(model *types.Model, pop *types.Pop, run int, year int) {
 	pop.Tracking["cull_deaths"] = 0
 }
 
-// SaveLivingPeople saves data on all living people to a CSV file
-//func SaveLivingPeople(model *types.Model, pop *types.Model, run int, year int) error {
-//	var livingPeopleData strings.Builder
-//	for ind := range pop.IndData {
-//		livingPeopleData.WriteString(personDataString(ind, pop.IndData[ind], year, "A"))
-//	}
-//	modelID := fmt.Sprintf("%.0f", model.Parameters["model_id"])
-//	filename := fmt.Sprintf("results/%s-%d living.csv", modelID, run)
-//	return writeToFile(filename, livingPeopleData.String())
-//}
+// SaveDriftSummary
+func SaveDriftSummary(model *types.Model, pop *types.Pop) {
+	filename := fmt.Sprintf("results/%s_drift_summary.csv", model.ModelName)
+
+	// Create headers if first time
+	if model.FreeParameters["year"] == int(model.Parameters["seed_year"]) {
+		file, _ := os.Create(filename)
+		defer file.Close()
+		writer := csv.NewWriter(file)
+		defer writer.Flush()
+		headers := []string{"run", "year", "num_seg_sites", "avg_het", "alleles_lost", "alleles_fixed", "avg_freq", "freq_variance"}
+		writer.Write(headers)
+	}
+
+	// Calculate summary stats
+	stats := calculateDriftStats(model, pop)
+
+	file, _ := os.OpenFile(filename, os.O_APPEND|os.O_WRONLY, 0644)
+	defer file.Close()
+	writer := csv.NewWriter(file)
+	defer writer.Flush()
+
+	data := []string{
+		fmt.Sprintf("%d", model.FreeParameters["run"]),
+		fmt.Sprintf("%d", model.FreeParameters["year"]),
+		fmt.Sprintf("%d", stats.NumSegSites),
+		fmt.Sprintf("%.6f", stats.AvgHet),
+		fmt.Sprintf("%d", stats.AllelesLost),
+		fmt.Sprintf("%d", stats.AllelesFixed),
+		fmt.Sprintf("%.6f", stats.AvgFreq),
+		fmt.Sprintf("%.6f", stats.FreqVariance),
+	}
+	writer.Write(data)
+}
 
 // personDataString formats detailed individual data with state information
-func personDataString(pop *types.Pop, ind int, year int, state string) string {
+func personDataString(model *types.Model, pop *types.Pop, ind int, state string) string {
 	var info strings.Builder
 	indInfo, exists := pop.IndData[ind]
 	if exists {
-		fields := []string{
-			"birth_year", "sex", "dad", "mom", "lifespan",
-			"lat", "lon", "marriage_state", "numbirths",
-			"Y_gens", "mt_gens", "min_genealo_gens", "max_genealo_gens",
-			"allele_count", "num_blocks", "centromeres", "fitness", "mutations",
+		fields := []individual.IndData{
+			individual.BirthYear, individual.Sex, individual.Dad, individual.Mom, individual.Lifespan,
+			individual.Lat, individual.Lon, individual.MarriageState, individual.NumBirths,
+			individual.YGens, individual.MtGens, individual.MinGenealoGens, individual.MaxGenealoGens,
+			individual.AlleleCount, individual.NumBlocks, individual.NumCentromeres, individual.Fitness,
+			individual.NumMutations,
 		}
-		info.WriteString(fmt.Sprintf("%d,%d,%d,", ind, getOrDefault(indInfo, "birth_year", -1), year))
+		info.WriteString(fmt.Sprintf("%d,%d,%d,", ind, indInfo[individual.BirthYear], model.FreeParameters["year"]))
 		for _, field := range fields {
-			info.WriteString(fmt.Sprintf("%d,", getOrDefault(indInfo, field, -1)))
+			info.WriteString(fmt.Sprintf("%d,", indInfo[field]))
 		}
 		info.WriteString(state) // Append state ('R' for removed, 'A' for alive)
 		info.WriteString("\n")
 	}
 	return info.String()
-}
-
-// getOrDefault retrieves a value from a map with a default fallback
-func getOrDefault(data map[string]int, key string, defaultVal int) int {
-	if val, ok := data[key]; ok {
-		return val
-	}
-	return defaultVal
 }
 
 // writeToFile writes content to a file
@@ -254,37 +285,37 @@ func SaveGenomeMap(
 	return nil
 }
 
-func calculateMiscStats(indData map[int]map[string]int) (int, int, int, int, int, int, int) {
+func calculateMiscStats(indData *map[int][]int) (int, int, int, int, int, int, int) {
 	var Y, mt, genealo, genetic, alleles, blocks, cents int
-	for _, ind := range indData {
-		if ind["Y_gens"] > 0 {
+	for _, ind := range *indData {
+		if ind[individual.YGens] > 0 {
 			Y += 1
 		}
-		if ind["mt_gens"] > 0 {
+		if ind[individual.MtGens] > 0 {
 			mt += 1
 		}
-		if ind["max_genealo_gens"] > -1 {
+		if ind[individual.MaxGenealoGens] > -1 {
 			genealo++
 		}
-		if ind["allele_count"] > 0 {
-			alleles += ind["allele_count"]
+		if ind[individual.AlleleCount] > 0 {
+			alleles += ind[individual.AlleleCount]
 			genetic++
 		}
-		if ind["num_blocks"] > 0 {
-			blocks += ind["num_blocks"]
+		if ind[individual.NumBlocks] > 0 {
+			blocks += ind[individual.NumBlocks]
 		}
-		if ind["num_centromeres"] > 0 {
-			cents += ind["num_centromeres"]
+		if ind[individual.NumCentromeres] > 0 {
+			cents += ind[individual.NumCentromeres]
 		}
 	}
 	return Y, mt, genealo, genetic, alleles, blocks, cents
 }
 
-func seedCounts(model *types.Model, pop *types.Pop) (int, int, int, int) {
+func seedCounts(model *types.Model, pop *types.Pop) (int, int, int, int, int) {
 
-	bitCounts := make([]int, model.FreeParameters["NumBits"])
-	totHet, totHomMin, totHomMaj := 0, 0, 0
-	seedGenomeRetained := make([]uint64, (model.FreeParameters["NumBits"]+63)/64)
+	bitCounts := make([]int, model.FreeParameters["genome_bits"])
+	totHet, avHet, totHomMin, totHomMaj := 0, 0, 0, 0
+	seedGenomeRetained := make([]uint64, (model.FreeParameters["genome_bits"]+63)/64)
 
 	for _, chromosomePairs := range pop.Chromosomes {
 		if len(chromosomePairs) > 0 && len(chromosomePairs[0]) > 0 && len(chromosomePairs[1]) > 0 {
@@ -298,19 +329,20 @@ func seedCounts(model *types.Model, pop *types.Pop) (int, int, int, int) {
 				andBits := b0 & b1
 				norBits := ^(b0 | b1)
 				totHet += countSetBitsSingleVar(xorBits)
+				avHet = 1
 				totHomMin += countSetBitsSingleVar(andBits)
 				totHomMaj += countSetBitsSingleVar(norBits)
 			}
 		}
 	}
 	numbitsRetained := countSetBits(seedGenomeRetained)
-	return numbitsRetained, totHet, totHomMin, totHomMaj
+	return numbitsRetained, totHet, avHet, totHomMin, totHomMaj
 }
 
 func calculateFitnessStats(model *types.Model, pop *types.Pop) (numMuts int, totalFitness int) {
 	for _, ind := range pop.IndData {
-		numMuts += ind["num_mutations"]
-		totalFitness += ind["fitness"]
+		numMuts += ind[individual.NumMutations]
+		totalFitness += ind[individual.Fitness]
 	}
 	return numMuts, totalFitness
 }

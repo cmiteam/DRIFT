@@ -48,7 +48,7 @@ func GenerateNewMutations(model *types.Model, pop *types.Pop, ind int) {
 	for i := 0; i < numNewMutations; i++ {
 		model.FreeParameters["mutID"]++
 		mutationID := model.FreeParameters["mutID"]
-		position := rand.Intn(int(model.FreeParameters["numbits"]))
+		position := rand.Intn(int(model.FreeParameters["genome_bits"]))
 		mutationEffect := 0.0
 		isMutationNonNeutral := rand.Float64()
 		if isMutationNonNeutral >= model.Parameters["f_neutral"] {

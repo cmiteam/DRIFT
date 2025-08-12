@@ -47,6 +47,5 @@ func LoadParameters(model *types.Model, configRoot string) error {
 			model.Parameters[record[0]] = value
 		}
 	}
-
 	return nil
 }
