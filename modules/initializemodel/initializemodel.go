@@ -12,13 +12,16 @@ import (
 // Initializes the model based on the configuration files.
 func InitializeModel(configRoot string) (*types.Model, error) {
 	model := &types.Model{
-		Parameters:     make(map[string]float64),
-		PlotFlags:      make(map[string]bool),
-		ChromosomeArms: make(map[int]map[int][]int),
-		DeathRisk:      make(map[int]float64),
-		CumulativeProb: make(map[int]float64),
-		FreeParameters: make(map[string]int),
-		Map:            nil, // this will be set later, once the dimensions are known
+		Parameters:      make(map[string]float64),
+		PlotFlags:       make(map[string]bool),
+		ChromosomeArms:  make(map[int]map[int][]int),
+		DeathRisk:       make(map[int]float64),
+		CumulativeProb:  make(map[int]float64),
+		FreeParameters:  make(map[string]int),
+		Map:             nil, // this will be set later, once the dimensions are known
+		PrevFrequencies: make(map[int]float64),
+		HetHistory:      make([]float64, 0),
+		TimeHistory:     make([]int, 0),
 	}
 
 	// Attempt to load each config file. Failure will be fatal.

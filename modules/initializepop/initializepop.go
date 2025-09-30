@@ -18,6 +18,9 @@ func InitializePop(model *types.Model) *types.Pop {
 		MutationPool: make(map[int]types.Mutation),
 		MutationHist: make(map[int]int),
 		Tracking:     make(map[string]int),
+		AlleleFreqs:  make(map[int][]int16),
+		MaleDB:       make(map[int]types.Ancestor),
+		FemaleDB:     make(map[int]types.Ancestor),
 	}
 
 	// Reset run-specific parameters
@@ -92,6 +95,8 @@ func InitializePop(model *types.Model) *types.Pop {
 
 		pop.IndData[i][individual.Lat] = lat
 		pop.IndData[i][individual.Lon] = lon
+		pop.IndData[i][individual.Sons] = 0
+		pop.IndData[i][individual.Daughters] = 0
 
 		// Create a paired individual and marry them if old enough
 		//		pop.IndData[i+1] = pop.IndData[i]

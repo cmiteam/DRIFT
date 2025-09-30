@@ -71,7 +71,7 @@ func Birth(model *types.Model, pop *types.Pop) {
 			model.FreeParameters["indID"] += 1
 			child := model.FreeParameters["indID"]
 			createChild(model, pop, dad, mom, child)
-
+			pop.Tracking["births"]++
 			// If DNA or mutations are being tracked, bitmasks will be created that
 			// will be used to control meiosis and mutation inheritance. These will
 			// be used for both meiosis and mutation inheritance, so we will set
@@ -152,7 +152,22 @@ func Birth(model *types.Model, pop *types.Pop) {
 					pop.IndData[child][individual.NumMutations] = numMutations
 				}
 			}
-			pop.Tracking["births"]++
+
+			if model.Parameters["track_coalescence"] == 1 {
+				if pop.IndData[child][individual.Sex] == 0 {
+					pop.IndData[dad][individual.Sons]++
+					pop.MaleDB[child] = types.Ancestor{
+						ID:        dad,
+						BirthYear: pop.IndData[dad][individual.BirthYear],
+					}
+				} else {
+					pop.IndData[mom][individual.Daughters]++
+					pop.FemaleDB[child] = types.Ancestor{
+						ID:        mom,
+						BirthYear: pop.IndData[mom][individual.BirthYear],
+					}
+				}
+			}
 		}
 	}
 }

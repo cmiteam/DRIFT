@@ -1,39 +1,24 @@
-// go run drift3.go
-
-// Drift
-
 package main
 
 import (
 	"drift/modules/animations"
 	"drift/modules/birth"
+	"drift/modules/coalescence"
 	"drift/modules/death"
+	"drift/modules/initializedrift"
 	"drift/modules/initializemodel"
 	"drift/modules/initializepop"
 	"drift/modules/marriage"
+	"drift/modules/necalcs"
+	"drift/modules/parsecommands"
 	"drift/modules/save"
 	"drift/modules/seedpopulation"
 	"drift/modules/utils"
-	"drift/types"
-	"flag"
 	"fmt"
 	"log"
 	"os"
-	"runtime/pprof"
 	"time"
 )
-
-// Default value for the config-root parameter, relative path to config files
-const defaultConfigRoot = "static"
-
-// Default value for the map-root parameter, relative path to map files
-const defaultMapRoot = "maps"
-
-// Default value for the results parameter, relative path to results files
-const defaultResults = "results"
-
-// Default value for the cpu-profile parameter, relative path to cpu profile file
-const defaultCpuProfile = ""
 
 // Main function does the following:
 // 1. Parses command-line arguments
@@ -41,65 +26,42 @@ const defaultCpuProfile = ""
 // 3. Runs the model for the specified number of iterations
 // 4. Saves the results
 // 5. Prints the execution time
+
 func main() {
 	// Start the timer for execution time
 	starttime := time.Now()
 
-	// Define a command-line parameter (e.g., for a config file path)
-	configRootArg := flag.String("config-root",
-		defaultConfigRoot,
-		"path to directory containing configuration files")
-	mapRootArg := flag.String("map-root",
-		defaultMapRoot,
-		"path to directory containing map files")
-	resultsArg := flag.String("results",
-		defaultResults,
-		"path to directory containing results files")
-	cpuProfileArg := flag.String("cpu-profile",
-		defaultCpuProfile,
-		"path to CPU profile file (empty will disable CPU profiling)")
-
-	// Add more parameters as needed
-
 	// Parse the command-line arguments
-	flag.Parse()
+	config := parsecommands.ParseCommandLine()
 
 	// Initialize the model
-	model, err := initializemodel.InitializeModel(*configRootArg)
+	model, err := initializemodel.InitializeModel(config.ConfigRoot)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing model: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Create the results directory if it doesn't exist
-	if _, err := os.Stat(*resultsArg); os.IsNotExist(err) {
-		err = os.Mkdir(*resultsArg, 0755)
-	}
+	// Setup directories
+	err = initializedrift.SetupDirectories(config.Results)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error creating results directory: %v\n", err)
+		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 
-	// Initialize the animations only if tracking map is enabled
-	var animContainer *types.AnimationsContainer
-	if model.Parameters["track_map"] == 1 {
-		animContainer, err = animations.Initialize(model, *mapRootArg)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error initializing animations: %v\n", err)
-			os.Exit(1)
-		}
+	// Initialize animations if enabled
+	animContainer, err := animations.InitializeIfEnabled(model, config.MapRoot)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing animations: %v\n", err)
+		os.Exit(1)
 	}
 
-	// Start CPU profiling
-	if *cpuProfileArg != "" {
-		cpuFile, err := os.Create(*cpuProfileArg)
-		if err != nil {
-			panic(err)
-		}
-		defer cpuFile.Close()
-		pprof.StartCPUProfile(cpuFile)
-		defer pprof.StopCPUProfile()
+	// Setup CPU profiling
+	cleanup, err := initializedrift.StartCPUProfiling(config.CpuProfile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
 	}
+	defer cleanup()
 
 	// Loop over the number of model runs
 	for run := 1; run <= int(model.Parameters["num_runs"]); run++ {
@@ -111,9 +73,10 @@ func main() {
 		// Loop over the number years in each model run
 		for year := 0; year <= int(model.Parameters["end_year"]); year++ {
 			model.FreeParameters["year"] = year
-			if year >= int(model.Parameters["seed_year"]) &&
-				model.FreeParameters["seed"] == -1 {
+			if year >= int(model.Parameters["seed_year"]) && model.FreeParameters["seed"] == -1 {
 				seedpopulation.SeedThePopulation(model, pop)
+				model.FreeParameters["seed"] = 1
+				fmt.Println("   Seeded population in year", year, "with seed style", int(model.Parameters["seed_style"]))
 			}
 
 			birth.Birth(model, pop)
@@ -155,10 +118,23 @@ func main() {
 		}
 		if model.Parameters["track_map"] == 1 {
 			//			print("Saving map...\n")
-			err := animations.SaveAllGIFs(animContainer, *resultsArg)
+			err := animations.SaveAllGIFs(animContainer, config.Results)
 			if err != nil {
 				log.Printf("Error saving animation: %v", err)
 			}
+		}
+		if model.Parameters["save_detailed_SFS"] == 1 {
+			necalcs.SaveSFSTimeSeries(model, pop)
+		}
+		if model.Parameters["track_coalescence"] == 1 {
+			yadamResult := coalescence.FindYAdam(model, pop)
+			mteveResult := coalescence.FindMtEve(model, pop)
+			fmt.Printf("\nY-Adam: ID %d, born year %d, %d generations back\n",
+				yadamResult.YAdamID, yadamResult.YAdamBirthYear, yadamResult.GenerationsBack)
+			fmt.Printf("Mt-Eve: ID %d, born year %d, %d generations back\n",
+				mteveResult.MtEveID, mteveResult.MtEveBirthYear, mteveResult.GenerationsBack)
+			fmt.Printf("Final MaleDB size: %d, FemaleDB size: %d\n", len(pop.MaleDB), len(pop.FemaleDB))
+			fmt.Printf("Living individuals: %d\n", len(pop.IndData))
 		}
 	}
 

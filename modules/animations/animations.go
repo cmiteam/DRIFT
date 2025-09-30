@@ -13,6 +13,15 @@ import (
 	"path/filepath"
 )
 
+// InitializeIfEnabled initializes animations only if map tracking is enabled
+func InitializeIfEnabled(model *types.Model, mapRoot string) (*types.AnimationsContainer, error) {
+	if model.Parameters["track_map"] != 1 {
+		return nil, nil // Return nil if animations are not enabled
+	}
+
+	return Initialize(model, mapRoot)
+}
+
 // Initialize creates and sets up an animations container
 func Initialize(model *types.Model, mapRoot string) (*types.AnimationsContainer, error) {
 	// Create the base map
