@@ -1,7 +1,0 @@
-Todo:
-1. All-or-nothing issues:
-    1a. Allele counter: bad columns in results csv, genome size = # alleles
-    1b. Number of centromeres is also setting to 23 (max)
-    1c. Percent of the seed genome still surviving = 100.9% 
-2. Maps don't update time and date when overwriting
-3. Parameterize everything

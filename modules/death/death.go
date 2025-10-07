@@ -56,7 +56,7 @@ func Death(model *types.Model, pop *types.Pop) int {
 			}
 			RIP(ind, pop, model)
 			deaths++
-			model.Parameters["random_deaths"]++
+			pop.Tracking["random_deaths"]++
 		}
 	}
 
@@ -196,15 +196,17 @@ func RIP(ind int, pop *types.Pop, model *types.Model) {
 		}
 	}
 
-	//fmt.Printf("killing %d spouse %d,", ind, pop.IndData[ind][individual.MarriageState])
+	if pop.IndData[ind][individual.Sons] == 0 {
+		delete(pop.MaleDB, ind)
+	}
+	if pop.IndData[ind][individual.Daughters] == 0 {
+		delete(pop.FemaleDB, ind)
+	}
 	delete(pop.IndMutations, ind)
 	delete(pop.Chromosomes, ind)
 	delete(pop.Centromeres, ind)
 	delete(pop.IndData, ind)
 
-	//	if ind == model.FreeParameters["seed"] {
-	//		fmt.Printf("You just killed Adam in the year %d :(\n", model.FreeParameters["year"])
-	//	}
 }
 
 // deadString formats individual data for death records

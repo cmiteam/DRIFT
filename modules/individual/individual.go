@@ -24,6 +24,8 @@ const (
 	NumMutations                     // number of mutations
 	NumBirths                        // number of children
 	LastBirthYear                    // year of last birth
+	Sons                             // number of sons born to this individual
+	Daughters                        // number of daughters born to this individual
 	IndDataFieldCount                // number of fields in IndData
 )
 
@@ -76,6 +78,10 @@ func GetStringField(field IndData) string {
 		return "NumBirths"
 	case LastBirthYear:
 		return "LastBirthYear"
+	case Sons:
+		return "Sons"
+	case Daughters:
+		return "Daughters"
 	default:
 		return "UnknownField"
 	}

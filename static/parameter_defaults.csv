@@ -1,13 +1,13 @@
 parameter,label,entry,format,value,group
 model_name,Model Name,Text,string,Default,Main
 num_runs,Num Runs,Text,int,1,Main
-start_pop_size,Start Pop Size,Text,int,1000,Main
-max_pop_size,Max Pop Size,Text,int,1000,Main
+start_pop_size,Start Pop Size,Text,int,500,Main
+max_pop_size,Max Pop Size,Text,int,500,Main
 max_growth_rate,Max Growth Rate,Text,float,2,Main
-end_year,End Year,Text,int,1000,Main
+end_year,End Year,Text,int,100000,Main
 seed_year,Seed Year,Text,int,0,DNA
-seed_style,Seed Style,Text,int,1,DNA
-init_heterozygosity,Init Heterozygosity,Text,float,0.01,DNA
+seed_style,Seed Style,Text,int,2,DNA
+init_heterozygosity,Init Heterozygosity,Text,float,0,DNA
 lifespan,Init Lifespan,Text,int,85,Main
 min_lifespan,Min Lifespan,Text,int,85,Main
 lifespan_drop,Lifespan Drop,Text,float,0.85,Main
@@ -16,7 +16,7 @@ spacing,Spacing,Text,int,2,Main
 birth_prob,Birth Probability,Text,int,2,Main
 menopause,Menopause,Text,float,0.5,Main
 multiplier,Multiplier,Text,int,1,DNA
-mating_style,Mating Style,Dropdown,string,0,Main
+mating_style,Mating Style,Dropdown,string,1,Main
 max_mating_distance,Max Mating Distance,Text,int,5,Main
 selection,Selection,Dropdown,string,0,Mutation
 residence_style,Residence Style,Text,int,1,Main
@@ -27,14 +27,19 @@ bottleneck_start,Bottleneck Start,Text,int,-1,Main
 bottleneck_end,Bottleneck End,Text,int,1000000,Main
 bottleneck_size,Bottleneck Size,Text,int,1000000,Main
 track_DNA,Track DNA,Check,bool,1,Main
-track_alleles,Track Alleles,Check,bool,1,Main
-track_mutations,Track Mutations,Check,bool,0,Main
+track_drift,Track Drift,Check,bool,1,Main
+track_mutations,Track Mutations,Check,bool,1,Main
 track_dead,Track Dead,Check,bool,0,Main
 track_map,Track on Map,Check,bool,0,Main
+track_SFS,Site Frequency Spectrum,checkbox,float,0,Drift
+save_detailed_SFS,Save detailed SFS files,checkbox,float,0,Drift
+track_LD,Linkage Disequilibrium,checkbox,float,0,Drift
+track_coalescence,Track Coalescence,entry,int,0,Analysis
+coalescence_pairs,Coalescence Pairs,entry,int,50,Analysis
 genome_map,Genome Map,Check,bool,1,DNA
 every_genome_map,All Genome Maps,Check,bool,0,DNA
 mutation_map,Mutation Map,Check,bool,0,Mutation
-mutation_hist,Mutation Histogram,Check,bool,0,Mutation
+mutation_hist,Mutation Histogram,Check,bool,1,Mutation
 map_name,Map Name,Text,string,sandbox,Main
 map_width,Map Width,Text,int,3840,Main
 map_height,Map Height,Text,int,2160,Main
@@ -44,7 +49,7 @@ point_size,Pixel Size,Text,int,10,Main
 scenario,Scenario,Dropdown,int,0,Main
 max_breeding_inds,Max Breeding Inds,Check,int,-1,Main
 sex_chrom_index,Sex Chromosome Index,Text,int,23,Main
-mu,Mutation Rate,Text,float,0,Mutation
+mu,Mutation Rate,Text,float,10,Mutation
 f_neutral,f(Neutal),Text,float,1,Mutation
 f_beneficial,f(Beneficial),Text,float,0.0001,Mutation
 mu_scale_factor,Mutation effect sig figs,Text,int,1000000,Mutation
