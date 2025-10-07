@@ -2,7 +2,6 @@ package main
 
 import (
 	"drift/modules/animations"
-	"drift/modules/birth"
 	"drift/modules/coalescence"
 	"drift/modules/death"
 	"drift/modules/initializedrift"
@@ -79,7 +78,7 @@ func main() {
 				fmt.Println("   Seeded population in year", year, "with seed style", int(model.Parameters["seed_style"]))
 			}
 
-			birth.Birth(model, pop)
+			simulation.Birth(model, pop)
 			simulation.Mating(model, pop)
 			death.Death(model, pop)
 			model.FreeParameters["last_pop_size"] = len(pop.IndData) // save pop size for future growth rate calculations
