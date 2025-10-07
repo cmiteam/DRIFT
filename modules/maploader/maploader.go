@@ -2,7 +2,7 @@ package maploader
 
 import (
 	"drift/modules/csvutils"
-	"drift/types"
+	"drift/pkg/core"
 	"fmt"
 	"strconv"
 	"strings"
@@ -27,7 +27,7 @@ const (
 // 1,1,1,1,1,1,1
 // 1,1,1,1,5,1,1
 // 1,1,1,1,1,1,1
-func LoadMap(model *types.Model, mapRoot string) error {
+func LoadMap(model *core.Model, mapRoot string) error {
 	// Derive the filename from the model and load the CSV file
 	filename := fmt.Sprintf("%s.csv", model.MapName)
 	csvLoader := csvutils.CSVLoader{
@@ -115,7 +115,7 @@ func LoadMap(model *types.Model, mapRoot string) error {
 }
 
 // IsValidPosition checks if the given coordinates are within map bounds
-func IsValidPosition(model *types.Model, lat, lon int) bool {
+func IsValidPosition(model *core.Model, lat, lon int) bool {
 	if lat < 0 || lon < 0 {
 		return false
 	}
@@ -129,7 +129,7 @@ func IsValidPosition(model *types.Model, lat, lon int) bool {
 }
 
 // GetTerrain returns the terrain type at the given coordinates
-func GetTerrain(model *types.Model, lat, lon int) int {
+func GetTerrain(model *core.Model, lat, lon int) int {
 	if !IsValidPosition(model, lat, lon) {
 		return int(InvalidTerrainLow)
 	}
@@ -137,12 +137,12 @@ func GetTerrain(model *types.Model, lat, lon int) int {
 }
 
 // IsLand checks if the given coordinates are on land
-func IsLand(model *types.Model, lat, lon int) bool {
+func IsLand(model *core.Model, lat, lon int) bool {
 	return GetTerrain(model, lat, lon) == int(Land)
 }
 
 // FindLandCells returns all land cell coordinates
-func FindLandCells(model *types.Model) [][2]int {
+func FindLandCells(model *core.Model) [][2]int {
 	var landCells [][2]int
 	for lat := 0; lat < len(model.Map); lat++ {
 		for lon := 0; lon < len(model.Map[lat]); lon++ {
@@ -155,21 +155,21 @@ func FindLandCells(model *types.Model) [][2]int {
 }
 
 // GetPixelCoordinates converts map coordinates to pixel coordinates for image saving
-func GetPixelCoordinates(model *types.Model, mapLat, mapLon int) (int, int) {
+func GetPixelCoordinates(model *core.Model, mapLat, mapLon int) (int, int) {
 	pixelLat := int(float64(mapLat) * model.Parameters["save_lat_scale"])
 	pixelLon := int(float64(mapLon) * model.Parameters["save_lon_scale"])
 	return pixelLat, pixelLon
 }
 
 // GetMapCoordinates converts pixel coordinates back to map coordinates
-func GetMapCoordinates(model *types.Model, pixelLat, pixelLon int) (int, int) {
+func GetMapCoordinates(model *core.Model, pixelLat, pixelLon int) (int, int) {
 	mapLat := int(float64(pixelLat) / model.Parameters["save_lat_scale"])
 	mapLon := int(float64(pixelLon) / model.Parameters["save_lon_scale"])
 	return mapLat, mapLon
 }
 
 // GetMapDimensions returns the map width and height
-func GetMapDimensions(model *types.Model) (int, int) {
+func GetMapDimensions(model *core.Model) (int, int) {
 	if len(model.Map) == 0 {
 		return 0, 0
 	}

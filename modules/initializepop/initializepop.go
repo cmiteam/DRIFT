@@ -2,25 +2,25 @@ package initializepop
 
 import (
 	"drift/modules/individual"
-	"drift/types"
+	"drift/pkg/core"
 	"math/rand"
 	"time"
 )
 
-func InitializePop(model *types.Model) *types.Pop {
+func InitializePop(model *core.Model) *core.Pop {
 
 	// Create a new population
-	pop := &types.Pop{
+	pop := &core.Pop{
 		IndData:      make(map[int][]int),
 		Chromosomes:  make(map[int][][]uint64),
 		Centromeres:  make(map[int][2][]uint64),
 		IndMutations: make(map[int]map[int][]int),
-		MutationPool: make(map[int]types.Mutation),
+		MutationPool: make(map[int]core.Mutation),
 		MutationHist: make(map[int]int),
 		Tracking:     make(map[string]int),
 		AlleleFreqs:  make(map[int][]int16),
-		MaleDB:       make(map[int]types.Ancestor),
-		FemaleDB:     make(map[int]types.Ancestor),
+		MaleDB:       make(map[int]core.Ancestor),
+		FemaleDB:     make(map[int]core.Ancestor),
 	}
 
 	// Reset run-specific parameters

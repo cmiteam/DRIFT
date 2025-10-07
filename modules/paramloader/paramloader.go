@@ -2,13 +2,13 @@ package paramloader
 
 import (
 	"drift/modules/csvutils"
-	"drift/types"
+	"drift/pkg/core"
 )
 
 const myFileName = "parameter_defaults.csv"
 
 // Load the parameters from a CSV file and populate the model's Parameters map.
-func LoadParameters(model *types.Model, configRoot string) error {
+func LoadParameters(model *core.Model, configRoot string) error {
 	// Load the CSV file
 	csvLoader := csvutils.CSVLoader{
 		FileName:   myFileName,

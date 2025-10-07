@@ -6,7 +6,7 @@ import (
 	"drift/modules/ldanalysis"
 	"drift/modules/necalcs"
 	"drift/modules/utils"
-	"drift/types"
+	"drift/pkg/core"
 	"encoding/csv"
 	"fmt"
 	"image"
@@ -45,7 +45,7 @@ func SaveHeaders(modelName string) error {
 }
 
 // Save writes the current simulation state to a CSV file
-func Save(model *types.Model, pop *types.Pop, animManager *types.AnimationsContainer) {
+func Save(model *core.Model, pop *core.Pop, animManager *core.AnimationsContainer) {
 
 	filename := fmt.Sprintf("results/%s_results.csv", model.ModelName)
 	numInds := len(pop.IndData)
@@ -333,7 +333,7 @@ func calculateMiscStats(indData *map[int][]int) (int, int, int, int, int, int, i
 	return Y, mt, genealo, genetic, alleles, blocks, cents
 }
 
-func seedCounts(model *types.Model, pop *types.Pop) (int, int, int, int) {
+func seedCounts(model *core.Model, pop *core.Pop) (int, int, int, int) {
 
 	bitCounts := make([]int, model.FreeParameters["genome_bits"])
 	totHet, totHomMin, totHomMaj := 0, 0, 0
@@ -360,7 +360,7 @@ func seedCounts(model *types.Model, pop *types.Pop) (int, int, int, int) {
 	return numbitsRetained, totHet, totHomMin, totHomMaj
 }
 
-func calculateFitnessStats(model *types.Model, pop *types.Pop) (numMuts int, totalFitness int) {
+func calculateFitnessStats(model *core.Model, pop *core.Pop) (numMuts int, totalFitness int) {
 	for _, ind := range pop.IndData {
 		numMuts += ind[individual.NumMutations]
 		totalFitness += ind[individual.Fitness]
@@ -393,7 +393,7 @@ func countSetBits(data []uint64) int {
 	return count
 }
 
-func trackAlleleFrequencies(model *types.Model, pop *types.Pop) []float64 {
+func trackAlleleFrequencies(model *core.Model, pop *core.Pop) []float64 {
 	totalBits := model.FreeParameters["genome_bits"]
 	numWords := (totalBits + 63) / 64
 	popSize := len(pop.IndData)
@@ -440,7 +440,7 @@ func trackAlleleFrequencies(model *types.Model, pop *types.Pop) []float64 {
 	return frequencies
 }
 
-func storeAlleleFrequencies(model *types.Model, pop *types.Pop, frequencies []float64) {
+func storeAlleleFrequencies(model *core.Model, pop *core.Pop, frequencies []float64) {
 	year := model.FreeParameters["year"]
 	scaled := make([]int16, len(frequencies))
 
@@ -451,7 +451,7 @@ func storeAlleleFrequencies(model *types.Model, pop *types.Pop, frequencies []fl
 	pop.AlleleFreqs[year] = scaled
 }
 
-func calculateNe(pop *types.Pop, startYear, endYear int) float64 {
+func calculateNe(pop *core.Pop, startYear, endYear int) float64 {
 	deltaT := float64(endYear - startYear)
 
 	freqs1 := pop.AlleleFreqs[startYear]
@@ -472,7 +472,7 @@ func calculateNe(pop *types.Pop, startYear, endYear int) float64 {
 	return deltaT / (2.0 * variance)
 }
 
-func calculatePopGenStats(model *types.Model, pop *types.Pop, frequencies []float64) (float64, float64, float64) {
+func calculatePopGenStats(model *core.Model, pop *core.Pop, frequencies []float64) (float64, float64, float64) {
 	n := 2.0 * float64(len(pop.IndData)) // Number of chromosomes (diploid)
 
 	// Fast Tajima's π and segregating sites calculation
@@ -514,7 +514,7 @@ func calculatePopGenStats(model *types.Model, pop *types.Pop, frequencies []floa
 	return tajimaPi, wattersonsTheta, fis
 }
 
-func calculateObservedHeterozygosity(model *types.Model, pop *types.Pop) float64 {
+func calculateObservedHeterozygosity(model *core.Model, pop *core.Pop) float64 {
 	totalBits := model.FreeParameters["genome_bits"]
 	numWords := (totalBits + 63) / 64
 	totalIndividuals := len(pop.IndData)
@@ -593,7 +593,7 @@ func calculateAlleleStats(frequencies []float64) (int, int, int, float64, float6
 	return numSegSites, allelesLost, allelesFixed, avMinorFreq, freqVariance
 }
 
-func calculateNeFromHeterozygosityDecline(model *types.Model, currentHet float64) float64 {
+func calculateNeFromHeterozygosityDecline(model *core.Model, currentHet float64) float64 {
 	if len(model.HetHistory) < 3 {
 		return -1
 	}
@@ -654,7 +654,7 @@ func calculateNeFromHeterozygosityDecline(model *types.Model, currentHet float64
 	return ne
 }
 
-func calculateNeIfPossibleImproved(pop *types.Pop) float64 {
+func calculateNeIfPossibleImproved(pop *core.Pop) float64 {
 	if len(pop.AlleleFreqs) < 2 {
 		return -1 // Not enough data points
 	}
@@ -705,7 +705,7 @@ func calculateNeIfPossibleImproved(pop *types.Pop) float64 {
 	return bestNe
 }
 
-func calculateObservedHeterozygosityOptimized(model *types.Model, pop *types.Pop) float64 {
+func calculateObservedHeterozygosityOptimized(model *core.Model, pop *core.Pop) float64 {
 	totalBits := model.FreeParameters["genome_bits"]
 	numWords := (totalBits + 63) / 64
 	totalIndividuals := len(pop.IndData)
@@ -740,7 +740,7 @@ func calculateObservedHeterozygosityOptimized(model *types.Model, pop *types.Pop
 	return float64(totalHetBits) / (float64(totalIndividuals) * float64(totalBits))
 }
 
-func calculateNeWithFiltering(pop *types.Pop, startYear, endYear int) float64 {
+func calculateNeWithFiltering(pop *core.Pop, startYear, endYear int) float64 {
 	deltaT := float64(endYear - startYear)
 	if deltaT <= 0 {
 		return -1
@@ -796,7 +796,7 @@ func calculateNeWithFiltering(pop *types.Pop, startYear, endYear int) float64 {
 	return ne
 }
 
-func getCoalescenceForSave(results []*types.CoalescenceResult) (float64, float64, int, int) {
+func getCoalescenceForSave(results []*core.CoalescenceResult) (float64, float64, int, int) {
 	if results == nil || len(results) == 0 {
 		return 0.0, 0.0, 0, 0
 	}

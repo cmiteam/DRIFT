@@ -3,13 +3,13 @@ package utils
 import (
 	"drift/modules/individual"
 	"drift/modules/maploader"
-	"drift/types"
+	"drift/pkg/core"
 	"math/rand"
 )
 
 // Wander moves an individual to a random location within a square area
 // centered on the current position.
-func Wander(model *types.Model, lat, lon int) (int, int) {
+func Wander(model *core.Model, lat, lon int) (int, int) {
 	// Get maximum wander distance
 	maxDistance := int(model.Parameters["wander"])
 	if maxDistance < 1 {

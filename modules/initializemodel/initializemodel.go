@@ -5,13 +5,13 @@ import (
 	"drift/modules/chromosomeloader"
 	"drift/modules/paramloader"
 	"drift/modules/save"
-	"drift/types"
+	"drift/pkg/core"
 	"math"
 )
 
 // Initializes the model based on the configuration files.
-func InitializeModel(configRoot string) (*types.Model, error) {
-	model := &types.Model{
+func InitializeModel(configRoot string) (*core.Model, error) {
+	model := &core.Model{
 		Parameters:      make(map[string]float64),
 		PlotFlags:       make(map[string]bool),
 		ChromosomeArms:  make(map[int]map[int][]int),

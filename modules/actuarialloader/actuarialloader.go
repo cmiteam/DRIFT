@@ -2,14 +2,14 @@ package actuarialloader
 
 import (
 	"drift/modules/csvutils"
-	"drift/types"
+	"drift/pkg/core"
 )
 
 // Name of the CSV file containing the actuarial table.
 const myFileName = "actuarial_table.csv"
 
 // Load the actuarial table from a CSV file and populate the model's DeathRisk and CumulativeProb maps.
-func LoadActuarialTable(model *types.Model, configRoot string) error {
+func LoadActuarialTable(model *core.Model, configRoot string) error {
 	// Load the CSV file
 	csvLoader := csvutils.CSVLoader{
 		FileName:   myFileName,

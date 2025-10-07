@@ -4,14 +4,14 @@ import (
 	"drift/modules/individual"
 	"drift/modules/mutation"
 	"drift/modules/utils"
-	"drift/types"
+	"drift/pkg/core"
 	"fmt"
 	"math/bits"
 	"math/rand"
 	"strings"
 )
 
-func Birth(model *types.Model, pop *types.Pop) {
+func Birth(model *core.Model, pop *core.Pop) {
 
 	// First, find eligible females and roll the dice
 	var currentInds []int
@@ -156,13 +156,13 @@ func Birth(model *types.Model, pop *types.Pop) {
 			if model.Parameters["track_coalescence"] == 1 {
 				if pop.IndData[child][individual.Sex] == 0 {
 					pop.IndData[dad][individual.Sons]++
-					pop.MaleDB[child] = types.Ancestor{
+					pop.MaleDB[child] = core.Ancestor{
 						ID:        dad,
 						BirthYear: pop.IndData[dad][individual.BirthYear],
 					}
 				} else {
 					pop.IndData[mom][individual.Daughters]++
-					pop.FemaleDB[child] = types.Ancestor{
+					pop.FemaleDB[child] = core.Ancestor{
 						ID:        mom,
 						BirthYear: pop.IndData[mom][individual.BirthYear],
 					}
@@ -172,7 +172,7 @@ func Birth(model *types.Model, pop *types.Pop) {
 	}
 }
 
-func createChild(model *types.Model, pop *types.Pop, dad, mom, child int) {
+func createChild(model *core.Model, pop *core.Pop, dad, mom, child int) {
 
 	// potential lifespan is the average of the parents X the lifespan drop per generation, but it bottoms out at min_lifespan
 	lifespan := int(float64(pop.IndData[dad][individual.Lifespan]+pop.IndData[mom][individual.Lifespan]) / 2.0 * model.Parameters["lifespan_drop"])
@@ -229,7 +229,7 @@ func createChild(model *types.Model, pop *types.Pop, dad, mom, child int) {
 	pop.IndData[mom][individual.NumBirths]++
 }
 
-func createMask(model *types.Model, sex int) ([]uint64, []uint64) {
+func createMask(model *core.Model, sex int) ([]uint64, []uint64) {
 
 	// masks are uint64 (8-byte unsigned integers with 64 bits of memory). It takes about 50 uint64 to code for one copy of a 3,100 bit genome
 	// the centromere mask is a single uint64, therefore models with up to 64 chromosomes can be handled
@@ -297,7 +297,7 @@ func createMask(model *types.Model, sex int) ([]uint64, []uint64) {
 // the mother, so chromosomes[child][0] = paternal inheritance and
 // chromosomes[child][1] = maternal inheritance
 
-func meiosis(pop *types.Pop, mask []uint64, parent int, child int, copy int) {
+func meiosis(pop *core.Pop, mask []uint64, parent int, child int, copy int) {
 	parentCopy0 := pop.Chromosomes[parent][0]
 	parentCopy1 := pop.Chromosomes[parent][1]
 	childCopy := make([]uint64, len(mask))
@@ -308,7 +308,7 @@ func meiosis(pop *types.Pop, mask []uint64, parent int, child int, copy int) {
 }
 
 // countContiguousBlocks counts blocks of contiguous set bits
-func countContiguousBlocks(model *types.Model, pop *types.Pop, ind int, copy int) int {
+func countContiguousBlocks(model *core.Model, pop *core.Pop, ind int, copy int) int {
 	blockCount := 0
 	genomestring := uint64ArrayToBitString(pop.Chromosomes[ind][copy])
 	for chrom, _ := range model.ChromosomeArms {
@@ -348,7 +348,7 @@ func uint64ArrayToBitString(genomesegment []uint64) string {
 	return bitString.String()
 }
 
-func inheritCentromeres(model *types.Model, pop *types.Pop, centsmask0 []uint64, centsmask1 []uint64, dad int, mom int, child int) {
+func inheritCentromeres(model *core.Model, pop *core.Pop, centsmask0 []uint64, centsmask1 []uint64, dad int, mom int, child int) {
 	if pop.IndData[dad][individual.NumCentromeres] > 0 || pop.IndData[mom][individual.NumCentromeres] > 0 {
 		_, dadExists := pop.Centromeres[dad]
 		_, momExists := pop.Centromeres[mom]

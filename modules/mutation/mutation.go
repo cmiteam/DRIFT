@@ -1,14 +1,14 @@
 package mutation
 
 import (
-	"drift/types"
+	"drift/pkg/core"
 	"gonum.org/v1/gonum/stat/distuv"
 	"math"
 	"math/rand"
 	"time"
 )
 
-func InheritMutations(pop *types.Pop, genomemask []uint64, parent int, child int, copy int) {
+func InheritMutations(pop *core.Pop, genomemask []uint64, parent int, child int, copy int) {
 	if _, exists := pop.IndMutations[child]; !exists {
 		pop.IndMutations[child] = map[int][]int{
 			0: {},
@@ -39,7 +39,7 @@ func InheritMutations(pop *types.Pop, genomemask []uint64, parent int, child int
 	}
 }
 
-func GenerateNewMutations(model *types.Model, pop *types.Pop, ind int) {
+func GenerateNewMutations(model *core.Model, pop *core.Pop, ind int) {
 
 	rand.Seed(time.Now().UnixNano())
 	poisson := distuv.Poisson{Lambda: model.Parameters["mu"]}
@@ -68,7 +68,7 @@ func GenerateNewMutations(model *types.Model, pop *types.Pop, ind int) {
 			pop.IndMutations[ind][strand] = []int{}
 		}
 		pop.IndMutations[ind][strand] = append(pop.IndMutations[ind][strand], mutationID)
-		pop.MutationPool[mutationID] = types.Mutation{
+		pop.MutationPool[mutationID] = core.Mutation{
 			Id:        mutationID,
 			Position:  position,
 			Effect:    mutationEffect,
@@ -84,7 +84,7 @@ func weibullRandom(shape, scale float64) float64 {
 	return scale * math.Pow(-math.Log(u), 1/shape)
 }
 
-func addMutation(pop *types.Pop, ind int, position int, copy int, value int) {
+func addMutation(pop *core.Pop, ind int, position int, copy int, value int) {
 	if pop.IndMutations[ind] == nil {
 		pop.IndMutations[ind] = make(map[int][]int)
 	}
@@ -94,7 +94,7 @@ func addMutation(pop *types.Pop, ind int, position int, copy int, value int) {
 	pop.IndMutations[ind][position][copy] = value
 }
 
-func CountFitnessAndMutations(pop *types.Pop, child int) (int, float64) {
+func CountFitnessAndMutations(pop *core.Pop, child int) (int, float64) {
 	numMutations := 0
 	fitnessEffect := 0.0
 	if len(pop.IndMutations[child]) > 0 {

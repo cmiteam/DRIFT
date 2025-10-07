@@ -2,7 +2,7 @@ package seedpopulation
 
 import (
 	"drift/modules/individual"
-	"drift/types"
+	"drift/pkg/core"
 	"fmt"
 	"math"
 	"math/bits"
@@ -11,7 +11,7 @@ import (
 
 // SeedThePopulation chooses a random seed individual and sets up their genetic data
 
-func SeedThePopulation(model *types.Model, pop *types.Pop) {
+func SeedThePopulation(model *core.Model, pop *core.Pop) {
 	seedStyle := int(model.Parameters["seed_style"])
 	switch seedStyle {
 	case 0:
@@ -26,7 +26,7 @@ func SeedThePopulation(model *types.Model, pop *types.Pop) {
 	}
 }
 
-func seedSingleIndividual(model *types.Model, pop *types.Pop) {
+func seedSingleIndividual(model *core.Model, pop *core.Pop) {
 	seed := chooseRandomSeed(model, pop)
 
 	if seed == -1 {
@@ -69,7 +69,7 @@ func seedSingleIndividual(model *types.Model, pop *types.Pop) {
 	pop.IndData[seed][individual.NumCentromeres] = countSetBits(pop.Centromeres[seed][0])
 }
 
-func chooseRandomSeed(model *types.Model, pop *types.Pop) int {
+func chooseRandomSeed(model *core.Model, pop *core.Pop) int {
 	year := model.FreeParameters["year"]
 	matureMales := []int{}
 	for id, data := range pop.IndData {
@@ -84,7 +84,7 @@ func chooseRandomSeed(model *types.Model, pop *types.Pop) int {
 	return matureMales[rand.Intn(len(matureMales))]
 }
 
-func seedPopulation(model *types.Model, pop *types.Pop) {
+func seedPopulation(model *core.Model, pop *core.Pop) {
 	hetLevel := model.Parameters["init_heterozygosity"]
 	if hetLevel <= 0 {
 		fmt.Println("   No genomic seeding (init_heterozygosity = 0)")
@@ -152,7 +152,7 @@ func seedPopulation(model *types.Model, pop *types.Pop) {
 		pop.IndData[id][individual.AlleleCount] = count
 	}
 }
-func seedMaxHet(model *types.Model, pop *types.Pop) {
+func seedMaxHet(model *core.Model, pop *core.Pop) {
 	model.FreeParameters["seed"] = 1
 
 	totalBits := model.FreeParameters["genome_bits"]

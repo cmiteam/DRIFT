@@ -4,14 +4,14 @@ import (
 	"drift/modules/individual"
 	"drift/modules/maploader"
 	"drift/modules/utils"
-	"drift/types"
+	"drift/pkg/core"
 	"math"
 	"math/rand"
 	"time"
 )
 
 // Marriage handles pairing of eligible individuals in the population
-func Marriage(model *types.Model, pop *types.Pop) {
+func Marriage(model *core.Model, pop *core.Pop) {
 	var availableMen, availableWomen []int
 
 	// Find eligible individuals (unmarried and of mature age)
@@ -48,7 +48,7 @@ func Marriage(model *types.Model, pop *types.Pop) {
 }
 
 // randomMating pairs individuals randomly (no distance constraints)
-func randomMating(model *types.Model, pop *types.Pop, availableMen, availableWomen []int) {
+func randomMating(model *core.Model, pop *core.Pop, availableMen, availableWomen []int) {
 	// Randomize people
 	rand.Seed(time.Now().UnixNano())
 	rand.Shuffle(len(availableMen), func(i, j int) {
@@ -84,7 +84,7 @@ func randomMating(model *types.Model, pop *types.Pop, availableMen, availableWom
 }
 
 // distanceMating pairs individuals based on proximity using influence grid
-func distanceMating(model *types.Model, pop *types.Pop, availableMen, availableWomen []int) {
+func distanceMating(model *core.Model, pop *core.Pop, availableMen, availableWomen []int) {
 	maxDistance := int(model.Parameters["max_mating_distance"])
 	matched := make(map[int]bool) // Track who's already matched
 
@@ -140,7 +140,7 @@ func distanceMating(model *types.Model, pop *types.Pop, availableMen, availableW
 }
 
 // ageDistanceMating pairs individuals based on age preference and distance
-func ageDistanceMating(model *types.Model, pop *types.Pop, availableMen, availableWomen []int) {
+func ageDistanceMating(model *core.Model, pop *core.Pop, availableMen, availableWomen []int) {
 	maxDistance := int(model.Parameters["max_mating_distance"])
 	currentYear := model.FreeParameters["year"]
 
@@ -245,7 +245,7 @@ func ageDistanceMating(model *types.Model, pop *types.Pop, availableMen, availab
 }
 
 // createInfluenceGrid creates a grid where each cell contains IDs of women who can mate there
-func createInfluenceGrid(model *types.Model, pop *types.Pop, availableWomen []int, maxDistance int) [][][]int {
+func createInfluenceGrid(model *core.Model, pop *core.Pop, availableWomen []int, maxDistance int) [][][]int {
 	// Get map dimensions
 	mapHeight := 101
 	mapWidth := 101

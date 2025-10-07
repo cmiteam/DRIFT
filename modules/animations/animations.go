@@ -3,7 +3,7 @@ package animations
 import (
 	"drift/modules/individual"
 	"drift/modules/maploader"
-	"drift/types"
+	"drift/pkg/core"
 	"fmt"
 	"image"
 	"image/color"
@@ -14,7 +14,7 @@ import (
 )
 
 // InitializeIfEnabled initializes animations only if map tracking is enabled
-func InitializeIfEnabled(model *types.Model, mapRoot string) (*types.AnimationsContainer, error) {
+func InitializeIfEnabled(model *core.Model, mapRoot string) (*core.AnimationsContainer, error) {
 	if model.Parameters["track_map"] != 1 {
 		return nil, nil // Return nil if animations are not enabled
 	}
@@ -23,7 +23,7 @@ func InitializeIfEnabled(model *types.Model, mapRoot string) (*types.AnimationsC
 }
 
 // Initialize creates and sets up an animations container
-func Initialize(model *types.Model, mapRoot string) (*types.AnimationsContainer, error) {
+func Initialize(model *core.Model, mapRoot string) (*core.AnimationsContainer, error) {
 	// Create the base map
 	baseMap, tileSize := CreateBaseMap(model, TerrainColors, mapRoot)
 	if baseMap == nil {
@@ -31,10 +31,10 @@ func Initialize(model *types.Model, mapRoot string) (*types.AnimationsContainer,
 	}
 
 	// Create the animations container
-	container := &types.AnimationsContainer{
+	container := &core.AnimationsContainer{
 		BaseMap:    baseMap,
 		TileSize:   tileSize,
-		Collection: make(map[string]*types.AnimationWriter),
+		Collection: make(map[string]*core.AnimationWriter),
 	}
 
 	// Create the standard animations
@@ -45,12 +45,12 @@ func Initialize(model *types.Model, mapRoot string) (*types.AnimationsContainer,
 }
 
 // CreateAnimation adds a new animation to the container
-func CreateAnimation(container *types.AnimationsContainer, name string) {
+func CreateAnimation(container *core.AnimationsContainer, name string) {
 	bounds := container.BaseMap.Bounds()
 	width := bounds.Dx()
 	height := bounds.Dy()
 
-	container.Collection[name] = &types.AnimationWriter{
+	container.Collection[name] = &core.AnimationWriter{
 		Frames: []*image.Paletted{},
 		Delays: []int{},
 		Width:  width,
@@ -60,7 +60,7 @@ func CreateAnimation(container *types.AnimationsContainer, name string) {
 
 // CreateBaseMap transforms terrain data into a 2D color array
 
-func CreateBaseMap(model *types.Model, terrainColors map[int]color.RGBA, mapRoot string) (*image.RGBA, int) {
+func CreateBaseMap(model *core.Model, terrainColors map[int]color.RGBA, mapRoot string) (*image.RGBA, int) {
 	maploader.LoadMap(model, mapRoot)
 	mapHeight := len(model.Map)
 	mapWidth := len(model.Map[0])
@@ -107,7 +107,7 @@ func CreateBaseMap(model *types.Model, terrainColors map[int]color.RGBA, mapRoot
 }
 
 // AddFrame adds a new frame to an animation
-func AddFrame(model *types.Model, container *types.AnimationsContainer, animName string, updates map[[2]int]color.RGBA) error {
+func AddFrame(model *core.Model, container *core.AnimationsContainer, animName string, updates map[[2]int]color.RGBA) error {
 
 	// Find the animation
 	anim, exists := container.Collection[animName]
@@ -173,7 +173,7 @@ func AddFrame(model *types.Model, container *types.AnimationsContainer, animName
 }
 
 // SaveGIF saves the animation as a GIF file
-func SaveGIF(container *types.AnimationsContainer, animName string, results string) error {
+func SaveGIF(container *core.AnimationsContainer, animName string, results string) error {
 	// Find the animation
 	anim, exists := container.Collection[animName]
 	if !exists {
@@ -198,7 +198,7 @@ func SaveGIF(container *types.AnimationsContainer, animName string, results stri
 }
 
 // SaveAllGIFs saves all animations in the container
-func SaveAllGIFs(container *types.AnimationsContainer, results string) error {
+func SaveAllGIFs(container *core.AnimationsContainer, results string) error {
 	for name := range container.Collection {
 		if err := SaveGIF(container, name, results); err != nil {
 			return fmt.Errorf("error saving animation %s: %w", name, err)
@@ -219,7 +219,7 @@ var TerrainColors = map[int]color.RGBA{
 	7: color.RGBA{0, 0, 0, 255},       // InvalidTerrainHigh - Black
 }
 
-func AddAnimationFrames(model *types.Model, pop *types.Pop, container *types.AnimationsContainer) error {
+func AddAnimationFrames(model *core.Model, pop *core.Pop, container *core.AnimationsContainer) error {
 	if model.Parameters["track_map"] != 1 {
 		return nil
 	}
@@ -241,7 +241,7 @@ func AddAnimationFrames(model *types.Model, pop *types.Pop, container *types.Ani
 	return nil
 }
 
-func createGeneticFrameData(model *types.Model, pop *types.Pop) map[[2]int]color.RGBA {
+func createGeneticFrameData(model *core.Model, pop *core.Pop) map[[2]int]color.RGBA {
 	changePoints := make(map[[2]int]color.RGBA)
 
 	// Create base points for all individuals (white dots)
@@ -269,7 +269,7 @@ func createGeneticFrameData(model *types.Model, pop *types.Pop) map[[2]int]color
 	return changePoints
 }
 
-func createGenealogicalFrameData(model *types.Model, pop *types.Pop) map[[2]int]color.RGBA {
+func createGenealogicalFrameData(model *core.Model, pop *core.Pop) map[[2]int]color.RGBA {
 	changePoints := make(map[[2]int]color.RGBA)
 
 	// Create base points for all individuals (white dots)

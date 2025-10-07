@@ -2,7 +2,7 @@ package death
 
 import (
 	"drift/modules/individual"
-	"drift/types"
+	"drift/pkg/core"
 	"fmt"
 	"math/rand"
 	"os"
@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func Death(model *types.Model, pop *types.Pop) int {
+func Death(model *core.Model, pop *core.Pop) int {
 
 	rand.Seed(time.Now().UnixNano())
 	deaths := 0
@@ -165,7 +165,7 @@ func pickVictims(excess int, keyList []int) []int {
 }
 
 // RIP removes a deceased individual and updates related data
-func RIP(ind int, pop *types.Pop, model *types.Model) {
+func RIP(ind int, pop *core.Pop, model *core.Model) {
 	if _, exists := pop.IndData[ind]; exists {
 		if pop.IndData[ind][individual.MarriageState] > -1 {
 			// Clear the dying person's spouse's marriage state
@@ -210,7 +210,7 @@ func RIP(ind int, pop *types.Pop, model *types.Model) {
 }
 
 // deadString formats individual data for death records
-func deadString(model *types.Model, pop *types.Pop, ind int) string {
+func deadString(model *core.Model, pop *core.Pop, ind int) string {
 	// keeps track of deceased individuals if they are to be saved
 	var info strings.Builder
 	indInfo, exists := pop.IndData[ind]
@@ -245,7 +245,7 @@ func deadString(model *types.Model, pop *types.Pop, ind int) string {
 }
 
 // personDataString formats detailed individual data with state information
-func personDataString(model *types.Model, pop *types.Pop, ind int, state string) string {
+func personDataString(model *core.Model, pop *core.Pop, ind int, state string) string {
 	var info strings.Builder
 	indInfo, exists := pop.IndData[ind]
 	if exists {
@@ -275,7 +275,7 @@ func getOrDefault(data map[string]int, key string, defaultVal int) int {
 }
 
 // countBreedingIndividuals counts individuals of breeding age
-func countBreedingIndividuals(model *types.Model, pop *types.Pop) int {
+func countBreedingIndividuals(model *core.Model, pop *core.Pop) int {
 	count := 0
 	for _, data := range pop.IndData {
 		age := model.FreeParameters["year"] - data[individual.BirthYear]
