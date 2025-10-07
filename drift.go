@@ -8,12 +8,12 @@ import (
 	"drift/modules/initializedrift"
 	"drift/modules/initializemodel"
 	"drift/modules/initializepop"
-	"drift/modules/marriage"
 	"drift/modules/necalcs"
 	"drift/modules/parsecommands"
 	"drift/modules/save"
 	"drift/modules/seedpopulation"
 	"drift/modules/utils"
+	"drift/pkg/simulation"
 	"fmt"
 	"log"
 	"os"
@@ -80,7 +80,7 @@ func main() {
 			}
 
 			birth.Birth(model, pop)
-			marriage.Marriage(model, pop)
+			simulation.Mating(model, pop)
 			death.Death(model, pop)
 			model.FreeParameters["last_pop_size"] = len(pop.IndData) // save pop size for future growth rate calculations
 
