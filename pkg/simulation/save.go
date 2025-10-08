@@ -340,22 +340,22 @@ func seedCounts(model *core.Model, pop *core.Pop) (int, int, int, int) {
 
 	for _, chromosomePairs := range pop.Chromosomes {
 		if len(chromosomePairs) > 0 && len(chromosomePairs[0]) > 0 && len(chromosomePairs[1]) > 0 {
-			seedGenomeRetained = bitwiseOR(seedGenomeRetained, chromosomePairs[0])
-			seedGenomeRetained = bitwiseOR(seedGenomeRetained, chromosomePairs[1])
+			seedGenomeRetained = utils.BitwiseOR(seedGenomeRetained, chromosomePairs[0])
+			seedGenomeRetained = utils.BitwiseOR(seedGenomeRetained, chromosomePairs[1])
 			for j := range chromosomePairs[0] {
 				b0, b1 := chromosomePairs[0][j], chromosomePairs[1][j]
-				bitCounts[j] += countSetBitsSingleVar(b0)
-				bitCounts[j] += countSetBitsSingleVar(b1)
+				bitCounts[j] += utils.CountSetBitsSingleVar(b0)
+				bitCounts[j] += utils.CountSetBitsSingleVar(b1)
 				xorBits := b0 ^ b1
 				andBits := b0 & b1
 				norBits := ^(b0 | b1)
-				totHet += countSetBitsSingleVar(xorBits)
-				totHomMin += countSetBitsSingleVar(andBits)
-				totHomMaj += countSetBitsSingleVar(norBits)
+				totHet += utils.CountSetBitsSingleVar(xorBits)
+				totHomMin += utils.CountSetBitsSingleVar(andBits)
+				totHomMaj += utils.CountSetBitsSingleVar(norBits)
 			}
 		}
 	}
-	numbitsRetained := countSetBits(seedGenomeRetained)
+	numbitsRetained := utils.CountSetBits(seedGenomeRetained)
 	return numbitsRetained, totHet, totHomMin, totHomMaj
 }
 
@@ -365,31 +365,6 @@ func calculateFitnessStats(model *core.Model, pop *core.Pop) (numMuts int, total
 		totalFitness += ind[individual.Fitness]
 	}
 	return numMuts, totalFitness
-}
-
-func bitwiseOR(a, b []uint64) []uint64 {
-	result := make([]uint64, len(a))
-	for i := range a {
-		result[i] = a[i] | b[i]
-	}
-	return result
-}
-
-func countSetBitsSingleVar(value uint64) int {
-	count := 0
-	for value > 0 {
-		count += int(value & 1)
-		value >>= 1
-	}
-	return count
-}
-
-func countSetBits(data []uint64) int {
-	count := 0
-	for _, value := range data {
-		count += countSetBitsSingleVar(value)
-	}
-	return count
 }
 
 func trackAlleleFrequencies(model *core.Model, pop *core.Pop) []float64 {

@@ -35,6 +35,33 @@ type Pop struct {
 	FemaleDB      map[int]Ancestor
 }
 
+type IndData int
+const (
+	Sex               IndData = iota // 0 = male, 1 = female
+	Dad                              // ID of dad
+	Mom                              // ID of mom
+	BirthYear                        // year of birth
+	MarriageState                    // ID of spouse
+	Lifespan                         // potential lifespan
+	Lat                              // latitude
+	Lon                              // longitude
+	YGens                            // generations from male seed
+	MtGens                           // generations from female seed
+	MinGenealoGens                   // shortest path on family tree to seed
+	MaxGenealoGens                   // longest path on family tree to seed
+	AlleleCount                      // tracking descent from seed individual(s)
+	NumBlocks                        // number of contiguous blocks of set bits
+	NumCentromeres                   // number of centromeres
+	Fitness                          // used for survival calculations
+	NumMutations                     // number of mutations
+	NumBirths                        // number of children
+	LastBirthYear                    // year of last birth
+	Sons                             // number of sons born to this individual
+	Daughters                        // number of daughters born to this individual
+	IndDataFieldCount                // number of fields in IndData
+)
+const EmptyField = -999
+
 type Mutation struct {
 	Id        int     // Unique mutation identifier
 	Position  int     // Position in genome (base-pair level)

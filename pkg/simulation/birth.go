@@ -334,8 +334,8 @@ func inheritCentromeres(model *core.Model, pop *core.Pop, centsmask0 []uint64, c
 			}
 		}
 
-		centromereCount := countSetBits(pop.Centromeres[child][0])
-		centromereCount += countSetBits(pop.Centromeres[child][1])
+		centromereCount := utils.CountSetBits(pop.Centromeres[child][0])
+		centromereCount += utils.CountSetBits(pop.Centromeres[child][1])
 		pop.IndData[child][individual.NumCentromeres] = centromereCount
 		if centromereCount == 0 {
 			delete(pop.Centromeres, child) // child has been a disappointment
