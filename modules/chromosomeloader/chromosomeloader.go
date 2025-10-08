@@ -1,7 +1,7 @@
 package chromosomeloader
 
 import (
-	"drift/modules/csvutils"
+	"drift/pkg/utils"
 	"drift/pkg/core"
 )
 
@@ -11,7 +11,7 @@ const myFileName = "chromosome_data.csv"
 // Load the chromosome arms from a CSV file and populate the model's ChromosomeArms map.
 func LoadChromosomeArms(model *core.Model, configRoot string) error {
 	// Load the CSV file
-	csvLoader := csvutils.CSVLoader{
+	csvLoader := utils.CSVLoader{
 		FileName:   myFileName,
 		Dir:        configRoot,
 		MinRecords: 2,

@@ -3,12 +3,10 @@ package simulation
 import (
 	"drift/modules/individual"
 	"drift/modules/mutation"
-	"drift/modules/utils"
 	"drift/pkg/core"
+	"drift/pkg/utils"
 	"fmt"
-	"math/bits"
 	"math/rand"
-	"strings"
 )
 
 func Birth(model *core.Model, pop *core.Pop) {
@@ -92,19 +90,19 @@ func Birth(model *core.Model, pop *core.Pop) {
 					// only go through meiosis if there is a set bit in mom or dad
 					if pop.IndData[dad][individual.AlleleCount] > 0 {
 						meiosis(pop, genomemask0, dad, child, 0)
-						numSetBits += countSetBits(pop.Chromosomes[child][0])
+						numSetBits += utils.CountSetBits(pop.Chromosomes[child][0])
 					}
 					if pop.IndData[mom][individual.AlleleCount] > 0 {
 						meiosis(pop, genomemask1, mom, child, 1)
-						numSetBits += countSetBits(pop.Chromosomes[child][1])
+						numSetBits += utils.CountSetBits(pop.Chromosomes[child][1])
 					}
 					pop.IndData[child][individual.AlleleCount] = numSetBits
 					// delete the child's chromosomes if they inherited zero set bits
 					if pop.IndData[child][individual.AlleleCount] < 1 {
 						delete(pop.Chromosomes, child)
 					} else {
-						pop.IndData[child][individual.NumBlocks] = countContiguousBlocks(model, pop, child, 0)
-						pop.IndData[child][individual.NumBlocks] += countContiguousBlocks(model, pop, child, 1)
+						pop.IndData[child][individual.NumBlocks] = utils.CountContiguousBlocks(model, pop, child, 0)
+						pop.IndData[child][individual.NumBlocks] += utils.CountContiguousBlocks(model, pop, child, 1)
 					}
 
 					// inherit centromeres if mom or dad have a set bit in their centromeres
@@ -307,47 +305,6 @@ func meiosis(pop *core.Pop, mask []uint64, parent int, child int, copy int) {
 	pop.Chromosomes[child][copy] = childCopy
 }
 
-// countContiguousBlocks counts blocks of contiguous set bits
-func countContiguousBlocks(model *core.Model, pop *core.Pop, ind int, copy int) int {
-	blockCount := 0
-	genomestring := uint64ArrayToBitString(pop.Chromosomes[ind][copy])
-	for chrom, _ := range model.ChromosomeArms {
-		pstart := model.ChromosomeArms[chrom][0][0]
-		plen := model.ChromosomeArms[chrom][0][1]
-		if pstart+plen <= len(genomestring) {
-			psegment := genomestring[pstart : pstart+plen]
-			blockCount += countBlocksInRange(psegment)
-		}
-
-		qstart := model.ChromosomeArms[chrom][1][0]
-		qlen := model.ChromosomeArms[chrom][1][1]
-		if qstart+qlen <= len(genomestring) {
-			qsegment := genomestring[qstart : qstart+qlen]
-			blockCount += countBlocksInRange(qsegment)
-		}
-	}
-	return blockCount
-}
-
-func countBlocksInRange(genomesegment string) int {
-	blocks := strings.Split(genomesegment, "0")
-	blockCount := 0
-	for _, block := range blocks {
-		if len(block) > 0 {
-			blockCount++
-		}
-	}
-	return blockCount
-}
-
-func uint64ArrayToBitString(genomesegment []uint64) string {
-	var bitString strings.Builder
-	for _, value := range genomesegment {
-		bitString.WriteString(fmt.Sprintf("%064b", value))
-	}
-	return bitString.String()
-}
-
 func inheritCentromeres(model *core.Model, pop *core.Pop, centsmask0 []uint64, centsmask1 []uint64, dad int, mom int, child int) {
 	if pop.IndData[dad][individual.NumCentromeres] > 0 || pop.IndData[mom][individual.NumCentromeres] > 0 {
 		_, dadExists := pop.Centromeres[dad]
@@ -384,21 +341,4 @@ func inheritCentromeres(model *core.Model, pop *core.Pop, centsmask0 []uint64, c
 			delete(pop.Centromeres, child) // child has been a disappointment
 		}
 	}
-}
-
-func countSetBits(words []uint64) int {
-	count := 0
-	for _, word := range words {
-		count += bits.OnesCount64(word)
-	}
-	return count
-}
-
-func countSetBitsSingleVar(n uint64) int {
-	count := 0
-	for n > 0 {
-		count += int(n & 1)
-		n >>= 1
-	}
-	return count
 }

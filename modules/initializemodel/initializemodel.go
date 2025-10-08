@@ -4,7 +4,7 @@ import (
 	"drift/modules/actuarialloader"
 	"drift/modules/chromosomeloader"
 	"drift/modules/paramloader"
-	"drift/modules/save"
+	"drift/pkg/simulation"
 	"drift/pkg/core"
 	"math"
 )
@@ -42,7 +42,7 @@ func InitializeModel(configRoot string) (*core.Model, error) {
 	model.Parameters["mu_sig_figs"] = math.Pow(1, model.Parameters["mu_sig_figs"])
 
 	// Prepare output files
-	save.SaveHeaders(model.ModelName)
+	simulation.SaveHeaders(model.ModelName)
 
 	// Initialize free parameters
 	model.FreeParameters["indID"] = 0         // Starting ID for individuals

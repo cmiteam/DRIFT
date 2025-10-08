@@ -3,15 +3,13 @@ package main
 import (
 	"drift/modules/animations"
 	"drift/modules/coalescence"
-	"drift/modules/death"
 	"drift/modules/initializedrift"
 	"drift/modules/initializemodel"
 	"drift/modules/initializepop"
-	"drift/modules/necalcs"
 	"drift/modules/parsecommands"
-	"drift/modules/save"
-	"drift/modules/seedpopulation"
 	"drift/modules/utils"
+	"drift/pkg/analysis"
+	"drift/pkg/events"
 	"drift/pkg/simulation"
 	"fmt"
 	"log"
@@ -73,20 +71,20 @@ func main() {
 		for year := 0; year <= int(model.Parameters["end_year"]); year++ {
 			model.FreeParameters["year"] = year
 			if year >= int(model.Parameters["seed_year"]) && model.FreeParameters["seed"] == -1 {
-				seedpopulation.SeedThePopulation(model, pop)
+				events.Seed(model, pop)
 				model.FreeParameters["seed"] = 1
 				fmt.Println("   Seeded population in year", year, "with seed style", int(model.Parameters["seed_style"]))
 			}
 
 			simulation.Birth(model, pop)
 			simulation.Mating(model, pop)
-			death.Death(model, pop)
+			simulation.Death(model, pop)
 			model.FreeParameters["last_pop_size"] = len(pop.IndData) // save pop size for future growth rate calculations
 
 			// Escape clauses
 			// Save and quit if population extinct
 			if len(pop.IndData) <= 1 {
-				save.Save(model, pop, animContainer)
+				simulation.Save(model, pop, animContainer)
 				break
 			}
 			// Save and quit if genealo = pop size
@@ -94,7 +92,7 @@ func main() {
 
 			// Save and quit if genealo = 0
 			if genealo == 0 {
-				save.Save(model, pop, animContainer)
+				simulation.Save(model, pop, animContainer)
 				break
 			}
 			if model.Parameters["track_map"] == 1 && year%int(model.Parameters["animation_save_interval"]) == 0 {
@@ -105,7 +103,7 @@ func main() {
 			}
 			// Normal save at save interval
 			if year%int(model.Parameters["save_interval"]) == 0 {
-				save.Save(model, pop, animContainer)
+				simulation.Save(model, pop, animContainer)
 			}
 		}
 
@@ -113,7 +111,7 @@ func main() {
 		if model.Parameters["track_DNA"] == 1 {
 			filename := fmt.Sprintf("results/%s genome map.png", model.ModelName)
 			pixelSize := 4
-			save.SaveGenomeMap(pop.Chromosomes, model.ChromosomeArms, filename, pixelSize, int(model.Parameters["NumBits"]))
+			simulation.SaveGenomeMap(pop.Chromosomes, model.ChromosomeArms, filename, pixelSize, int(model.Parameters["NumBits"]))
 		}
 		if model.Parameters["track_map"] == 1 {
 			//			print("Saving map...\n")
@@ -123,7 +121,7 @@ func main() {
 			}
 		}
 		if model.Parameters["save_detailed_SFS"] == 1 {
-			necalcs.SaveSFSTimeSeries(model, pop)
+			analysis.SaveSFSTimeSeries(model, pop)
 		}
 		if model.Parameters["track_coalescence"] == 1 {
 			yadamResult := coalescence.FindYAdam(model, pop)

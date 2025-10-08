@@ -3,10 +3,9 @@ package save
 import (
 	"drift/modules/coalescence"
 	"drift/modules/individual"
-	"drift/modules/ldanalysis"
-	"drift/modules/necalcs"
-	"drift/modules/utils"
+	"drift/pkg/utils"
 	"drift/pkg/core"
+	"drift/pkg/analysis"
 	"encoding/csv"
 	"fmt"
 	"image"
