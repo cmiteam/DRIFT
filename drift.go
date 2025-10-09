@@ -1,12 +1,9 @@
 package main
 
 import (
-	"drift/modules/coalescence"
-	"drift/modules/initializedrift"
-	"drift/modules/initializemodel"
-	"drift/modules/initializepop"
 	"drift/modules/parsecommands"
-	"drift/modules/utils"
+	"drift/pkg/utils"
+	"drift/pkg/config"
 	"drift/pkg/analysis"
 	"drift/pkg/events"
 	"drift/pkg/simulation"
@@ -29,31 +26,31 @@ func main() {
 	starttime := time.Now()
 
 	// Parse the command-line arguments
-	config := parsecommands.ParseCommandLine()
+	commands := parsecommands.ParseCommandLine()
 
 	// Initialize the model
-	model, err := initializemodel.InitializeModel(config.ConfigRoot)
+	model, err := config.InitializeModel(commands.ConfigRoot)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing model: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Setup directories
-	err = initializedrift.SetupDirectories(config.Results)
+	err = config.SetupDirectories(commands.Results)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 
 	// Initialize animations if enabled
-	animContainer, err := visualization.InitializeIfEnabled(model, config.MapRoot)
+	animContainer, err := visualization.InitializeIfEnabled(model, commands.MapRoot)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing animations: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Setup CPU profiling
-	cleanup, err := initializedrift.StartCPUProfiling(config.CpuProfile)
+	cleanup, err := config.StartCPUProfiling(commands.CpuProfile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
@@ -65,7 +62,7 @@ func main() {
 		print("\nRun ", run, "\n")
 		model.FreeParameters["run"] = run
 
-		pop := initializepop.InitializePop(model)
+		pop := config.InitializePop(model)
 
 		// Loop over the number years in each model run
 		for year := 0; year <= int(model.Parameters["end_year"]); year++ {
@@ -115,7 +112,7 @@ func main() {
 		}
 		if model.Parameters["track_map"] == 1 {
 			//			print("Saving map...\n")
-			err := visualization.SaveAllGIFs(animContainer, config.Results)
+			err := visualization.SaveAllGIFs(animContainer, commands.Results)
 			if err != nil {
 				log.Printf("Error saving animation: %v", err)
 			}
@@ -124,8 +121,8 @@ func main() {
 			analysis.SaveSFSTimeSeries(model, pop)
 		}
 		if model.Parameters["track_coalescence"] == 1 {
-			yadamResult := coalescence.FindYAdam(model, pop)
-			mteveResult := coalescence.FindMtEve(model, pop)
+			yadamResult := analysis.FindYAdam(model, pop)
+			mteveResult := analysis.FindMtEve(model, pop)
 			fmt.Printf("\nY-Adam: ID %d, born year %d, %d generations back\n",
 				yadamResult.YAdamID, yadamResult.YAdamBirthYear, yadamResult.GenerationsBack)
 			fmt.Printf("Mt-Eve: ID %d, born year %d, %d generations back\n",

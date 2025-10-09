@@ -32,11 +32,11 @@ const (
 // MakeIndData creates an individual data array with all fields initialized to EmptyField
 
 func MakeIndData() []int {
-    data := make([]int, individual.IndDataFieldCount)
+    data := make([]int, IndDataFieldCount)
     // Initialize fields that need non-zero defaults
-    data[individual.MarriageState] = -1
-    data[individual.Dad] = -1
-    data[individual.Mom] = -1
+    data[MarriageState] = -1
+    data[Dad] = -1
+    data[Mom] = -1
     return data
 }
 

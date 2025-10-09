@@ -1,11 +1,10 @@
 package simulation
 
 import (
-	"drift/modules/coalescence"
-	"drift/modules/individual"
-	"drift/pkg/utils"
-	"drift/pkg/core"
 	"drift/pkg/analysis"
+	"drift/pkg/core"
+	"drift/pkg/individual"
+	"drift/pkg/utils"
 	"encoding/csv"
 	"fmt"
 	"image"
@@ -106,8 +105,8 @@ func Save(model *core.Model, pop *core.Pop, animManager *core.AnimationsContaine
 	}
 
 	if model.Parameters["track_coalescence"] == 1 {
-		yadamResult := coalescence.FindYAdam(model, pop)
-		mteveResult := coalescence.FindMtEve(model, pop)
+		yadamResult := analysis.FindYAdam(model, pop)
+		mteveResult := analysis.FindMtEve(model, pop)
 
 		if yadamResult.FoundYAdam {
 			fmt.Printf("Y-Adam found: ID %d, born year %d\n",
