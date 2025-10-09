@@ -2,11 +2,11 @@ package main
 
 import (
 	"drift/modules/parsecommands"
-	"drift/pkg/utils"
-	"drift/pkg/config"
 	"drift/pkg/analysis"
+	"drift/pkg/config"
 	"drift/pkg/events"
 	"drift/pkg/simulation"
+	"drift/pkg/utils"
 	"drift/pkg/visualization"
 	"fmt"
 	"log"

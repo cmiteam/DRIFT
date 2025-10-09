@@ -1,5 +1,10 @@
 package utils
 
+import (
+    "math"
+	"math/rand"
+)
+
 func Min(a, b int) int {
 	if a < b {
 		return a
@@ -19,4 +24,9 @@ func Abs(x int) int {
 		return -x
 	}
 	return x
+}
+
+func WeibullRandom(shape, scale float64) float64 {
+	u := rand.Float64()
+	return scale * math.Pow(-math.Log(u), 1/shape)
 }
