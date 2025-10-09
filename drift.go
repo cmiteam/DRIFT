@@ -1,7 +1,6 @@
 package main
 
 import (
-	"drift/modules/animations"
 	"drift/modules/coalescence"
 	"drift/modules/initializedrift"
 	"drift/modules/initializemodel"
@@ -11,6 +10,7 @@ import (
 	"drift/pkg/analysis"
 	"drift/pkg/events"
 	"drift/pkg/simulation"
+	"drift/pkg/visualization"
 	"fmt"
 	"log"
 	"os"
@@ -46,7 +46,7 @@ func main() {
 	}
 
 	// Initialize animations if enabled
-	animContainer, err := animations.InitializeIfEnabled(model, config.MapRoot)
+	animContainer, err := visualization.InitializeIfEnabled(model, config.MapRoot)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing animations: %v\n", err)
 		os.Exit(1)
@@ -96,7 +96,7 @@ func main() {
 				break
 			}
 			if model.Parameters["track_map"] == 1 && year%int(model.Parameters["animation_save_interval"]) == 0 {
-				err := animations.AddAnimationFrames(model, pop, animContainer)
+				err := visualization.AddAnimationFrames(model, pop, animContainer)
 				if err != nil {
 					log.Printf("Error adding animation frames: %v", err)
 				}
@@ -115,7 +115,7 @@ func main() {
 		}
 		if model.Parameters["track_map"] == 1 {
 			//			print("Saving map...\n")
-			err := animations.SaveAllGIFs(animContainer, config.Results)
+			err := visualization.SaveAllGIFs(animContainer, config.Results)
 			if err != nil {
 				log.Printf("Error saving animation: %v", err)
 			}

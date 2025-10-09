@@ -26,17 +26,17 @@ animation_save_interval,Animation Save Interval,Text,int,10,Main
 bottleneck_start,Bottleneck Start,Text,int,-1,Main
 bottleneck_end,Bottleneck End,Text,int,1000000,Main
 bottleneck_size,Bottleneck Size,Text,int,1000000,Main
-track_DNA,Track DNA,Check,bool,1,Main
-track_drift,Track Drift,Check,bool,1,Main
-track_mutations,Track Mutations,Check,bool,1,Main
+track_DNA,Track DNA,Check,bool,0,Main
+track_drift,Track Drift,Check,bool,0,Main
+track_mutations,Track Mutations,Check,bool,0,Main
 track_dead,Track Dead,Check,bool,0,Main
-track_map,Track on Map,Check,bool,0,Main
+track_map,Track on Map,Check,bool,1,Main
 track_SFS,Site Frequency Spectrum,checkbox,float,0,Drift
 save_detailed_SFS,Save detailed SFS files,checkbox,float,0,Drift
 track_LD,Linkage Disequilibrium,checkbox,float,0,Drift
 track_coalescence,Track Coalescence,entry,int,0,Analysis
 coalescence_pairs,Coalescence Pairs,entry,int,50,Analysis
-genome_map,Genome Map,Check,bool,1,DNA
+genome_map,Genome Map,Check,bool,0,DNA
 every_genome_map,All Genome Maps,Check,bool,0,DNA
 mutation_map,Mutation Map,Check,bool,0,Mutation
 mutation_hist,Mutation Histogram,Check,bool,1,Mutation
