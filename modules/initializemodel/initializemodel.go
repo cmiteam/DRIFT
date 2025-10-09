@@ -1,15 +1,14 @@
 package initializemodel
 
 import (
-	"drift/modules/actuarialloader"
-	"drift/modules/chromosomeloader"
-	"drift/modules/paramloader"
+	"drift/pkg/utils"
 	"drift/pkg/simulation"
 	"drift/pkg/core"
 	"math"
 )
 
-// Initializes the model based on the configuration files.
+// Initializes the model based on the configuration files
+
 func InitializeModel(configRoot string) (*core.Model, error) {
 	model := &core.Model{
 		Parameters:      make(map[string]float64),
@@ -25,15 +24,15 @@ func InitializeModel(configRoot string) (*core.Model, error) {
 	}
 
 	// Attempt to load each config file. Failure will be fatal.
-	err := paramloader.LoadParameters(model, configRoot)
+	err := utils.LoadParameters(model, configRoot)
 	if err != nil {
 		return nil, err
 	}
-	err = chromosomeloader.LoadChromosomeArms(model, configRoot)
+	err = utils.LoadChromosomes(model, configRoot)
 	if err != nil {
 		return nil, err
 	}
-	err = actuarialloader.LoadActuarialTable(model, configRoot)
+	err = utils.LoadActuarialTable(model, configRoot)
 	if err != nil {
 		return nil, err
 	}
@@ -41,6 +40,18 @@ func InitializeModel(configRoot string) (*core.Model, error) {
 	// Calculate derived values
 	model.Parameters["mu_sig_figs"] = math.Pow(1, model.Parameters["mu_sig_figs"])
 
+    // Calculate total genome bits from chromosome data
+    totalBits := 0
+    for chrom := range model.ChromosomeArms {
+        if arm0, ok := model.ChromosomeArms[chrom][0]; ok {
+            totalBits = max(totalBits, arm0[0] + arm0[1])  // pstart + plen
+        }
+        if arm1, ok := model.ChromosomeArms[chrom][1]; ok {
+            totalBits = max(totalBits, arm1[0] + arm1[1])  // qstart + qlen
+        }
+    }
+    
+    model.FreeParameters["genome_bits"] = totalBits
 	// Prepare output files
 	simulation.SaveHeaders(model.ModelName)
 

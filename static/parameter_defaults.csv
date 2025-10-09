@@ -1,10 +1,10 @@
 parameter,label,entry,format,value,group
 model_name,Model Name,Text,string,Default,Main
 num_runs,Num Runs,Text,int,1,Main
-start_pop_size,Start Pop Size,Text,int,500,Main
-max_pop_size,Max Pop Size,Text,int,500,Main
+start_pop_size,Start Pop Size,Text,int,1000,Main
+max_pop_size,Max Pop Size,Text,int,1000,Main
 max_growth_rate,Max Growth Rate,Text,float,2,Main
-end_year,End Year,Text,int,100000,Main
+end_year,End Year,Text,int,1000,Main
 seed_year,Seed Year,Text,int,0,DNA
 seed_style,Seed Style,Text,int,2,DNA
 init_heterozygosity,Init Heterozygosity,Text,float,0,DNA

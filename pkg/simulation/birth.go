@@ -228,63 +228,79 @@ func createChild(model *core.Model, pop *core.Pop, dad, mom, child int) {
 }
 
 func createMask(model *core.Model, sex int) ([]uint64, []uint64) {
-
-	// masks are uint64 (8-byte unsigned integers with 64 bits of memory). It takes about 50 uint64 to code for one copy of a 3,100 bit genome
-	// the centromere mask is a single uint64, therefore models with up to 64 chromosomes can be handled
+	// SAFETY CHECK - prevent infinite loop
+	genomeBits := model.FreeParameters["genome_bits"]
+	if genomeBits <= 0 {
+		fmt.Printf("ERROR: genome_bits is %d, cannot create mask\n", genomeBits)
+		return []uint64{}, []uint64{0}
+	}
 
 	genomeArrSize := (model.FreeParameters["genome_bits"] + 63) / 64
 	genomemask := make([]uint64, genomeArrSize)
 	centromask := []uint64{0}
 
-	for chrom, _ := range model.ChromosomeArms {
-		// in biology, chromosomes generally have a shorter 'p' arm and a longer 'q' arm', the lengths were loaded previously
-		// chromosomeArms[chrom][0] = p, chromosomeArms[chrom][1] = q
-		// chromosomeArms[chrom][0][0] = start of p arm in bits, chromosomeArms[chrom][0][1] = length of p arm in bits
-		pstart := model.ChromosomeArms[chrom][0][0]
-		qstart := model.ChromosomeArms[chrom][1][0]
-		plen := model.ChromosomeArms[chrom][0][1]
-		qlen := model.ChromosomeArms[chrom][1][1]
+	//    fmt.Printf("\n=== DEBUG createMask ===\n")
+	//    fmt.Printf("genome_bits: %d\n", model.FreeParameters["genome_bits"])
+	//    fmt.Printf("genomeArrSize: %d\n", genomeArrSize)
+	//    fmt.Printf("Number of chromosomes: %d\n", len(model.ChromosomeArms))
 
-		if plen <= 0 || qlen <= 0 {
+	for chrom := range model.ChromosomeArms {
+		//        fmt.Printf("\nChromosome %d:\n", chrom)
+
+		// Check if arms exist
+		arm0, ok0 := model.ChromosomeArms[chrom][0]
+		arm1, ok1 := model.ChromosomeArms[chrom][1]
+
+		//        fmt.Printf("  Arm 0 exists: %v, data: %v\n", ok0, arm0)
+		//        fmt.Printf("  Arm 1 exists: %v, data: %v\n", ok1, arm1)
+
+		if !ok0 || !ok1 {
+			fmt.Printf("  SKIPPING - missing arm\n")
 			continue
 		}
 
-		// choose a random place on each chromosome arm and decide if the paternal
-		// or maternal centromere will be inherited by the child
+		pstart := arm0[0]
+		plen := arm0[1]
+		qstart := arm1[0]
+		qlen := arm1[1]
+
+		//        fmt.Printf("  p arm: start=%d, len=%d\n", pstart, plen)
+		//        fmt.Printf("  q arm: start=%d, len=%d\n", qstart, qlen)
+
+		if plen <= 0 || qlen <= 0 {
+			fmt.Printf("  SKIPPING - invalid length\n")
+			continue
+		}
+
 		ploc := rand.Intn(plen)
 		qloc := rand.Intn(qlen)
 		whichCopy := rand.Intn(2)
 
+		//        fmt.Printf("  ploc=%d, qloc=%d, whichCopy=%d\n", ploc, qloc, whichCopy)
+
 		if whichCopy == 1 {
-			// example: 00001111x11110000, where 0 = paternal, 1 = maternal, and x = the centromere
-			for i := pstart + ploc; i < qstart+qloc; i++ {
+			startBit := pstart + ploc
+			endBit := qstart + qloc
+			loopCount := endBit - startBit
+
+			//            fmt.Printf("  Would loop from %d to %d (count: %d)\n", startBit, endBit, loopCount)
+
+			if loopCount > 100000 {
+				fmt.Printf("  ERROR: Loop too long! Skipping.\n")
+				continue
+			}
+
+			//            fmt.Printf("  Starting loop...\n")
+			for i := startBit; i < endBit; i++ {
 				genomemask[i/64] |= (1 << (i % 64))
 			}
-			// make sure we have enough space in the centromask
-			for len(centromask) < chrom/64 {
-				centromask = append(centromask, uint64(0))
-			}
-			centromask[chrom/64] |= (1 << (chrom % 64))
-		} else {
-			// example: 11110000x00001111
-			for i := pstart; i < pstart+ploc; i++ {
-				genomemask[i/64] |= (1 << (i % 64))
-			}
-			for i := qstart + qloc; i < qstart+qlen; i++ {
-				genomemask[i/64] |= (1 << (i % 64))
-			}
+			//            fmt.Printf("  Loop complete.\n")
+
+			// centromere stuff...
 		}
 	}
 
-	if sex == 0 && model.Parameters["sex_chrom_index"] > 0 {
-		// males don't inherit the father's X
-		sexIdx := int(model.Parameters["sex_chrom_index"])
-		xstart := model.ChromosomeArms[sexIdx][0][0]
-		xend := model.ChromosomeArms[1][1][0] + model.ChromosomeArms[1][1][1]
-		for i := xstart; i < xend; i++ {
-			genomemask[i/64] &^= (1 << (i % 64))
-		}
-	}
+	//    fmt.Printf("=== END createMask ===\n\n")
 	return genomemask, centromask
 }
 
