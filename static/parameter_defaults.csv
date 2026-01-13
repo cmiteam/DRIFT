@@ -1,10 +1,12 @@
 parameter,label,entry,format,value,group
+username,Username,Text,string,alice,Main
 model_name,Model Name,Text,string,Default,Main
+scenario,Scenario,Text,string,flood,Main
 num_runs,Num Runs,Text,int,1,Main
 start_pop_size,Start Pop Size,Text,int,1000,Main
 max_pop_size,Max Pop Size,Text,int,1000,Main
-max_growth_rate,Max Growth Rate,Text,float,2,Main
-end_year,End Year,Text,int,1000,Main
+max_growth_rate,Max Growth Rate,Text,float,1.00462,Main
+end_year,End Year,Text,int,4500,Main
 seed_year,Seed Year,Text,int,0,DNA
 seed_style,Seed Style,Text,int,2,DNA
 init_heterozygosity,Init Heterozygosity,Text,float,0,DNA
@@ -34,6 +36,9 @@ track_map,Track on Map,Check,bool,1,Main
 track_SFS,Site Frequency Spectrum,checkbox,float,0,Drift
 save_detailed_SFS,Save detailed SFS files,checkbox,float,0,Drift
 track_LD,Linkage Disequilibrium,checkbox,float,0,Drift
+ld_max_pairs,Maximum SNP pairs for LD analysis,ld_max_pairs,float,10000,Analysis
+ld_min_freq,Minimum allele frequency for LD,ld_min_freq,float,0.01,Analysis
+ld_max_variance,Max variance for LD,ld_max_var,float,0.01,Analysis
 track_coalescence,Track Coalescence,entry,int,0,Analysis
 coalescence_pairs,Coalescence Pairs,entry,int,50,Analysis
 genome_map,Genome Map,Check,bool,0,DNA
@@ -46,7 +51,6 @@ map_height,Map Height,Text,int,2160,Main
 frame_rate,Frame Rate,Text,float,1,Main
 pixel_size,Pixel Size,Text,int,10,Main
 point_size,Pixel Size,Text,int,10,Main
-scenario,Scenario,Dropdown,int,0,Main
 max_breeding_inds,Max Breeding Inds,Check,int,-1,Main
 sex_chrom_index,Sex Chromosome Index,Text,int,23,Main
 mu,Mutation Rate,Text,float,10,Mutation

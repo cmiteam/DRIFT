@@ -6,6 +6,7 @@ import (
 	"drift/pkg/individual"
 	"drift/pkg/utils"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
@@ -14,11 +15,12 @@ import (
 	"math/bits"
 	"os"
 	"sort"
+	"time"
 )
 
 // SaveHeaders creates a CSV file with the headers for the results
-func SaveHeaders(modelName string) error {
-	filename := fmt.Sprintf("results/%s_results.csv", modelName)
+func SaveHeaders(modelName string, resultsDir string) error {
+	filename := fmt.Sprintf("%s/%s_results.csv", resultsDir, modelName)
 	file, err := os.OpenFile(filename, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open file: %v", err)
@@ -45,7 +47,7 @@ func SaveHeaders(modelName string) error {
 // Save writes the current simulation state to a CSV file
 func Save(model *core.Model, pop *core.Pop, animManager *core.AnimationsContainer) {
 
-	filename := fmt.Sprintf("results/%s_results.csv", model.ModelName)
+	filename := fmt.Sprintf("%s/%s_results.csv", model.ResultsDir, model.ModelName)
 	numInds := len(pop.IndData)
 	var YDescends, mtDescends, genealoDescends, geneticDescends, numAlleles, numBlocks, numCentromeres, numMutations, popFitness int
 	var percSeedGenomeRetained, avSeedGenomeCoverage float64
@@ -204,6 +206,9 @@ func Save(model *core.Model, pop *core.Pop, animManager *core.AnimationsContaine
 	pop.Tracking["marriages"] = 0
 	pop.Tracking["random_deaths"] = 0
 	pop.Tracking["cull_deaths"] = 0
+
+	// Save progress for GUI
+	SaveProgress(model, pop)
 }
 
 // SaveGenomeMap saves the chromosomes data as an image with rows representing individuals and columns as bit positions.
@@ -627,7 +632,7 @@ func calculateNeFromHeterozygosityDecline(model *core.Model, currentHet float64)
 	return ne
 }
 
-func calculateNeIfPossibleImproved(pop *core.Pop) float64 {
+func calculateNeIfPossibleImproved(model *core.Model, pop *core.Pop) float64 {
 	if len(pop.AlleleFreqs) < 2 {
 		return -1 // Not enough data points
 	}
@@ -666,7 +671,7 @@ func calculateNeIfPossibleImproved(pop *core.Pop) float64 {
 		}
 
 		if closestStart != -1 {
-			ne := calculateNeWithFiltering(pop, closestStart, endYear)
+			ne := calculateNeWithFiltering(model, pop, closestStart, endYear)
 			if ne > 0 && ne < 1000000 { // Reasonable bounds
 				if bestNe == -1.0 || ne < bestNe { // Prefer smaller, more conservative estimates
 					bestNe = ne
@@ -713,7 +718,7 @@ func calculateObservedHeterozygosityOptimized(model *core.Model, pop *core.Pop) 
 	return float64(totalHetBits) / (float64(totalIndividuals) * float64(totalBits))
 }
 
-func calculateNeWithFiltering(pop *core.Pop, startYear, endYear int) float64 {
+func calculateNeWithFiltering(model *core.Model, pop *core.Pop, startYear, endYear int) float64 {
 	deltaT := float64(endYear - startYear)
 	if deltaT <= 0 {
 		return -1
@@ -795,4 +800,41 @@ func getCoalescenceForSave(results []*core.CoalescenceResult) (float64, float64,
 	}
 
 	return meanTime, maxTime, len(results), foundCount
+}
+
+// ProgressData represents the current simulation progress for the GUI
+type ProgressData struct {
+	CurrentGeneration int       `json:"current_generation"`
+	TotalGenerations  int       `json:"total_generations"`
+	CurrentRun        int       `json:"current_run"`
+	TotalRuns         int       `json:"total_runs"`
+	PopulationSize    int       `json:"population_size"`
+	LastUpdate        time.Time `json:"last_update"`
+	Status            string    `json:"status"`
+}
+
+// SaveProgress writes a progress.json file for the web GUI to monitor simulation progress
+func SaveProgress(model *core.Model, pop *core.Pop) error {
+	progress := ProgressData{
+		CurrentGeneration: model.FreeParameters["year"],
+		TotalGenerations:  int(model.Parameters["end_year"]),
+		CurrentRun:        model.FreeParameters["run"],
+		TotalRuns:         int(model.Parameters["num_runs"]),
+		PopulationSize:    len(pop.IndData),
+		LastUpdate:        time.Now(),
+		Status:            "running",
+	}
+
+	filename := fmt.Sprintf("%s/progress.json", model.ResultsDir)
+	data, err := json.MarshalIndent(progress, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal progress data: %v", err)
+	}
+
+	err = os.WriteFile(filename, data, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write progress file: %v", err)
+	}
+
+	return nil
 }

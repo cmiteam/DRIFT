@@ -1,7 +1,7 @@
 package utils
 
 import (
-    "math"
+	"math"
 	"math/rand"
 )
 

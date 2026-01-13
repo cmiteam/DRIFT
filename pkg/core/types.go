@@ -6,6 +6,7 @@ import (
 
 type Model struct {
 	Parameters      map[string]float64
+	Scenario        string
 	FreeParameters  map[string]int
 	PlotFlags       map[string]bool
 	ChromosomeArms  map[int]map[int][]int
@@ -15,9 +16,11 @@ type Model struct {
 	ModelName       string
 	MapName         string
 	MatingStyle     string
+	Username        string // User running the simulation (for GUI mode)
 	PrevFrequencies map[int]float64
 	HetHistory      []float64
 	TimeHistory     []int
+	ResultsDir      string // Directory for saving results (supports GUI mode)
 }
 
 type Pop struct {
@@ -36,6 +39,7 @@ type Pop struct {
 }
 
 type IndData int
+
 const (
 	Sex               IndData = iota // 0 = male, 1 = female
 	Dad                              // ID of dad

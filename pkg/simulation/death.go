@@ -1,8 +1,8 @@
 package simulation
 
 import (
-	"drift/modules/individual"
 	"drift/pkg/core"
+	"drift/pkg/individual"
 	"fmt"
 	"math/rand"
 	"os"

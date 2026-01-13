@@ -3,9 +3,9 @@ package utils
 import (
 	"drift/pkg/core"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
-    "math/rand"
 )
 
 // Terrain types
@@ -23,14 +23,11 @@ const (
 )
 
 // LoadMap loads the map from a CSV file in grid format where each row = latitude, each column = longitude
-// Expected format:
-// 1,1,1,1,1,1,1
-// 1,1,1,1,5,1,1
-// 1,1,1,1,1,1,1
 func LoadMap(model *core.Model, mapRoot string) error {
 	// Derive the filename from the model and load the CSV file
-	filename := fmt.Sprintf("%s.csv", model.MapName)
-    records, err := LoadCSV(filename)
+	filename := fmt.Sprintf("%s/%s.csv", mapRoot, model.MapName)
+	print("loading ", filename)
+	records, err := LoadCSV(filename)
 	if err != nil {
 		return err
 	}
@@ -97,15 +94,15 @@ func LoadMap(model *core.Model, mapRoot string) error {
 	model.Parameters["map_land_cells"] = float64(landCells)
 	model.Parameters["map_land_fraction"] = float64(landCells) / float64(mapWidth*mapHeight)
 
-	fmt.Println("=== MAP LOADED (Grid Format) ===")
-	fmt.Printf("Map dimensions: %d x %d cells\n", mapWidth, mapHeight)
-	fmt.Printf("Total cells: %d\n", mapWidth*mapHeight)
-	fmt.Printf("Land cells: %d (%.1f%%)\n", landCells, model.Parameters["map_land_fraction"]*100)
-	fmt.Printf("Terrain distribution:\n")
-	for terrain, count := range terrainCounts {
-		percentage := float64(count) / float64(mapWidth*mapHeight) * 100
-		fmt.Printf("  Type %d: %d cells (%.1f%%)\n", terrain, count, percentage)
-	}
+	//	fmt.Println("=== MAP LOADED (Grid Format) ===")
+	//	fmt.Printf("Map dimensions: %d x %d cells\n", mapWidth, mapHeight)
+	//	fmt.Printf("Total cells: %d\n", mapWidth*mapHeight)
+	//	fmt.Printf("Land cells: %d (%.1f%%)\n", landCells, model.Parameters["map_land_fraction"]*100)
+	//	fmt.Printf("Terrain distribution:\n")
+	//	for terrain, count := range terrainCounts {
+	//		percentage := float64(count) / float64(mapWidth*mapHeight) * 100
+	//		fmt.Printf("  Type %d: %d cells (%.1f%%)\n", terrain, count, percentage)
+	//	}
 	return nil
 }
 

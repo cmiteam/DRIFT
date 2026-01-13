@@ -1,8 +1,8 @@
 package simulation
 
 import (
-	"drift/modules/individual"
 	"drift/pkg/core"
+	"drift/pkg/individual"
 	"drift/pkg/methods"
 )
 
@@ -25,11 +25,11 @@ func Mating(model *core.Model, pop *core.Pop) {
 	if styleFloat, exists := model.Parameters["mating_style"]; exists {
 		styleInt := int(styleFloat)
 		switch styleInt {
-		case 0:
+		case core.MatingRandom:
 			methods.MatingRandom(model, pop, availableMen, availableWomen)
-		case 1:
+		case core.MatingDistance:
 			methods.MatingDistance(model, pop, availableMen, availableWomen)
-		case 2:
+		case core.MatingAgeDistance:
 			methods.MatingAgeDistance(model, pop, availableMen, availableWomen)
 		default:
 			methods.MatingRandom(model, pop, availableMen, availableWomen)

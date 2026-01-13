@@ -1,7 +1,6 @@
 package main
 
 import (
-	"drift/modules/parsecommands"
 	"drift/pkg/analysis"
 	"drift/pkg/config"
 	"drift/pkg/events"
@@ -26,7 +25,15 @@ func main() {
 	starttime := time.Now()
 
 	// Parse the command-line arguments
-	commands := parsecommands.ParseCommandLine()
+	commands := config.ParseCommandLine()
+
+	// If web mode is enabled, start the web server
+	if commands.WebMode {
+		fmt.Println("Starting web server mode...")
+		// TODO: Implement web server
+		fmt.Println("Web server not yet implemented")
+		return
+	}
 
 	// Initialize the model
 	model, err := config.InitializeModel(commands.ConfigRoot)
@@ -35,8 +42,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Setup user-specific directories if username is specified
+	err = config.SetupUserDirectories(model)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error setting up user directories: %v\n", err)
+		os.Exit(1)
+	}
+
+	// If output-dir was specified via command line, use it (overrides user directory)
+	if commands.OutputDir != "" {
+		model.ResultsDir = commands.Results
+	}
+
 	// Setup directories
-	err = config.SetupDirectories(commands.Results)
+	err = config.SetupDirectories(model.ResultsDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
@@ -106,13 +125,13 @@ func main() {
 
 		// Things to do at the end of a model run
 		if model.Parameters["track_DNA"] == 1 {
-			filename := fmt.Sprintf("results/%s genome map.png", model.ModelName)
+			filename := fmt.Sprintf("%s/%s genome map.png", model.ResultsDir, model.ModelName)
 			pixelSize := 4
 			simulation.SaveGenomeMap(pop.Chromosomes, model.ChromosomeArms, filename, pixelSize, int(model.Parameters["NumBits"]))
 		}
 		if model.Parameters["track_map"] == 1 {
 			//			print("Saving map...\n")
-			err := visualization.SaveAllGIFs(animContainer, commands.Results)
+			err := visualization.SaveAllGIFs(animContainer, model.ResultsDir)
 			if err != nil {
 				log.Printf("Error saving animation: %v", err)
 			}

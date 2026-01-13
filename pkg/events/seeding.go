@@ -10,11 +10,11 @@ import (
 func Seed(model *core.Model, pop *core.Pop) {
 	seedStyle := int(model.Parameters["seed_style"])
 	switch seedStyle {
-	case 0:
+	case core.SeedingSingle:
 		methods.SeedingSingle(model, pop)
-	case 1:
+	case core.SeedingPopulation:
 		methods.SeedingPopulation(model, pop)
-	case 2:
+	case core.SeedingMaxHet:
 		methods.SeedingMaxHet(model, pop)
 	default:
 		fmt.Printf("Unknown seed style %d, using single seed\n", seedStyle)

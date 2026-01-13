@@ -1,9 +1,8 @@
 package simulation
 
 import (
-	"drift/modules/individual"
-	"drift/modules/mutation"
 	"drift/pkg/core"
+	"drift/pkg/individual"
 	"drift/pkg/utils"
 	"fmt"
 	"math/rand"
@@ -141,10 +140,10 @@ func Birth(model *core.Model, pop *core.Pop) {
 
 				// Assign mutations, both inherited and de novo
 				if model.Parameters["track_mutations"] > 0 {
-					mutation.InheritMutations(pop, genomemask0, dad, child, 0)
-					mutation.InheritMutations(pop, genomemask1, mom, child, 1)
-					mutation.GenerateNewMutations(model, pop, child)
-					numMutations, mutationLoad := mutation.CountFitnessAndMutations(pop, child)
+					utils.InheritMutations(pop, genomemask0, dad, child, 0)
+					utils.InheritMutations(pop, genomemask1, mom, child, 1)
+					utils.GenerateNewMutations(model, pop, child)
+					numMutations, mutationLoad := utils.CountFitnessAndMutations(pop, child)
 					fitness := 1 + mutationLoad
 					pop.IndData[child][individual.Fitness] = int(float64(fitness) * model.Parameters["mu_scale_factor"])
 					pop.IndData[child][individual.NumMutations] = numMutations
@@ -251,9 +250,6 @@ func createMask(model *core.Model, sex int) ([]uint64, []uint64) {
 		arm0, ok0 := model.ChromosomeArms[chrom][0]
 		arm1, ok1 := model.ChromosomeArms[chrom][1]
 
-		//        fmt.Printf("  Arm 0 exists: %v, data: %v\n", ok0, arm0)
-		//        fmt.Printf("  Arm 1 exists: %v, data: %v\n", ok1, arm1)
-
 		if !ok0 || !ok1 {
 			fmt.Printf("  SKIPPING - missing arm\n")
 			continue
@@ -264,9 +260,6 @@ func createMask(model *core.Model, sex int) ([]uint64, []uint64) {
 		qstart := arm1[0]
 		qlen := arm1[1]
 
-		//        fmt.Printf("  p arm: start=%d, len=%d\n", pstart, plen)
-		//        fmt.Printf("  q arm: start=%d, len=%d\n", qstart, qlen)
-
 		if plen <= 0 || qlen <= 0 {
 			fmt.Printf("  SKIPPING - invalid length\n")
 			continue
@@ -276,31 +269,17 @@ func createMask(model *core.Model, sex int) ([]uint64, []uint64) {
 		qloc := rand.Intn(qlen)
 		whichCopy := rand.Intn(2)
 
-		//        fmt.Printf("  ploc=%d, qloc=%d, whichCopy=%d\n", ploc, qloc, whichCopy)
-
 		if whichCopy == 1 {
 			startBit := pstart + ploc
 			endBit := qstart + qloc
-			loopCount := endBit - startBit
 
-			//            fmt.Printf("  Would loop from %d to %d (count: %d)\n", startBit, endBit, loopCount)
-
-			if loopCount > 100000 {
-				fmt.Printf("  ERROR: Loop too long! Skipping.\n")
-				continue
-			}
-
-			//            fmt.Printf("  Starting loop...\n")
 			for i := startBit; i < endBit; i++ {
 				genomemask[i/64] |= (1 << (i % 64))
 			}
-			//            fmt.Printf("  Loop complete.\n")
-
 			// centromere stuff...
 		}
 	}
 
-	//    fmt.Printf("=== END createMask ===\n\n")
 	return genomemask, centromask
 }
 

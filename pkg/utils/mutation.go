@@ -2,34 +2,38 @@ package utils
 
 import (
 	"drift/pkg/core"
-	"gonum.org/v1/gonum/stat/distuv"
 	"math/rand"
 	"time"
+
+	"gonum.org/v1/gonum/stat/distuv"
 )
 
 func InheritMutations(pop *core.Pop, genomemask []uint64, parent int, child int, copy int) {
 	if _, exists := pop.IndMutations[child]; !exists {
-		pop.IndMutations[child] = map[int][]int{
-			0: {},
-			1: {},
-		}
+		pop.IndMutations[child] = map[int][]int{0: {}, 1: {}}
 	}
+
 	for _, mutationID := range pop.IndMutations[parent][0] {
 		mutation := pop.MutationPool[mutationID]
-		// determine the bit position of the mutation
-		// TO DO: don't hard code "1000000", this applies to the default genome only and will cause problems when multiplier != 1
-		mutationBin := mutation.Position / 1000000
-		inheritedStrand := (genomemask[mutationBin/64] >> (mutationBin % 64)) & 1
+
+		// Check which strand this bit comes from in the genomemask
+		wordIdx := mutation.Position / 64
+		bitIdx := mutation.Position % 64
+		inheritedStrand := (genomemask[wordIdx] >> bitIdx) & 1
+
 		if int(inheritedStrand) == 0 {
 			pop.IndMutations[child][copy] = append(pop.IndMutations[child][copy], mutationID)
 			pop.MutationCount++
 			pop.MutationPool[mutationID] = mutation
 		}
 	}
+
 	for _, mutationID := range pop.IndMutations[parent][1] {
 		mutation := pop.MutationPool[mutationID]
-		mutationBin := mutation.Position / 1000000 // See comment above
-		inheritedStrand := (genomemask[mutationBin/64] >> (mutationBin % 64)) & 1
+		wordIdx := mutation.Position / 64
+		bitIdx := mutation.Position % 64
+		inheritedStrand := (genomemask[wordIdx] >> bitIdx) & 1
+
 		if int(inheritedStrand) == 1 {
 			pop.IndMutations[child][copy] = append(pop.IndMutations[child][copy], mutationID)
 			mutation.Count++

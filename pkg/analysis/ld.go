@@ -30,7 +30,7 @@ func CalculateLDSummary(model *core.Model, pop *core.Pop) *LDSummary {
 	}
 
 	// Sample pairs to avoid O(n²) explosion
-	maxPairs := 10000 // Limit total pairs analyzed
+	maxPairs := int(model.Parameters["ld_max_pairs"])
 	sampleRate := 1.0
 	totalPossiblePairs := len(segregatingSites) * (len(segregatingSites) - 1) / 2
 	if totalPossiblePairs > maxPairs {

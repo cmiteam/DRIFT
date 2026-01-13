@@ -1,12 +1,11 @@
 package methods
 
 import (
-    "drift/pkg/core"
-    "drift/modules/individual"
-    "drift/modules/maploader"
-    "drift/modules/utils"
-    "math/rand"
-    "time"
+	"drift/pkg/core"
+	"drift/pkg/individual"
+	"drift/pkg/utils"
+	"math/rand"
+	"time"
 )
 
 func MatingRandom(model *core.Model, pop *core.Pop, availableMen, availableWomen []int) {
@@ -35,7 +34,7 @@ func MatingRandom(model *core.Model, pop *core.Pop, availableMen, availableWomen
 		manLat := pop.IndData[man][individual.Lat]
 		manLon := pop.IndData[man][individual.Lon]
 
-		if maploader.IsLand(model, manLat, manLon) {
+		if utils.IsLand(model, manLat, manLon) {
 			pop.IndData[woman][individual.Lat] = manLat
 			pop.IndData[woman][individual.Lon] = manLon
 		}

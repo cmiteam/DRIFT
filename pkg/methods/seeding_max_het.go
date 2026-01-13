@@ -1,8 +1,8 @@
 package methods
 
 import (
-	"drift/modules/individual"
 	"drift/pkg/core"
+	"drift/pkg/individual"
 	"drift/pkg/utils"
 )
 

@@ -1,8 +1,8 @@
 package analysis
 
 import (
-	"drift/modules/individual"
 	"drift/pkg/core"
+	"drift/pkg/individual"
 	"fmt"
 )
 

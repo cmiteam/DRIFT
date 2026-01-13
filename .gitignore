@@ -1,3 +1,11 @@
- results/
- ExampleResults/
- *.exe
+# Results directories
+results/
+ExampleResults/
+
+# Executables and debug files
+*.exe
+__debug_bin*
+
+# User data (keep users.json but ignore user simulation results)
+users/*/
+!users/users.json

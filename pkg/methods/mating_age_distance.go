@@ -1,9 +1,9 @@
 package methods
 
 import (
-	"drift/modules/individual"
-	"drift/modules/utils"
 	"drift/pkg/core"
+	"drift/pkg/individual"
+	"drift/pkg/utils"
 	"math"
 	"math/rand"
 	"time"

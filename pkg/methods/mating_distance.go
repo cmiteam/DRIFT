@@ -1,9 +1,9 @@
 package methods
 
 import (
-	"drift/modules/individual"
-	"drift/modules/maploader"
 	"drift/pkg/core"
+	"drift/pkg/individual"
+	"drift/pkg/utils"
 	"math/rand"
 	"time"
 )
@@ -51,7 +51,7 @@ func MatingDistance(model *core.Model, pop *core.Pop, availableMen, availableWom
 			pop.IndData[bestWoman][individual.MarriageState] = manID
 
 			// Woman moves to man's location (with terrain validation)
-			if maploader.IsLand(model, manLat, manLon) {
+			if utils.IsLand(model, manLat, manLon) {
 				pop.IndData[bestWoman][individual.Lat] = manLat
 				pop.IndData[bestWoman][individual.Lon] = manLon
 			}

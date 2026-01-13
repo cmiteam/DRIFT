@@ -129,8 +129,8 @@ func SaveDetailedSFS(model *core.Model, sfsResult *core.SFSResult) error {
 		return nil
 	}
 
-	filename := fmt.Sprintf("results/%s_sfs_run%d_year%d.csv",
-		model.ModelName, model.FreeParameters["run"], model.FreeParameters["year"])
+	filename := fmt.Sprintf("%s/%s_sfs_run%d_year%d.csv",
+		model.ResultsDir, model.ModelName, model.FreeParameters["run"], model.FreeParameters["year"])
 
 	file, err := os.Create(filename)
 	if err != nil {
@@ -228,8 +228,8 @@ func CalculateBinnedSFS(model *core.Model, pop *core.Pop) []int {
 
 // SaveBinnedSFS saves the binned SFS data to a standardized format file
 func SaveBinnedSFS(model *core.Model, binnedSFS []int) error {
-	filename := fmt.Sprintf("results/%s_binned_sfs_run%d_year%d.csv",
-		model.ModelName, model.FreeParameters["run"], model.FreeParameters["year"])
+	filename := fmt.Sprintf("%s/%s_binned_sfs_run%d_year%d.csv",
+		model.ResultsDir, model.ModelName, model.FreeParameters["run"], model.FreeParameters["year"])
 
 	file, err := os.Create(filename)
 	if err != nil {
@@ -329,8 +329,8 @@ func SaveSFSTimeSeries(model *core.Model, pop *core.Pop) error {
 		return nil
 	}
 
-	filename := fmt.Sprintf("results/%s_sfs_timeseries_run%d.csv",
-		model.ModelName, model.FreeParameters["run"])
+	filename := fmt.Sprintf("%s/%s_sfs_timeseries_run%d.csv",
+		model.ResultsDir, model.ModelName, model.FreeParameters["run"])
 
 	file, err := os.Create(filename)
 	if err != nil {

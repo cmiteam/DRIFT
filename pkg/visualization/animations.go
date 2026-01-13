@@ -1,9 +1,9 @@
 package visualization
 
 import (
-	"drift/modules/individual"
-	"drift/modules/maploader"
 	"drift/pkg/core"
+	"drift/pkg/individual"
+	"drift/pkg/utils"
 	"fmt"
 	"image"
 	"image/color"
@@ -61,7 +61,8 @@ func CreateAnimation(container *core.AnimationsContainer, name string) {
 // CreateBaseMap transforms terrain data into a 2D color array
 
 func CreateBaseMap(model *core.Model, terrainColors map[int]color.RGBA, mapRoot string) (*image.RGBA, int) {
-	maploader.LoadMap(model, mapRoot)
+	utils.LoadMap(model, mapRoot)
+	print(model.Map)
 	mapHeight := len(model.Map)
 	mapWidth := len(model.Map[0])
 	tileSize := 3600 / mapHeight // Scale to fit 3600 pixel height
@@ -102,7 +103,7 @@ func CreateBaseMap(model *core.Model, terrainColors map[int]color.RGBA, mapRoot 
 			}
 		}
 	}
-	fmt.Printf("Map has %d rows, %d columns\n", len(model.Map), len(model.Map[0]))
+	//	fmt.Printf("Map has %d rows, %d columns\n", len(model.Map), len(model.Map[0]))
 	return baseMap, tileSize
 }
 

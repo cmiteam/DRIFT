@@ -2,7 +2,7 @@ package analysis
 
 import (
 	"drift/pkg/core"
-    "math"
+	"math"
 )
 
 // CalculatePairwiseLD calculates linkage disequilibrium between two genomic positions
@@ -239,4 +239,3 @@ func CalculateFayWuH(unfoldedSFS []int, thetaPi float64, numChromosomes int) flo
 	// H = ?_p - ?_H
 	return thetaPi - thetaH
 }
-

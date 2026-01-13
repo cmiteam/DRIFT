@@ -1,8 +1,10 @@
 package config
 
 import (
+	"drift/pkg/core"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime/pprof"
 )
 
@@ -10,11 +12,48 @@ import (
 func SetupDirectories(resultsPath string) error {
 	// Create the results directory if it doesn't exist
 	if _, err := os.Stat(resultsPath); os.IsNotExist(err) {
-		err = os.Mkdir(resultsPath, 0755)
+		err = os.MkdirAll(resultsPath, 0755)
 		if err != nil {
 			return fmt.Errorf("error creating results directory: %v", err)
 		}
 	}
+	return nil
+}
+
+// SetupUserDirectories creates user-specific directory structure
+// Structure: users/{username}/{model_name}/
+func SetupUserDirectories(model *core.Model) error {
+	if model.Username == "" {
+		return nil // No username specified, skip user directory setup
+	}
+
+	// Create users directory
+	usersDir := "users"
+	if _, err := os.Stat(usersDir); os.IsNotExist(err) {
+		if err := os.Mkdir(usersDir, 0755); err != nil {
+			return fmt.Errorf("error creating users directory: %v", err)
+		}
+	}
+
+	// Create user directory
+	userDir := filepath.Join(usersDir, model.Username)
+	if _, err := os.Stat(userDir); os.IsNotExist(err) {
+		if err := os.Mkdir(userDir, 0755); err != nil {
+			return fmt.Errorf("error creating user directory: %v", err)
+		}
+	}
+
+	// Create model directory
+	modelDir := filepath.Join(userDir, model.ModelName)
+	if _, err := os.Stat(modelDir); os.IsNotExist(err) {
+		if err := os.MkdirAll(modelDir, 0755); err != nil {
+			return fmt.Errorf("error creating model directory: %v", err)
+		}
+	}
+
+	// Update model's ResultsDir to point to user's model directory
+	model.ResultsDir = modelDir
+
 	return nil
 }
 

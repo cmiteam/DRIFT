@@ -1,10 +1,10 @@
 package utils
 
-import(
-    "drift/pkg/core"
-    "math/bits"
-    "strings"
-    "fmt"
+import (
+	"drift/pkg/core"
+	"fmt"
+	"math/bits"
+	"strings"
 )
 
 func CountSetBits(words []uint64) int {
