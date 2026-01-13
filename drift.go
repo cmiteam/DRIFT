@@ -7,6 +7,7 @@ import (
 	"drift/pkg/simulation"
 	"drift/pkg/utils"
 	"drift/pkg/visualization"
+	"drift/pkg/webserver"
 	"fmt"
 	"log"
 	"os"
@@ -29,9 +30,12 @@ func main() {
 
 	// If web mode is enabled, start the web server
 	if commands.WebMode {
-		fmt.Println("Starting web server mode...")
-		// TODO: Implement web server
-		fmt.Println("Web server not yet implemented")
+		fmt.Println("Starting Drift web server...")
+		err := webserver.Start()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Web server error: %v\n", err)
+			os.Exit(1)
+		}
 		return
 	}
 

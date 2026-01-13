@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drift - Genetic Drift Simulator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            background-color: #e8f5e9;
+            border-left: 4px solid #4caf50;
+        }
+        button {
+            background-color: #2196F3;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0b7dda;
+        }
+        .api-info {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .api-endpoint {
+            font-family: monospace;
+            background-color: #f8f9fa;
+            padding: 5px 10px;
+            border-radius: 3px;
+            display: inline-block;
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧬 Drift - Genetic Drift Simulator</h1>
+
+        <div class="status">
+            <strong>✅ Web Server Running!</strong>
+            <p>The Drift web server is running successfully. The full HTML GUI will be implemented next.</p>
+        </div>
+
+        <h2>Available API Endpoints:</h2>
+        <div class="api-info">
+            <h3>User Authentication</h3>
+            <div class="api-endpoint">POST /api/login</div>
+            <p>Login with username and password</p>
+
+            <h3>Simulation Management</h3>
+            <div class="api-endpoint">POST /api/simulation/start</div>
+            <p>Start a new simulation</p>
+
+            <div class="api-endpoint">GET /api/simulation/status?username={username}</div>
+            <p>Get simulation status for a user</p>
+
+            <div class="api-endpoint">POST /api/simulation/cancel</div>
+            <p>Cancel a queued or running simulation</p>
+
+            <h3>Results & Progress</h3>
+            <div class="api-endpoint">GET /api/progress/{username}/{modelname}</div>
+            <p>Get current progress of a simulation</p>
+
+            <div class="api-endpoint">GET /api/results/{username}/{modelname}</div>
+            <p>List result files</p>
+
+            <div class="api-endpoint">GET /api/results/{username}/{modelname}/{filename}</div>
+            <p>Download a specific result file</p>
+
+            <h3>Admin</h3>
+            <div class="api-endpoint">GET /api/admin/queue</div>
+            <p>View simulation queue status</p>
+
+            <div class="api-endpoint">GET /api/admin/users</div>
+            <p>List all users</p>
+        </div>
+
+        <h2>Test the API</h2>
+        <button onclick="testAPI()">Test Login API</button>
+        <div id="result" style="margin-top: 20px; padding: 10px; background-color: #f0f0f0; border-radius: 4px; display: none;"></div>
+
+        <h2>Next Steps:</h2>
+        <ul>
+            <li>✅ Web server implementation complete</li>
+            <li>⏳ Build full HTML/CSS/JavaScript GUI with tabs (Setup, Progress, Graphs, Maps)</li>
+            <li>⏳ Implement parameter form in Setup tab</li>
+            <li>⏳ Add real-time progress updates</li>
+            <li>⏳ Display graphs and results</li>
+        </ul>
+    </div>
+
+    <script>
+        async function testAPI() {
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'block';
+            resultDiv.innerHTML = 'Testing API...';
+
+            try {
+                const response = await fetch('/api/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: 'alice',
+                        password: ''
+                    })
+                });
+
+                const data = await response.json();
+                resultDiv.innerHTML = '<strong>API Response:</strong><br><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            } catch (error) {
+                resultDiv.innerHTML = '<strong>Error:</strong> ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>

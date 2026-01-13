@@ -1,0 +1,10 @@
+{
+  "users": [
+    {
+      "username": "alice",
+      "password_hash": "",
+      "created": "2026-01-13T00:00:00Z",
+      "models": []
+    }
+  ]
+}
