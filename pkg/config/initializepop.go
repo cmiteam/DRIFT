@@ -19,6 +19,8 @@ func InitializePop(model *core.Model) *core.Pop {
 		err = methods.SetupPopDefault(model, pop)
 	case "flood":
 		err = methods.SetupPopFlood(model, pop)
+	case "creation":
+		err = methods.SetupPopCreation(model, pop)
 	default:
 		// If scenario not recognized, use default
 		print("Setting up default pop")

@@ -17,6 +17,7 @@ type Model struct {
 	MapName         string
 	MatingStyle     string
 	Username        string // User running the simulation (for GUI mode)
+	BaseModelID     string // Selected base model (e.g., "standard", "flood")
 	PrevFrequencies map[int]float64
 	HetHistory      []float64
 	TimeHistory     []int

@@ -2,10 +2,10 @@ package config
 
 import (
 	"drift/pkg/core"
-	"drift/pkg/simulation"
 	"drift/pkg/utils"
 	"fmt"
 	"math"
+	"path/filepath"
 )
 
 // validateBasicParameters checks that critical parameters exist and are within valid ranges
@@ -100,6 +100,11 @@ func validateBasicParameters(params map[string]float64) error {
 // Initializes the model based on the configuration files
 
 func InitializeModel(configRoot string) (*core.Model, error) {
+	return InitializeModelWithBaseModel(configRoot, "")
+}
+
+// InitializeModelWithBaseModel initializes a model with an optional base model
+func InitializeModelWithBaseModel(configRoot string, baseModelID string) (*core.Model, error) {
 	model := &core.Model{
 		Parameters:      make(map[string]float64),
 		PlotFlags:       make(map[string]bool),
@@ -112,9 +117,29 @@ func InitializeModel(configRoot string) (*core.Model, error) {
 		HetHistory:      make([]float64, 0),
 		TimeHistory:     make([]int, 0),
 		ResultsDir:      "results", // Default results directory
+		BaseModelID:     baseModelID,
 	}
 
-	// Attempt to load each config file. Failure will be fatal.
+	// If a base model was specified, load it using ModelManager
+	if baseModelID != "" {
+		// This is legacy support - new code should use LoadUserModel instead
+		// For now, we'll just load parameters directly from base model
+		manager := GetModelManager()
+		baseParamsPath := filepath.Join(manager.BaseModelsPath, baseModelID, "parameters.csv")
+		err := manager.LoadParameterFile(model, baseParamsPath, true)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load base model '%s': %w", baseModelID, err)
+		}
+
+		// Get scenario from base model
+		baseInfo, err := manager.GetBaseModelInfo(baseModelID)
+		if err != nil {
+			return nil, err
+		}
+		model.Scenario = baseInfo.Scenario
+	}
+
+	// Load user parameters (these will override base model defaults)
 	err := utils.LoadParameters(model, configRoot)
 	if err != nil {
 		return nil, err
@@ -150,8 +175,9 @@ func InitializeModel(configRoot string) (*core.Model, error) {
 	}
 
 	model.FreeParameters["genome_bits"] = totalBits
-	// Prepare output files
-	simulation.SaveHeaders(model.ModelName, model.ResultsDir)
+
+	// Note: SaveHeaders is now called in drift.go after ResultsDir is finalized
+	// (moved from here to ensure correct output directory is used)
 
 	// Initialize free parameters
 	model.FreeParameters["indID"] = 0         // Starting ID for individuals

@@ -1,0 +1,6 @@
+model_id,name,description,scenario
+Default,Standard Human Population,Default human population with overlapping generations and no special events,default
+QuickTest,Quick Test Run,Small population for quick testing (n=100 t=500),default
+Flood,Biblical Flood,Population bottleneck at year 1656 with 8 individuals followed by rapid growth,flood
+Creation,Creation Model,Start with 2 individuals (Adam and Eve),creation
+OoA,Out of Africa,Severe population bottleneck modeling the pre-Out of Africa event,default

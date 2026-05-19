@@ -3,6 +3,7 @@ package main
 import (
 	"drift/pkg/analysis"
 	"drift/pkg/config"
+	"drift/pkg/core"
 	"drift/pkg/events"
 	"drift/pkg/simulation"
 	"drift/pkg/utils"
@@ -40,7 +41,36 @@ func main() {
 	}
 
 	// Initialize the model
-	model, err := config.InitializeModel(commands.ConfigRoot)
+	var model *core.Model
+	var err error
+
+	// Priority: User model > Base model > Legacy config
+	if commands.Username != "" && commands.ModelName != "" {
+		// Load user model using new ModelManager system
+		model, err = config.LoadUserModel(commands.Username, commands.ModelName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading user model: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Try creating the model first with: drift -username=%s -model=%s -base-model=standard\n", commands.Username, commands.ModelName)
+			os.Exit(1)
+		}
+		fmt.Printf("Loaded user model: %s/%s (based on %s)\n", commands.Username, commands.ModelName, model.BaseModelID)
+	} else if commands.BaseModel != "" {
+		// Create temporary model from base model (legacy support)
+		model, err = config.InitializeModelWithBaseModel(commands.ConfigRoot, commands.BaseModel)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error initializing base model: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Loaded base model: %s\n", commands.BaseModel)
+	} else {
+		// Legacy: load from config root (old system)
+		model, err = config.InitializeModel(commands.ConfigRoot)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error initializing model: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Loaded model from config directory")
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing model: %v\n", err)
 		os.Exit(1)
@@ -55,13 +85,20 @@ func main() {
 
 	// If output-dir was specified via command line, use it (overrides user directory)
 	if commands.OutputDir != "" {
-		model.ResultsDir = commands.Results
+		model.ResultsDir = commands.OutputDir
 	}
 
 	// Setup directories
 	err = config.SetupDirectories(model.ResultsDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
+	// Create CSV file with headers (must be done after ResultsDir is finalized)
+	err = simulation.SaveHeaders(model.ModelName, model.ResultsDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating results file: %v\n", err)
 		os.Exit(1)
 	}
 

@@ -21,9 +21,10 @@ import (
 // SaveHeaders creates a CSV file with the headers for the results
 func SaveHeaders(modelName string, resultsDir string) error {
 	filename := fmt.Sprintf("%s/%s_results.csv", resultsDir, modelName)
+	fmt.Printf("SaveHeaders: Creating %s\n", filename)
 	file, err := os.OpenFile(filename, os.O_TRUNC|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %v", err)
+		return fmt.Errorf("failed to open file %s: %v", filename, err)
 	}
 	defer file.Close()
 	writer := csv.NewWriter(file)
