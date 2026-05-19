@@ -9,3 +9,27 @@ __debug_bin*
 # User data (keep users.json but ignore user simulation results)
 users/*/
 !users/users.json
+
+# Runtime logs
+*.log
+
+# Test scratch
+test_config/
+test_results/
+test_*.csv
+test_params.txt
+
+# Local-only backup files from refactors
+*.old
+
+# Personal planning artifacts
+*.docx
+project_summary.txt
+Pickup*
+
+# Claude Code working-directory markers
+tmpclaude-*-cwd
+.claude/
+
+# Windows accidental device-name file
+nul
