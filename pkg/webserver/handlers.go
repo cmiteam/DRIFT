@@ -1,11 +1,15 @@
 package webserver
 
 import (
+	"drift/pkg/config"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -20,6 +24,19 @@ type LoginResponse struct {
 	Success  bool   `json:"success"`
 	Username string `json:"username,omitempty"`
 	Message  string `json:"message,omitempty"`
+}
+
+// RegisterRequest represents a registration request
+type RegisterRequest struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+// RegisterResponse represents a registration response
+type RegisterResponse struct {
+	Success          bool   `json:"success"`
+	Message          string `json:"message,omitempty"`
+	RequiresApproval bool   `json:"requires_approval"`
 }
 
 // handleLogin handles user login
@@ -55,10 +72,80 @@ func handleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleRegister handles user registration
+func handleRegister(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		respondError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req RegisterRequest
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		respondError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate input
+	if req.Username == "" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(RegisterResponse{
+			Success: false,
+			Message: "Username is required",
+		})
+		return
+	}
+
+	// TODO: Implement proper password hashing (bcrypt)
+	// For now, storing password as-is (NOT SECURE - placeholder only)
+	// Empty password is allowed
+	passwordHash := req.Password
+
+	// Add user to database
+	err = usersDB.AddUser(req.Username, passwordHash)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(RegisterResponse{
+			Success: false,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	// Initialize user models (copy all base models to user directory)
+	err = config.GetOrCreateUser(req.Username)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize models for user %s: %v", req.Username, err)
+		// Don't fail registration - models can be initialized later
+	} else {
+		log.Printf("Initialized models for new user: %s", req.Username)
+	}
+
+	// Success - currently no approval required
+	// TODO: Add admin approval system here when needed
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(RegisterResponse{
+		Success:          true,
+		RequiresApproval: false, // Placeholder: Set to true when admin approval is implemented
+	})
+}
+
 // StartSimulationRequest represents a request to start a simulation
 type StartSimulationRequest struct {
-	Username  string `json:"username"`
-	ModelName string `json:"model_name"`
+	Username       string  `json:"username"`
+	BaseModel      string  `json:"base_model,omitempty"`
+	ModelName      string  `json:"model_name"`
+	EndYear        int     `json:"end_year,omitempty"`
+	StartPopSize   int     `json:"start_pop_size,omitempty"`
+	MaxPopSize     int     `json:"max_pop_size,omitempty"`
+	SaveInterval   int     `json:"save_interval,omitempty"`
+	NumRuns        int     `json:"num_runs,omitempty"`
+	TrackDNA       int     `json:"track_DNA,omitempty"`
+	TrackMap       int     `json:"track_map,omitempty"`
+	TrackDrift     int     `json:"track_drift,omitempty"`
+	TrackMutations int     `json:"track_mutations,omitempty"`
+	MapName        string  `json:"map_name,omitempty"`
+	Scaling        float64 `json:"scaling,omitempty"`
 }
 
 // handleSimulationStart handles starting a new simulation
@@ -75,15 +162,21 @@ func handleSimulationStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate user exists
+	// Validate user exists and ensure models are initialized
 	_, err = usersDB.GetUser(req.Username)
 	if err != nil {
 		respondError(w, "User not found", http.StatusNotFound)
 		return
 	}
 
-	// Add job to queue
-	job, err := queue.AddJob(req.Username, req.ModelName)
+	// Ensure user has models initialized
+	err = config.GetOrCreateUser(req.Username)
+	if err != nil {
+		log.Printf("Warning: Could not initialize user models: %v", err)
+	}
+
+	// Add job to queue with parameters
+	job, err := queue.AddJob(req.Username, req.ModelName, req)
 	if err != nil {
 		respondError(w, fmt.Sprintf("Failed to queue simulation: %v", err), http.StatusInternalServerError)
 		return
@@ -150,7 +243,7 @@ func handleProgress(w http.ResponseWriter, r *http.Request) {
 	username := parts[0]
 	modelName := parts[1]
 
-	progressPath := filepath.Join("users", username, modelName, "progress.json")
+	progressPath := filepath.Join("users", username, "models", modelName, "results", "progress.json")
 
 	data, err := os.ReadFile(progressPath)
 	if err != nil {
@@ -166,6 +259,106 @@ func handleProgress(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+// handlePlotData serves incremental plot data from CSV results
+func handlePlotData(w http.ResponseWriter, r *http.Request) {
+	// URL format: /api/plot-data/{username}/{modelname}?from_row=N
+	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/plot-data/"), "/")
+	if len(parts) < 2 {
+		respondError(w, "Invalid URL format. Expected /api/plot-data/{username}/{modelname}", http.StatusBadRequest)
+		return
+	}
+
+	username := parts[0]
+	modelName := parts[1]
+
+	// Build path to results CSV
+	csvPath := filepath.Join("users", username, "models", modelName, "results", modelName+"_results.csv")
+
+	// Check if file exists
+	fileInfo, err := os.Stat(csvPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			respondError(w, "Results file not found", http.StatusNotFound)
+			return
+		}
+		respondError(w, fmt.Sprintf("Failed to access results: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Check If-Modified-Since header for caching
+	ifModifiedSince := r.Header.Get("If-Modified-Since")
+	if ifModifiedSince != "" {
+		// Parse the time
+		t, err := http.ParseTime(ifModifiedSince)
+		if err == nil && !fileInfo.ModTime().After(t) {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+	}
+
+	// Get from_row parameter (default 0)
+	fromRow := 0
+	if fromRowStr := r.URL.Query().Get("from_row"); fromRowStr != "" {
+		fromRow, _ = strconv.Atoi(fromRowStr)
+	}
+
+	// Read CSV file
+	file, err := os.Open(csvPath)
+	if err != nil {
+		respondError(w, fmt.Sprintf("Failed to open results file: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+
+	// Read header
+	headers, err := reader.Read()
+	if err != nil {
+		respondError(w, fmt.Sprintf("Failed to read CSV header: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Read all rows
+	allRows, err := reader.ReadAll()
+	if err != nil {
+		respondError(w, fmt.Sprintf("Failed to read CSV data: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Get rows starting from fromRow
+	var rows [][]string
+	if fromRow < len(allRows) {
+		rows = allRows[fromRow:]
+	} else {
+		rows = [][]string{}
+	}
+
+	// Convert to JSON-friendly format
+	data := make([]map[string]string, 0, len(rows))
+	for _, row := range rows {
+		rowData := make(map[string]string)
+		for i, header := range headers {
+			if i < len(row) {
+				rowData[header] = row[i]
+			}
+		}
+		data = append(data, rowData)
+	}
+
+	// Send response
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Last-Modified", fileInfo.ModTime().UTC().Format(http.TimeFormat))
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"headers":    headers,
+		"rows":       data,
+		"total_rows": len(allRows),
+		"from_row":   fromRow,
+		"new_rows":   len(rows),
+		"modified":   fileInfo.ModTime().UTC().Format(http.TimeFormat),
+	})
+}
+
 // handleResults serves result files for a user's simulation
 func handleResults(w http.ResponseWriter, r *http.Request) {
 	// URL format: /api/results/{username}/{modelname}/{filename}
@@ -178,7 +371,7 @@ func handleResults(w http.ResponseWriter, r *http.Request) {
 	username := parts[0]
 	modelName := parts[1]
 
-	resultsDir := filepath.Join("users", username, modelName)
+	resultsDir := filepath.Join("users", username, "models", modelName, "results")
 
 	// If no filename specified, list files
 	if len(parts) == 2 {
@@ -239,6 +432,125 @@ func handleGetUsers(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"users": usernames,
+	})
+}
+
+// handleBaseModelsList returns list of available base models
+func handleBaseModelsList(w http.ResponseWriter, r *http.Request) {
+	models, err := config.ListBaseModels()
+	if err != nil {
+		respondError(w, fmt.Sprintf("Failed to load base models: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"models": models,
+	})
+}
+
+// handleBaseModelParameters returns parameters for a specific base model
+func handleBaseModelParameters(w http.ResponseWriter, r *http.Request) {
+	modelID := r.URL.Query().Get("id")
+	if modelID == "" {
+		respondError(w, "Missing model ID parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Load parameters from base model CSV file
+	paramsPath := filepath.Join("static", "basemodels", modelID, "parameters.csv")
+	file, err := os.Open(paramsPath)
+	if err != nil {
+		respondError(w, fmt.Sprintf("Failed to open base model parameters: %v", err), http.StatusNotFound)
+		return
+	}
+	defer file.Close()
+
+	reader := csv.NewReader(file)
+	records, err := reader.ReadAll()
+	if err != nil {
+		respondError(w, fmt.Sprintf("Failed to read parameters CSV: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Convert CSV to map (skip header row)
+	parameters := make(map[string]interface{})
+	for i, record := range records {
+		if i == 0 || len(record) < 2 {
+			continue // Skip header
+		}
+		paramName := strings.TrimSpace(record[0])
+		paramValue := strings.TrimSpace(record[1])
+
+		// Try to convert to appropriate type
+		if intVal, err := strconv.Atoi(paramValue); err == nil {
+			parameters[paramName] = intVal
+		} else if floatVal, err := strconv.ParseFloat(paramValue, 64); err == nil {
+			parameters[paramName] = floatVal
+		} else {
+			parameters[paramName] = paramValue
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":    true,
+		"parameters": parameters,
+		"base_model": modelID,
+	})
+}
+
+// handleMapsList returns list of available maps
+func handleMapsList(w http.ResponseWriter, r *http.Request) {
+	mapsDir := "maps"
+
+	// Check if maps directory exists
+	if _, err := os.Stat(mapsDir); os.IsNotExist(err) {
+		// Return default map if directory doesn't exist
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"maps": []string{"sandbox"},
+		})
+		return
+	}
+
+	// Read directory contents
+	entries, err := os.ReadDir(mapsDir)
+	if err != nil {
+		respondError(w, fmt.Sprintf("Failed to read maps directory: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Collect map names (directories and .csv files without extension)
+	mapNames := make([]string, 0)
+	seenMaps := make(map[string]bool)
+
+	for _, entry := range entries {
+		var mapName string
+
+		if entry.IsDir() {
+			mapName = entry.Name()
+		} else if strings.HasSuffix(entry.Name(), ".csv") {
+			mapName = strings.TrimSuffix(entry.Name(), ".csv")
+		} else {
+			continue
+		}
+
+		// Avoid duplicates
+		if !seenMaps[mapName] {
+			mapNames = append(mapNames, mapName)
+			seenMaps[mapName] = true
+		}
+	}
+
+	// If no maps found, return default
+	if len(mapNames) == 0 {
+		mapNames = []string{"sandbox"}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"maps": mapNames,
 	})
 }
 

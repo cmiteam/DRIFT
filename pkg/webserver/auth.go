@@ -57,12 +57,16 @@ func LoadUsers() (*UsersDatabase, error) {
 
 // Save writes the users database to disk
 func (db *UsersDatabase) Save() error {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
-
+	// Note: Caller should already hold the lock
 	data, err := json.MarshalIndent(db, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal users: %v", err)
+	}
+
+	// Ensure users directory exists
+	err = os.MkdirAll("users", 0755)
+	if err != nil {
+		return fmt.Errorf("failed to create users directory: %v", err)
 	}
 
 	err = os.WriteFile("users/users.json", data, 0644)
