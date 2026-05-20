@@ -66,7 +66,9 @@ func LoadParameterDefaultsFromPath(model *core.Model, path string) ([]ParameterR
 	return paramRecords, nil
 }
 
-// LoadParameterOverrides loads an override file and applies values on top of existing model parameters
+// LoadParameterOverrides loads an override file and applies values on top of existing model parameters.
+// Accepts either the 2-column schema (parameter,value) used by base models or the 6-column schema
+// (parameter,label,entry,format,value,group) used by parameter_defaults.csv and saved user models.
 func LoadParameterOverrides(model *core.Model, path string) error {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil // No overrides file is OK
@@ -80,12 +82,20 @@ func LoadParameterOverrides(model *core.Model, path string) error {
 	records = StripHeader(records)
 
 	for _, row := range records {
-		if len(row) < 5 {
+		if len(row) < 2 {
 			continue
 		}
 
 		paramName := strings.TrimSpace(row[0])
-		paramValue := strings.TrimSpace(row[4]) // Value is in column 5 (index 4)
+
+		// Value column depends on schema: 6-col (parameter_defaults.csv) puts value at index 4,
+		// 2-col (base model parameters.csv) puts it at index 1.
+		var paramValue string
+		if len(row) >= 5 {
+			paramValue = strings.TrimSpace(row[4])
+		} else {
+			paramValue = strings.TrimSpace(row[1])
+		}
 
 		err := SetParameter(model, paramName, paramValue)
 		if err != nil {
