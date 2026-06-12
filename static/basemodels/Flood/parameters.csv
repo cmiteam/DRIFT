@@ -1,7 +1,7 @@
 parameter,value
 num_runs,1
-start_pop_size,1000
-max_pop_size,10000000
+start_pop_size,6
+max_pop_size,100000
 max_growth_rate,1.05
 end_year,4500
 bottleneck_start,1656
