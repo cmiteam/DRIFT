@@ -4,6 +4,7 @@ import (
 	"drift/pkg/core"
 	"drift/pkg/individual"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"strings"
@@ -84,8 +85,10 @@ func Death(model *core.Model, pop *core.Pop) int {
 		pop.Tracking["cull_deaths"]++
 	}
 
-	// Step 3: Tamp down population growth rate by randomly culling individuals
-	allowedNumInds := int(float64(model.FreeParameters["last_pop_size"]) * model.Parameters["max_growth_rate"])
+	// Step 3: Tamp down population growth rate by randomly culling individuals.
+	// Round up so small populations can grow at all: int(6 * 1.05) = 6 (locks pop),
+	// but ceil(6 * 1.05) = 7 (lets it grow by one).
+	allowedNumInds := int(math.Ceil(float64(model.FreeParameters["last_pop_size"]) * model.Parameters["max_growth_rate"]))
 	if allowedNumInds > int(model.Parameters["max_pop_size"]) {
 		allowedNumInds = int(model.Parameters["max_pop_size"])
 	}
