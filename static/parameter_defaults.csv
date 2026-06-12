@@ -1,80 +1,60 @@
 parameter,label,entry,format,value,group
-model_name,Model Name,Text,string,Default,Main
-num_runs,Num Runs,Text,int,1,Main
-start_pop_size,Start Pop Size,Text,int,500,Main
-max_pop_size,Max Pop Size,Text,int,500,Main
-max_growth_rate,Max Growth Rate,Text,float,2,Main
-end_year,End Year,Text,int,100000,Main
+model_name,Model Name,Text,string,Default,Basic
+end_year,End Year,Text,int,4500,Basic
+start_pop_size,Start Pop Size,Text,int,1000,Basic
+max_pop_size,Max Pop Size,Text,int,1000,Basic
+max_growth_rate,Max Growth Rate,Text,float,1.00462,Basic
+num_runs,Num Runs,Text,int,1,Basic
+save_interval,Save Interval,Text,int,100,Basic
+lifespan,Init Lifespan,Text,int,85,Life
+lifespan_drop,Lifespan Drop,Text,float,0.85,Life
+min_lifespan,Min Lifespan,Text,int,85,Life
+maturity,Maturity,Text,int,20,Life
+spacing,Birth Spacing,Text,int,2,Life
+birth_prob,Birth Probability,Text,int,2,Life
+death_risk_adj,Death Risk Adjustment,Text,int,5,Life
+menopause,Menopause,Text,float,0.5,Life
+bottleneck_start,Bottleneck Start,Text,int,-1,Population
+bottleneck_end,Bottleneck End,Text,int,1000000,Population
+bottleneck_size,Bottleneck Size,Text,int,1000000,Population
+mating_style,Mating Style,Dropdown,string,1,Population
+max_mating_distance,Max Mating Distance,Text,int,5,Population
+residence_style,Residence Style,Text,int,1,Population
+wander,Wander,Text,int,5,Population
+max_breeding_inds,Max Breeding Inds,Check,int,-1,Population
+track_DNA,Track DNA,Check,bool,0,DNA
 seed_year,Seed Year,Text,int,0,DNA
 seed_style,Seed Style,Text,int,2,DNA
 init_heterozygosity,Init Heterozygosity,Text,float,0,DNA
-lifespan,Init Lifespan,Text,int,85,Main
-min_lifespan,Min Lifespan,Text,int,85,Main
-lifespan_drop,Lifespan Drop,Text,float,0.85,Main
-maturity,Maturity,Text,int,20,Main
-spacing,Spacing,Text,int,2,Main
-birth_prob,Birth Probability,Text,int,2,Main
-menopause,Menopause,Text,float,0.5,Main
 multiplier,Multiplier,Text,int,1,DNA
-mating_style,Mating Style,Dropdown,string,1,Main
-max_mating_distance,Max Mating Distance,Text,int,5,Main
-selection,Selection,Dropdown,string,0,Mutation
-residence_style,Residence Style,Text,int,1,Main
-wander,Wander,Text,int,5,Main
-save_interval,Save Interval,Text,int,100,Main
-animation_save_interval,Animation Save Interval,Text,int,10,Main
-bottleneck_start,Bottleneck Start,Text,int,-1,Main
-bottleneck_end,Bottleneck End,Text,int,1000000,Main
-bottleneck_size,Bottleneck Size,Text,int,1000000,Main
-track_DNA,Track DNA,Check,bool,1,Main
-track_drift,Track Drift,Check,bool,1,Main
-track_mutations,Track Mutations,Check,bool,1,Main
-track_dead,Track Dead,Check,bool,0,Main
-track_map,Track on Map,Check,bool,0,Main
-track_SFS,Site Frequency Spectrum,checkbox,float,0,Drift
-save_detailed_SFS,Save detailed SFS files,checkbox,float,0,Drift
-track_LD,Linkage Disequilibrium,checkbox,float,0,Drift
-track_coalescence,Track Coalescence,entry,int,0,Analysis
-coalescence_pairs,Coalescence Pairs,entry,int,50,Analysis
-genome_map,Genome Map,Check,bool,1,DNA
+genome_map,Genome Map,Check,bool,0,DNA
 every_genome_map,All Genome Maps,Check,bool,0,DNA
-mutation_map,Mutation Map,Check,bool,0,Mutation
-mutation_hist,Mutation Histogram,Check,bool,1,Mutation
-map_name,Map Name,Text,string,sandbox,Main
-map_width,Map Width,Text,int,3840,Main
-map_height,Map Height,Text,int,2160,Main
-frame_rate,Frame Rate,Text,float,1,Main
-pixel_size,Pixel Size,Text,int,10,Main
-point_size,Pixel Size,Text,int,10,Main
-scenario,Scenario,Dropdown,int,0,Main
-max_breeding_inds,Max Breeding Inds,Check,int,-1,Main
-sex_chrom_index,Sex Chromosome Index,Text,int,23,Main
+sex_chrom_index,Sex Chromosome Index,Text,int,23,DNA
+track_mutations,Track Mutations,Check,bool,0,Mutation
 mu,Mutation Rate,Text,float,10,Mutation
+selection,Selection,Dropdown,string,0,Mutation
 f_neutral,f(Neutal),Text,float,1,Mutation
 f_beneficial,f(Beneficial),Text,float,0.0001,Mutation
 mu_scale_factor,Mutation effect sig figs,Text,int,1000000,Mutation
+mutation_map,Mutation Map,Check,bool,0,Mutation
+mutation_hist,Mutation Histogram,Check,bool,1,Mutation
 shape,Weibull Shape,Text,float,1,Mutation
 scale,Weibull Scale,Text,float,0.05,Mutation
 Weibull_adj,Weibull Adjustment,Text,int,1000000,Mutation
-numinds,N,Check,bool,0,Plot
-marriages,Marriages,Check,bool,0,Plot
-births,Births,Check,bool,0,Plot
-random_deaths,Random Deaths,Check,bool,0,Plot
-cull_deaths,Culled Deaths,Check,bool,0,Plot
-max_ID,Max ID,Check,bool,0,Plot
-Y_descends,Y Descends,Check,bool,0,Plot
-mt_descends,mt Descends,Check,bool,0,Plot
-genealo_descends,Geneal Descends,Check,bool,0,Plot
-genetic_descends,Genetic Descends,Check,bool,0,Plot
-num_centromeres,Num Centromeres,Check,bool,0,Plot
-num_blocks,Num Blocks,Check,bool,0,Plot
-av_block_size,Av Block Size,Check,bool,0,Plot
-sd_block_size,SD Block Size,Check,bool,0,Plot
-perc_seed_genome_retained,% Seed Genome,Check,bool,0,Plot
-av_seed_genome_coverage,Av Seed Genome Cov,Check,bool,0,Plot
-av_heterozygosity,Av Heterozygosity,Check,bool,0,Plot
-av_ind_fitness,Av Individual Fitness,Check,bool,0,Plot
-av_bin_fitness,Av Bin Fitness,Check,bool,0,Plot
-num_mutations,Num Mutations,Check,bool,0,Plot
-av_mutations_per_bin,Av Mutations Per Bin,Check,bool,0,Plot
-av_mutations_per_ind,Av Mutations Per Ind,Check,bool,0,PlotFlags
+track_drift,Track Drift,Check,bool,0,Tracking
+track_dead,Track Dead,Check,bool,0,Tracking
+track_SFS,Site Frequency Spectrum,checkbox,float,0,Tracking
+save_detailed_SFS,Save detailed SFS files,checkbox,float,0,Tracking
+track_coalescence,Track Coalescence,entry,int,0,Tracking
+coalescence_pairs,Coalescence Pairs,entry,int,50,Tracking
+track_LD,Linkage Disequilibrium,checkbox,float,0,Tracking
+ld_max_pairs,Maximum SNP pairs for LD analysis,ld_max_pairs,float,10000,Analysis
+ld_min_freq,Minimum allele frequency for LD,ld_min_freq,float,0.01,Analysis
+ld_max_variance,Max variance for LD,ld_max_var,float,0.01,Analysis
+track_map,Track on Map,Check,bool,1,Maps
+animation_save_interval,Animation Save Interval,Text,int,10,Maps
+map_width,Map Width,Text,int,3840,Maps
+map_height,Map Height,Text,int,2160,Maps
+frame_rate,Frame Rate,Text,float,1,Maps
+pixel_size,Pixel Size,Text,int,10,Maps
+point_size,Pixel Size,Text,int,10,Maps

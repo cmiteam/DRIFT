@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Drift - Genetic Drift Simulator</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+</head>
+<body>
+    <!-- Login Screen -->
+    <div id="loginScreen" class="screen active">
+        <div class="login-container">
+            <h1>🧬 Drift:</h1>
+            <h2>The Dynamics of Recombination, Inheritance, and Fitness in Time</h2>
+
+            <!-- Login Form -->
+            <form id="loginForm" class="auth-form">
+                <div class="form-group">
+                    <label for="loginUsername">Username:</label>
+                    <input type="text" id="loginUsername" required placeholder="Enter username">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password (if set):</label>
+                    <input type="password" id="loginPassword" placeholder="Leave blank if no password">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">Login</button>
+            </form>
+
+            <div class="divider">
+                <span>or</span>
+            </div>
+
+            <!-- New User Registration -->
+            <button id="showRegisterBtn" class="btn btn-secondary btn-block">Create New Account</button>
+
+            <!-- Registration Form (initially hidden) -->
+            <form id="registerForm" class="auth-form" style="display: none;">
+                <h3>New User Registration</h3>
+                <div class="form-group">
+                    <label for="registerUsername">Username:</label>
+                    <input type="text" id="registerUsername" required placeholder="Choose username">
+                </div>
+                <div class="form-group">
+                    <label for="registerPassword">Password (optional):</label>
+                    <input type="password" id="registerPassword" placeholder="Leave blank for no password">
+                </div>
+                <div class="button-group">
+                    <button type="submit" class="btn btn-primary">Register</button>
+                    <button type="button" id="cancelRegisterBtn" class="btn btn-secondary">Cancel</button>
+                </div>
+                <div id="registerNote" class="info-note">
+                    Note: New accounts may require administrator approval before access is granted.
+                </div>
+            </form>
+
+            <div id="loginError" class="error-message"></div>
+            <div id="registerSuccess" class="success-message"></div>
+        </div>
+    </div>
+
+    <!-- Main Application -->
+    <div id="mainApp" class="screen">
+        <!-- Header -->
+        <header>
+            <h1>🧬 Drift: The Dynamics of Recombination, Inheritance, and Fitness in Time</h1>
+            <div class="user-info">
+                <span id="currentUser"></span>
+                <button id="logoutBtn" class="btn btn-secondary">Logout</button>
+            </div>
+        </header>
+
+        <!-- Tab Navigation -->
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="setup">Setup</button>
+            <button class="tab-btn" data-tab="progress">Progress</button>
+            <button class="tab-btn" data-tab="plots">Plots</button>
+            <button class="tab-btn" data-tab="maps">Maps</button>
+        </nav>
+
+        <!-- Tab Content -->
+        <main class="tab-content">
+            <!-- Setup Tab -->
+            <div id="setupTab" class="tab-pane active">
+                <h2>Simulation Setup</h2>
+                <form id="setupForm">
+                    <!-- Parameter Category Tabs -->
+                    <div class="param-tabs">
+                        <button type="button" class="param-tab-btn active" data-param-tab="basic">Basic Parameters</button>
+                        <button type="button" class="param-tab-btn" data-param-tab="dna">DNA Parameters</button>
+                        <button type="button" class="param-tab-btn" data-param-tab="mutation">Mutation Parameters</button>
+                        <button type="button" class="param-tab-btn" data-param-tab="maps">Maps</button>
+                        <button type="button" class="param-tab-btn" data-param-tab="tracking">Tracking & Analysis</button>
+                        <button type="button" class="param-tab-btn" data-param-tab="other">Other Parameters</button>
+                    </div>
+
+                    <!-- Basic Parameters -->
+                    <div class="param-tab-content active" id="basicParams">
+                        <div class="form-section">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="base_model">Base Model:</label>
+                                    <select id="base_model">
+                                        <option value="">Loading...</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="model_name">Model Name:</label>
+                                    <input type="text" id="model_name" value="Default" required>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="end_year">End Year:</label>
+                                    <input type="number" id="end_year" value="4500" required>
+                                </div>
+                                <div class="form-group">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="start_pop_size">Start Population Size:</label>
+                                    <input type="number" id="start_pop_size" value="1000" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="max_pop_size">Max Population Size:</label>
+                                    <input type="number" id="max_pop_size" value="1000" required>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="save_interval">Save Interval:</label>
+                                    <input type="number" id="save_interval" value="100" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="num_runs">Number of Runs:</label>
+                                    <input type="number" id="num_runs" value="1" required>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- DNA Parameters -->
+                    <div class="param-tab-content" id="dnaParams">
+                        <div class="form-section">
+                            <div class="enable-section">
+                                <label class="enable-checkbox">
+                                    <input type="checkbox" id="track_DNA" value="1">
+                                    <span class="enable-label">Track DNA</span>
+                                </label>
+                                <p class="enable-description">Enable DNA tracking to configure DNA-specific parameters</p>
+                            </div>
+                            <div id="dnaParamsContent" class="dependent-content">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="seed_year">Seed Year:</label>
+                                        <input type="number" id="seed_year" value="0">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="seed_style">Seed Style:</label>
+                                        <input type="number" id="seed_style" value="2">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="init_heterozygosity">Initial Heterozygosity:</label>
+                                        <input type="number" id="init_heterozygosity" value="0" step="0.01">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="multiplier">Multiplier:</label>
+                                        <input type="number" id="multiplier" value="1">
+                                    </div>
+                                </div>
+                                <div class="checkbox-group">
+                                    <label>
+                                        <input type="checkbox" id="genome_map" value="1">
+                                        Genome Map
+                                    </label>
+                                    <label>
+                                        <input type="checkbox" id="every_genome_map" value="1">
+                                        All Genome Maps
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Mutation Parameters -->
+                    <div class="param-tab-content" id="mutationParams">
+                        <div class="form-section">
+                            <div class="enable-section">
+                                <label class="enable-checkbox">
+                                    <input type="checkbox" id="track_mutations" value="1">
+                                    <span class="enable-label">Track Mutations</span>
+                                </label>
+                                <p class="enable-description">Enable mutation tracking to configure mutation-specific parameters</p>
+                            </div>
+                            <div id="mutationParamsContent" class="dependent-content">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="mu">Mutation Rate:</label>
+                                        <input type="number" id="mu" value="10" step="0.1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="selection">Selection:</label>
+                                        <select id="selection">
+                                            <option value="0">None</option>
+                                            <option value="1">Active</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="f_neutral">f(Neutral):</label>
+                                        <input type="number" id="f_neutral" value="1" step="0.0001">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="f_beneficial">f(Beneficial):</label>
+                                        <input type="number" id="f_beneficial" value="0.0001" step="0.0001">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="mu_scale_factor">Mutation Scale Factor:</label>
+                                        <input type="number" id="mu_scale_factor" value="1000000" step="1">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="shape">Weibull Shape:</label>
+                                        <input type="number" id="shape" value="1" step="0.01">
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="scale">Weibull Scale:</label>
+                                        <input type="number" id="scale" value="0.05" step="0.01">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="Weibull_adj">Weibull Adjustment:</label>
+                                        <input type="number" id="Weibull_adj" value="1000000" step="1">
+                                    </div>
+                                </div>
+                                <div class="checkbox-group">
+                                    <label>
+                                        <input type="checkbox" id="mutation_map" value="1">
+                                        Mutation Map
+                                    </label>
+                                    <label>
+                                        <input type="checkbox" id="mutation_hist" value="1" checked>
+                                        Mutation Histogram
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Maps -->
+                    <div class="param-tab-content" id="mapsParams">
+                        <div class="form-section">
+                            <div class="enable-section">
+                                <label class="enable-checkbox">
+                                    <input type="checkbox" id="track_map" value="1" checked>
+                                    <span class="enable-label">Track on Map</span>
+                                </label>
+                                <p class="enable-description">Enable map tracking to configure map-specific parameters</p>
+                            </div>
+                            <div id="mapsParamsContent" class="dependent-content">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="map_name">Map Name:</label>
+                                        <select id="map_name">
+                                            <option value="sandbox">Sandbox</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="scaling">Scaling:</label>
+                                        <input type="number" id="scaling" value="1" step="0.1" min="0.1">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tracking & Analysis -->
+                    <div class="param-tab-content" id="trackingParams">
+                        <div class="form-section">
+                            <h3>Tracking Options</h3>
+                            <div class="checkbox-group">
+                                <label>
+                                    <input type="checkbox" id="track_drift" value="1">
+                                    Track Drift
+                                </label>
+                                <label>
+                                    <input type="checkbox" id="track_dead" value="1">
+                                    Track Dead
+                                </label>
+                                <label>
+                                    <input type="checkbox" id="track_SFS" value="1">
+                                    Site Frequency Spectrum
+                                </label>
+                                <label>
+                                    <input type="checkbox" id="save_detailed_SFS" value="1">
+                                    Save Detailed SFS
+                                </label>
+                                <label>
+                                    <input type="checkbox" id="track_LD" value="1">
+                                    Linkage Disequilibrium
+                                </label>
+                                <label>
+                                    <input type="checkbox" id="track_coalescence" value="1">
+                                    Track Coalescence
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Other Parameters (dynamically populated) -->
+                    <div class="param-tab-content" id="otherParams">
+                        <div class="form-section">
+                            <h3>Additional Parameters</h3>
+                            <p class="param-description">These parameters are loaded from the base model configuration.</p>
+                            <div id="otherParamsContainer">
+                                <!-- Dynamic parameters will be rendered here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="button-group">
+                        <button type="submit" class="btn btn-primary btn-large">Start Simulation</button>
+                        <button type="button" id="saveConfig" class="btn btn-secondary">Save Model</button>
+                        <button type="button" id="resetToDefaults" class="btn btn-secondary">Reset</button>
+                        <button type="button" id="saveAsBaseModel" class="btn btn-primary">Create New Model</button>
+                    </div>
+                </form>
+                <div id="setupStatus" class="status-message"></div>
+            </div>
+
+            <!-- Progress Tab -->
+            <div id="progressTab" class="tab-pane">
+                <h2>Simulation Progress</h2>
+                <div id="progressContainer">
+                    <div id="noSimulation" class="info-message">
+                        No simulation running. Go to Setup tab to start one.
+                    </div>
+                    <div id="simulationProgress" style="display: none;">
+                        <div class="progress-info">
+                            <div class="stat-box">
+                                <h3>Status</h3>
+                                <p id="simStatus" class="status-badge">-</p>
+                            </div>
+                            <div class="stat-box">
+                                <h3>Current Year</h3>
+                                <p id="currentGen" class="stat-value">-</p>
+                            </div>
+                            <div class="stat-box">
+                                <h3>Total Years</h3>
+                                <p id="totalGen" class="stat-value">-</p>
+                            </div>
+                            <div class="stat-box">
+                                <h3>Population Size</h3>
+                                <p id="popSize" class="stat-value">-</p>
+                            </div>
+                        </div>
+
+                        <div id="errorMessage" class="error-message" style="display: none; margin-top: 20px;"></div>
+
+                        <div class="progress-bar-container">
+                            <div class="progress-bar">
+                                <div id="progressBar" class="progress-fill"></div>
+                            </div>
+                            <p id="progressPercent">0%</p>
+                        </div>
+
+                        <div class="button-group">
+                            <button id="cancelSim" class="btn btn-danger">Cancel Simulation</button>
+                            <button id="refreshProgress" class="btn btn-secondary">Refresh</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Plots Tab -->
+            <div id="plotsTab" class="tab-pane">
+                <h2>Statistical Plots</h2>
+                <div id="plotsContainer">
+                    <div id="noPlots" class="info-message">
+                        No plot data available yet. Run a simulation first.
+                    </div>
+                    <div id="plotsDisplay" style="display: none;">
+                        <!-- Plot Controls -->
+                        <div class="plot-controls">
+                            <div class="control-group">
+                                <label>Update:</label>
+                                <select id="updateMode">
+                                    <option value="auto">Auto (3s)</option>
+                                    <option value="manual">Manual</option>
+                                </select>
+                                <button id="pausePlots" class="btn btn-secondary btn-small">Pause</button>
+                                <button id="refreshPlots" class="btn btn-secondary btn-small">Refresh Now</button>
+                            </div>
+                            <div class="control-group">
+                                <span id="lastPlotUpdate" class="status-text">Last update: Never</span>
+                            </div>
+                            <div class="control-group">
+                                <button id="downloadCSV" class="btn btn-secondary">Download CSV</button>
+                                <button id="addCustomChart" class="btn btn-primary">+ Add Chart</button>
+                            </div>
+                        </div>
+
+                        <!-- Charts Container -->
+                        <div id="chartsContainer">
+                            <!-- Charts will be dynamically added here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Maps Tab -->
+            <div id="mapsTab" class="tab-pane">
+                <h2>Map Animations</h2>
+                <div id="mapsContainer">
+                    <div id="noMaps" class="info-message">
+                        No map animations available yet.
+                        <br><br>
+                        <strong>Note:</strong> Map animations are only generated when <strong>"Track on Map"</strong> is enabled in the Setup tab under Maps parameters.
+                        <br><br>
+                        If you've already run a simulation without map tracking, you'll need to run a new simulation with map tracking enabled to generate these animations.
+                    </div>
+                    <div id="mapsDisplay" style="display: none;">
+                        <div class="graph-section">
+                            <h3>Genetic Ancestry Map Animation</h3>
+                            <img id="geneticMapAnim" src="" alt="Genetic map animation not available">
+                            <button class="btn btn-secondary download-btn" data-file="genetic.gif">Download GIF</button>
+                        </div>
+                        <div class="graph-section">
+                            <h3>Genealogical Ancestry Map Animation</h3>
+                            <img id="genealogicalMapAnim" src="" alt="Genealogical map animation not available">
+                            <button class="btn btn-secondary download-btn" data-file="genealogical.gif">Download GIF</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

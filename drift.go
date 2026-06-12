@@ -1,24 +1,38 @@
 package main
 
 import (
-	"drift/modules/animations"
-	"drift/modules/birth"
-	"drift/modules/coalescence"
-	"drift/modules/death"
-	"drift/modules/initializedrift"
-	"drift/modules/initializemodel"
-	"drift/modules/initializepop"
-	"drift/modules/marriage"
-	"drift/modules/necalcs"
-	"drift/modules/parsecommands"
-	"drift/modules/save"
-	"drift/modules/seedpopulation"
-	"drift/modules/utils"
+	"drift/pkg/analysis"
+	"drift/pkg/config"
+	"drift/pkg/core"
+	"drift/pkg/events"
+	"drift/pkg/simulation"
+	"drift/pkg/utils"
+	"drift/pkg/visualization"
+	"drift/pkg/webserver"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 )
+
+func writeProgress(resultsDir string, currentYear, totalYears, popSize, run, numRuns int, status string) {
+	payload := map[string]interface{}{
+		"current_generation": currentYear,
+		"total_generations":  totalYears,
+		"population_size":    popSize,
+		"current_run":        run,
+		"total_runs":         numRuns,
+		"status":             status,
+		"updated_at":         time.Now().Format(time.RFC3339),
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(resultsDir, "progress.json"), data, 0644)
+}
 
 // Main function does the following:
 // 1. Parses command-line arguments
@@ -32,62 +46,126 @@ func main() {
 	starttime := time.Now()
 
 	// Parse the command-line arguments
-	config := parsecommands.ParseCommandLine()
+	commands := config.ParseCommandLine()
+
+	// If web mode is enabled, start the web server
+	if commands.WebMode {
+		fmt.Println("Starting Drift web server...")
+		err := webserver.Start()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Web server error: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// Initialize the model
-	model, err := initializemodel.InitializeModel(config.ConfigRoot)
+	var model *core.Model
+	var err error
+
+	// Priority: User model > Base model > Legacy config
+	if commands.Username != "" && commands.ModelName != "" {
+		// Load user model using new ModelManager system
+		model, err = config.LoadUserModel(commands.Username, commands.ModelName)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading user model: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Try creating the model first with: drift -username=%s -model=%s -base-model=standard\n", commands.Username, commands.ModelName)
+			os.Exit(1)
+		}
+		fmt.Printf("Loaded user model: %s/%s (based on %s)\n", commands.Username, commands.ModelName, model.BaseModelID)
+	} else if commands.BaseModel != "" {
+		// Create temporary model from base model (legacy support)
+		model, err = config.InitializeModelWithBaseModel(commands.ConfigRoot, commands.BaseModel)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error initializing base model: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Loaded base model: %s\n", commands.BaseModel)
+	} else {
+		// Legacy: load from config root (old system)
+		model, err = config.InitializeModel(commands.ConfigRoot)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error initializing model: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Loaded model from config directory")
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing model: %v\n", err)
 		os.Exit(1)
 	}
 
+	// Setup user-specific directories if username is specified
+	err = config.SetupUserDirectories(model)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error setting up user directories: %v\n", err)
+		os.Exit(1)
+	}
+
+	// If output-dir was specified via command line, use it (overrides user directory)
+	if commands.OutputDir != "" {
+		model.ResultsDir = commands.OutputDir
+	}
+
 	// Setup directories
-	err = initializedrift.SetupDirectories(config.Results)
+	err = config.SetupDirectories(model.ResultsDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 
+	// Create CSV file with headers (must be done after ResultsDir is finalized)
+	err = simulation.SaveHeaders(model.ModelName, model.ResultsDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating results file: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Initialize animations if enabled
-	animContainer, err := animations.InitializeIfEnabled(model, config.MapRoot)
+	animContainer, err := visualization.InitializeIfEnabled(model, commands.MapRoot)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing animations: %v\n", err)
 		os.Exit(1)
 	}
 
 	// Setup CPU profiling
-	cleanup, err := initializedrift.StartCPUProfiling(config.CpuProfile)
+	cleanup, err := config.StartCPUProfiling(commands.CpuProfile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 	defer cleanup()
 
+	numRuns := int(model.Parameters["num_runs"])
+	totalYears := int(model.Parameters["end_year"])
+
 	// Loop over the number of model runs
-	for run := 1; run <= int(model.Parameters["num_runs"]); run++ {
+	for run := 1; run <= numRuns; run++ {
 		print("\nRun ", run, "\n")
 		model.FreeParameters["run"] = run
 
-		pop := initializepop.InitializePop(model)
+		pop := config.InitializePop(model)
+
+		writeProgress(model.ResultsDir, 0, totalYears, len(pop.IndData), run, numRuns, "running")
 
 		// Loop over the number years in each model run
-		for year := 0; year <= int(model.Parameters["end_year"]); year++ {
+		for year := 0; year <= totalYears; year++ {
 			model.FreeParameters["year"] = year
 			if year >= int(model.Parameters["seed_year"]) && model.FreeParameters["seed"] == -1 {
-				seedpopulation.SeedThePopulation(model, pop)
+				events.Seed(model, pop)
 				model.FreeParameters["seed"] = 1
 				fmt.Println("   Seeded population in year", year, "with seed style", int(model.Parameters["seed_style"]))
 			}
 
-			birth.Birth(model, pop)
-			marriage.Marriage(model, pop)
-			death.Death(model, pop)
+			simulation.Birth(model, pop)
+			simulation.Mating(model, pop)
+			simulation.Death(model, pop)
 			model.FreeParameters["last_pop_size"] = len(pop.IndData) // save pop size for future growth rate calculations
 
 			// Escape clauses
 			// Save and quit if population extinct
 			if len(pop.IndData) <= 1 {
-				save.Save(model, pop, animContainer)
+				simulation.Save(model, pop, animContainer)
 				break
 			}
 			// Save and quit if genealo = pop size
@@ -95,40 +173,43 @@ func main() {
 
 			// Save and quit if genealo = 0
 			if genealo == 0 {
-				save.Save(model, pop, animContainer)
+				simulation.Save(model, pop, animContainer)
 				break
 			}
 			if model.Parameters["track_map"] == 1 && year%int(model.Parameters["animation_save_interval"]) == 0 {
-				err := animations.AddAnimationFrames(model, pop, animContainer)
+				err := visualization.AddAnimationFrames(model, pop, animContainer)
 				if err != nil {
 					log.Printf("Error adding animation frames: %v", err)
 				}
 			}
 			// Normal save at save interval
 			if year%int(model.Parameters["save_interval"]) == 0 {
-				save.Save(model, pop, animContainer)
+				simulation.Save(model, pop, animContainer)
+				writeProgress(model.ResultsDir, year, totalYears, len(pop.IndData), run, numRuns, "running")
 			}
 		}
 
+		writeProgress(model.ResultsDir, totalYears, totalYears, len(pop.IndData), run, numRuns, "running")
+
 		// Things to do at the end of a model run
 		if model.Parameters["track_DNA"] == 1 {
-			filename := fmt.Sprintf("results/%s genome map.png", model.ModelName)
+			filename := fmt.Sprintf("%s/%s genome map.png", model.ResultsDir, model.ModelName)
 			pixelSize := 4
-			save.SaveGenomeMap(pop.Chromosomes, model.ChromosomeArms, filename, pixelSize, int(model.Parameters["NumBits"]))
+			simulation.SaveGenomeMap(pop.Chromosomes, model.ChromosomeArms, filename, pixelSize, int(model.Parameters["NumBits"]))
 		}
 		if model.Parameters["track_map"] == 1 {
 			//			print("Saving map...\n")
-			err := animations.SaveAllGIFs(animContainer, config.Results)
+			err := visualization.SaveAllGIFs(animContainer, model.ResultsDir)
 			if err != nil {
 				log.Printf("Error saving animation: %v", err)
 			}
 		}
 		if model.Parameters["save_detailed_SFS"] == 1 {
-			necalcs.SaveSFSTimeSeries(model, pop)
+			analysis.SaveSFSTimeSeries(model, pop)
 		}
 		if model.Parameters["track_coalescence"] == 1 {
-			yadamResult := coalescence.FindYAdam(model, pop)
-			mteveResult := coalescence.FindMtEve(model, pop)
+			yadamResult := analysis.FindYAdam(model, pop)
+			mteveResult := analysis.FindMtEve(model, pop)
 			fmt.Printf("\nY-Adam: ID %d, born year %d, %d generations back\n",
 				yadamResult.YAdamID, yadamResult.YAdamBirthYear, yadamResult.GenerationsBack)
 			fmt.Printf("Mt-Eve: ID %d, born year %d, %d generations back\n",
