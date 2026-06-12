@@ -327,10 +327,21 @@ func (q *SimulationQueue) updateUserModelParameters(job *SimulationJob) error {
 	}
 
 	reader := csv.NewReader(file)
+	reader.FieldsPerRecord = -1 // tolerate inconsistent widths from legacy/corrupt files
 	records, err := reader.ReadAll()
 	file.Close()
 	if err != nil {
 		return fmt.Errorf("failed to read parameters file: %v", err)
+	}
+
+	// Detect schema from header: 6-col (parameter,label,entry,format,value,group) or 2-col (parameter,value)
+	headerWidth := 2
+	if len(records) > 0 && len(records[0]) >= 6 {
+		headerWidth = 6
+	}
+	valueIdx := 1
+	if headerWidth == 6 {
+		valueIdx = 4
 	}
 
 	// Build a map of parameter updates from job
@@ -372,15 +383,26 @@ func (q *SimulationQueue) updateUserModelParameters(job *SimulationJob) error {
 		paramName := record[0]
 		existingParams[paramName] = true
 		if newValue, ok := updates[paramName]; ok {
-			record[1] = newValue
+			// Ensure the row is wide enough to hold the value at valueIdx (pad if a legacy 2-col row snuck into a 6-col file)
+			for len(record) <= valueIdx {
+				record = append(record, "")
+			}
+			record[valueIdx] = newValue
+			records[i] = record
 			log.Printf("Updated %s = %s", paramName, newValue)
 		}
 	}
 
-	// Add any missing parameters
+	// Add any missing parameters with rows matching the file's schema width
 	for param, value := range updates {
 		if !existingParams[param] {
-			records = append(records, []string{param, value})
+			var row []string
+			if headerWidth == 6 {
+				row = []string{param, param, "Text", "float", value, "Main"}
+			} else {
+				row = []string{param, value}
+			}
+			records = append(records, row)
 			log.Printf("Added new parameter %s = %s", param, value)
 		}
 	}

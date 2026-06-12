@@ -70,6 +70,13 @@ func (m *ModelManager) LoadModel(username, modelName string) (*core.Model, error
 		return nil, err
 	}
 
+	// Canonical identifiers come from the function arguments / metadata, not the param files.
+	// LoadParameterDefaults applies "model_name" / "username" rows from parameter_defaults.csv,
+	// which would otherwise clobber the values the caller asked for.
+	model.Username = username
+	model.ModelName = modelName
+	model.BaseModelID = metadata.BaseModel
+
 	// Load actuarial table (try user override first, then Default base model)
 	actuarialPath := filepath.Join(configPath, "actuarial_table.csv")
 	if _, err := os.Stat(actuarialPath); os.IsNotExist(err) {

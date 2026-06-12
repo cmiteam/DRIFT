@@ -19,6 +19,7 @@ func LoadCSV(filename string) ([][]string, error) {
 	defer file.Close()
 
 	reader := csv.NewReader(file)
+	reader.FieldsPerRecord = -1 // tolerate rows with varying widths (e.g. mixed 2-col/6-col parameters.csv)
 	records, err := reader.ReadAll()
 	if err != nil {
 		return nil, fmt.Errorf("failed to read %s: %w", filename, err)

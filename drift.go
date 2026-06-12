@@ -9,11 +9,30 @@ import (
 	"drift/pkg/utils"
 	"drift/pkg/visualization"
 	"drift/pkg/webserver"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"time"
 )
+
+func writeProgress(resultsDir string, currentYear, totalYears, popSize, run, numRuns int, status string) {
+	payload := map[string]interface{}{
+		"current_generation": currentYear,
+		"total_generations":  totalYears,
+		"population_size":    popSize,
+		"current_run":        run,
+		"total_runs":         numRuns,
+		"status":             status,
+		"updated_at":         time.Now().Format(time.RFC3339),
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	_ = os.WriteFile(filepath.Join(resultsDir, "progress.json"), data, 0644)
+}
 
 // Main function does the following:
 // 1. Parses command-line arguments
@@ -117,15 +136,20 @@ func main() {
 	}
 	defer cleanup()
 
+	numRuns := int(model.Parameters["num_runs"])
+	totalYears := int(model.Parameters["end_year"])
+
 	// Loop over the number of model runs
-	for run := 1; run <= int(model.Parameters["num_runs"]); run++ {
+	for run := 1; run <= numRuns; run++ {
 		print("\nRun ", run, "\n")
 		model.FreeParameters["run"] = run
 
 		pop := config.InitializePop(model)
 
+		writeProgress(model.ResultsDir, 0, totalYears, len(pop.IndData), run, numRuns, "running")
+
 		// Loop over the number years in each model run
-		for year := 0; year <= int(model.Parameters["end_year"]); year++ {
+		for year := 0; year <= totalYears; year++ {
 			model.FreeParameters["year"] = year
 			if year >= int(model.Parameters["seed_year"]) && model.FreeParameters["seed"] == -1 {
 				events.Seed(model, pop)
@@ -161,8 +185,11 @@ func main() {
 			// Normal save at save interval
 			if year%int(model.Parameters["save_interval"]) == 0 {
 				simulation.Save(model, pop, animContainer)
+				writeProgress(model.ResultsDir, year, totalYears, len(pop.IndData), run, numRuns, "running")
 			}
 		}
+
+		writeProgress(model.ResultsDir, totalYears, totalYears, len(pop.IndData), run, numRuns, "running")
 
 		// Things to do at the end of a model run
 		if model.Parameters["track_DNA"] == 1 {
