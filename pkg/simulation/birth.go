@@ -5,16 +5,22 @@ import (
 	"drift/pkg/individual"
 	"drift/pkg/utils"
 	"fmt"
-	"math/rand"
+	"sort"
 )
 
-func Birth(model *core.Model, pop *core.Pop) {
+// birthStandard is the default birth algorithm, registered as "standard" in
+// module_registry.go. Callers use the Birth dispatcher; add alternatives by
+// registering another modules.BirthFunc under a different name.
+func birthStandard(model *core.Model, pop *core.Pop) {
 
 	// First, find eligible females and roll the dice
 	var currentInds []int
 	for ind := range pop.IndData {
 		currentInds = append(currentInds, ind)
 	}
+	// Deterministic processing order (map iteration order is randomized), so a
+	// fixed rng_seed reproduces the run.
+	sort.Ints(currentInds)
 
 	for _, ind := range currentInds {
 		// skip males
@@ -39,7 +45,7 @@ func Birth(model *core.Model, pop *core.Pop) {
 			continue
 		}
 		// Failed to get pregnant this year
-		if rand.Intn(int(model.Parameters["birth_prob"])) != 0 {
+		if utils.RandIntn(int(model.Parameters["birth_prob"])) != 0 {
 			continue
 		}
 
@@ -63,7 +69,7 @@ func Birth(model *core.Model, pop *core.Pop) {
 			fitness = (pfit + mfit) / 2
 			fitness = fitness / model.Parameters["mu_scale_factor"]
 		}
-		chance := rand.Float64()
+		chance := utils.RandFloat64()
 		if chance < fitness {
 			model.FreeParameters["indID"] += 1
 			child := model.FreeParameters["indID"]
@@ -181,7 +187,7 @@ func createChild(model *core.Model, pop *core.Pop, dad, mom, child int) {
 	pop.IndData[child] = individual.MakeIndData()
 	pop.IndData[child][individual.Dad] = dad
 	pop.IndData[child][individual.Mom] = mom
-	pop.IndData[child][individual.Sex] = rand.Intn(2)
+	pop.IndData[child][individual.Sex] = utils.RandIntn(2)
 	pop.IndData[child][individual.BirthYear] = model.FreeParameters["year"]
 	pop.IndData[child][individual.Lifespan] = lifespan
 	pop.IndData[child][individual.Lat] = childLat
@@ -238,12 +244,21 @@ func createMask(model *core.Model, sex int) ([]uint64, []uint64) {
 	genomemask := make([]uint64, genomeArrSize)
 	centromask := []uint64{0}
 
+	// Iterate chromosomes in a fixed order: this loop draws RNG per chromosome,
+	// and Go map iteration order is randomized, so unsorted iteration would make
+	// meiosis non-reproducible even under a fixed rng_seed.
+	chroms := make([]int, 0, len(model.ChromosomeArms))
+	for chrom := range model.ChromosomeArms {
+		chroms = append(chroms, chrom)
+	}
+	sort.Ints(chroms)
+
 	//    fmt.Printf("\n=== DEBUG createMask ===\n")
 	//    fmt.Printf("genome_bits: %d\n", model.FreeParameters["genome_bits"])
 	//    fmt.Printf("genomeArrSize: %d\n", genomeArrSize)
 	//    fmt.Printf("Number of chromosomes: %d\n", len(model.ChromosomeArms))
 
-	for chrom := range model.ChromosomeArms {
+	for _, chrom := range chroms {
 		//        fmt.Printf("\nChromosome %d:\n", chrom)
 
 		// Check if arms exist
@@ -265,9 +280,9 @@ func createMask(model *core.Model, sex int) ([]uint64, []uint64) {
 			continue
 		}
 
-		ploc := rand.Intn(plen)
-		qloc := rand.Intn(qlen)
-		whichCopy := rand.Intn(2)
+		ploc := utils.RandIntn(plen)
+		qloc := utils.RandIntn(qlen)
+		whichCopy := utils.RandIntn(2)
 
 		if whichCopy == 1 {
 			startBit := pstart + ploc

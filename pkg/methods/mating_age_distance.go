@@ -5,8 +5,6 @@ import (
 	"drift/pkg/individual"
 	"drift/pkg/utils"
 	"math"
-	"math/rand"
-	"time"
 )
 
 func MatingAgeDistance(model *core.Model, pop *core.Pop, availableMen, availableWomen []int) {
@@ -17,8 +15,7 @@ func MatingAgeDistance(model *core.Model, pop *core.Pop, availableMen, available
 	influenceGrid := createInfluenceGrid(model, pop, availableWomen, maxDistance)
 
 	// Shuffle men for random processing order
-	rand.Seed(time.Now().UnixNano())
-	rand.Shuffle(len(availableMen), func(i, j int) {
+	utils.RandShuffle(len(availableMen), func(i, j int) {
 		availableMen[i], availableMen[j] = availableMen[j], availableMen[i]
 	})
 
@@ -76,7 +73,7 @@ func MatingAgeDistance(model *core.Model, pop *core.Pop, availableMen, available
 			var bestWoman int = -1
 			if totalScore > 0.001 {
 				// Weighted random selection
-				r := rand.Float64() * totalScore
+				r := utils.RandFloat64() * totalScore
 				cumulative := 0.0
 				for _, c := range candidates {
 					cumulative += c.score

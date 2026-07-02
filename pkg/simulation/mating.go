@@ -3,7 +3,8 @@ package simulation
 import (
 	"drift/pkg/core"
 	"drift/pkg/individual"
-	"drift/pkg/methods"
+	"drift/pkg/modules"
+	"sort"
 )
 
 func Mating(model *core.Model, pop *core.Pop) {
@@ -21,22 +22,14 @@ func Mating(model *core.Model, pop *core.Pop) {
 		}
 	}
 
-	// Call appropriate mating method
-	if styleFloat, exists := model.Parameters["mating_style"]; exists {
-		styleInt := int(styleFloat)
-		switch styleInt {
-		case core.MatingRandom:
-			methods.MatingRandom(model, pop, availableMen, availableWomen)
-		case core.MatingDistance:
-			methods.MatingDistance(model, pop, availableMen, availableWomen)
-		case core.MatingAgeDistance:
-			methods.MatingAgeDistance(model, pop, availableMen, availableWomen)
-		default:
-			methods.MatingRandom(model, pop, availableMen, availableWomen)
-		}
-	} else {
-		methods.MatingRandom(model, pop, availableMen, availableWomen)
-	}
+	// Sort so the lists have a deterministic order before the mating module
+	// consumes randomness (Go map iteration order is randomized; without this a
+	// fixed rng_seed would still produce different runs).
+	sort.Ints(availableMen)
+	sort.Ints(availableWomen)
+
+	// Dispatch to the mating module selected by the mating_style parameter.
+	modules.DispatchMating(model, pop, availableMen, availableWomen)
 }
 
 // createInfluenceGrid creates a grid where each cell contains IDs of women who can mate there

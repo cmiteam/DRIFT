@@ -3,17 +3,18 @@ package simulation
 import (
 	"drift/pkg/core"
 	"drift/pkg/individual"
+	"drift/pkg/utils"
 	"fmt"
 	"math"
-	"math/rand"
 	"os"
+	"sort"
 	"strings"
-	"time"
 )
 
-func Death(model *core.Model, pop *core.Pop) int {
+// deathStandard is the default death algorithm, registered as "standard" in
+// module_registry.go. Callers use the Death dispatcher.
+func deathStandard(model *core.Model, pop *core.Pop) int {
 
-	rand.Seed(time.Now().UnixNano())
 	deaths := 0
 	var deadPeopleData string
 	keyList := generateKeyList(&pop.IndData, -1)
@@ -38,7 +39,7 @@ func Death(model *core.Model, pop *core.Pop) int {
 			ageGroup = 85
 		}
 		deathrisk := model.DeathRisk[ageGroup]
-		die := rand.Float64() // low roll = death
+		die := utils.RandFloat64() // low roll = death
 		riskModification := model.Parameters["min_lifespan"] / float64(pop.IndData[ind][individual.Lifespan])
 		fitness := 1.0
 		if model.Parameters["track_mutations"] == 1 {
@@ -151,6 +152,9 @@ func generateKeyList(indData *map[int][]int, seed int) []int {
 		}
 		keyList = append(keyList, key)
 	}
+	// Deterministic order before RNG consumption (actuarial rolls, culling), so a
+	// fixed rng_seed reproduces the run despite randomized map iteration order.
+	sort.Ints(keyList)
 	return keyList
 }
 
@@ -160,7 +164,7 @@ func pickVictims(excess int, keyList []int) []int {
 	}
 	victimList := make([]int, excess)
 	for i := 0; i < excess; i++ {
-		randomIndex := i + rand.Intn(len(keyList)-i)
+		randomIndex := i + utils.RandIntn(len(keyList)-i)
 		victimList[i] = keyList[randomIndex]
 		keyList[randomIndex] = keyList[i]
 	}

@@ -4,7 +4,7 @@ import (
 	"drift/pkg/core"
 	"drift/pkg/individual"
 	"drift/pkg/utils"
-	"math/rand"
+	"sort"
 )
 
 func SeedingSingle(model *core.Model, pop *core.Pop) {
@@ -62,5 +62,6 @@ func chooseRandomSeed(model *core.Model, pop *core.Pop) int {
 	if len(matureMales) == 0 {
 		return -1
 	}
-	return matureMales[rand.Intn(len(matureMales))]
+	sort.Ints(matureMales) // deterministic order before the random pick
+	return matureMales[utils.RandIntn(len(matureMales))]
 }

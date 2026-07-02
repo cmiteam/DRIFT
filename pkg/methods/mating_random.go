@@ -4,18 +4,15 @@ import (
 	"drift/pkg/core"
 	"drift/pkg/individual"
 	"drift/pkg/utils"
-	"math/rand"
-	"time"
 )
 
 func MatingRandom(model *core.Model, pop *core.Pop, availableMen, availableWomen []int) {
 
 	// Randomize people
-	rand.Seed(time.Now().UnixNano())
-	rand.Shuffle(len(availableMen), func(i, j int) {
+	utils.RandShuffle(len(availableMen), func(i, j int) {
 		availableMen[i], availableMen[j] = availableMen[j], availableMen[i]
 	})
-	rand.Shuffle(len(availableWomen), func(i, j int) {
+	utils.RandShuffle(len(availableWomen), func(i, j int) {
 		availableWomen[i], availableWomen[j] = availableWomen[j], availableWomen[i]
 	})
 

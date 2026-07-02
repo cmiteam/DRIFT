@@ -96,6 +96,14 @@ func (m *ModelManager) LoadModel(username, modelName string) (*core.Model, error
 	if err != nil {
 		return nil, err
 	}
+	// LoadChromosomesFromPath sets genome_bits. Initialize the remaining free
+	// parameters to mirror InitializeModelWithBaseModel — without these the seed
+	// individual is never injected (seeding requires seed == -1) and the ID
+	// counters start wrong, so genetics was silently inactive on this path.
+	model.FreeParameters["indID"] = 0
+	model.FreeParameters["seed"] = -1
+	model.FreeParameters["last_pop_size"] = 0
+	model.FreeParameters["mutID"] = 0
 
 	return model, nil
 }

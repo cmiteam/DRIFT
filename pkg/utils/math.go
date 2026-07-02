@@ -2,7 +2,6 @@ package utils
 
 import (
 	"math"
-	"math/rand"
 )
 
 func Min(a, b int) int {
@@ -27,6 +26,6 @@ func Abs(x int) int {
 }
 
 func WeibullRandom(shape, scale float64) float64 {
-	u := rand.Float64()
+	u := RandFloat64()
 	return scale * math.Pow(-math.Log(u), 1/shape)
 }

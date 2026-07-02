@@ -67,6 +67,7 @@ func LoadParameters(model *core.Model, configRoot string) error {
 	// Initialize maps
 	model.Parameters = make(map[string]float64)
 	model.PlotFlags = make(map[string]bool)
+	model.StringParams = make(map[string]string)
 
 	for i, record := range records {
 		// Ensure record has at least 5 fields
@@ -112,10 +113,12 @@ func LoadParameters(model *core.Model, configRoot string) error {
 			continue
 		}
 
-		// Handle numeric parameters
+		// Numeric parameters go in Parameters; non-numeric values (e.g. a module
+		// selector like birth_style=standard) are stored as string parameters.
 		value, err := strconv.ParseFloat(paramValue, 64)
 		if err != nil {
-			return fmt.Errorf("row %d: parameter %s: invalid float '%s'", i+2, paramName, paramValue)
+			model.StringParams[paramName] = paramValue
+			continue
 		}
 		model.Parameters[paramName] = value
 	}
@@ -125,12 +128,15 @@ func LoadParameters(model *core.Model, configRoot string) error {
 
 // LoadChromosomes loads chromosome_data.csv into model.ChromosomeArms
 func LoadChromosomes(model *core.Model, configRoot string) error {
-	filename := filepath.Join(configRoot, "chromosome_data.csv")
-	records, err := LoadCSV(filename)
-	if err != nil {
-		return err
-	}
+	return LoadChromosomesFromPath(model, filepath.Join(configRoot, "chromosome_data.csv"))
+}
 
+// parseChromosomeRecords parses the chromosome CSV format shared by every load
+// path: one row per arm — Chromosome, Arm (0=p, 1=q), Start, Length. Previously
+// LoadChromosomesFromPath used a divergent 5-column-per-chromosome parser that
+// silently skipped every row of these 4-column files, leaving ChromosomeArms
+// empty and genome_bits = 0 on the user-model path.
+func parseChromosomeRecords(model *core.Model, records [][]string) error {
 	records = StripHeader(records)
 	model.ChromosomeArms = make(map[int]map[int][]int)
 
@@ -143,32 +149,54 @@ func LoadChromosomes(model *core.Model, configRoot string) error {
 		if err != nil {
 			return err
 		}
-
 		arm, err := ParseInt(row[1], i+1, 1) // 0 = p arm, 1 = q arm
 		if err != nil {
 			return err
 		}
-
 		start, err := ParseInt(row[2], i+1, 2)
 		if err != nil {
 			return err
 		}
-
 		length, err := ParseInt(row[3], i+1, 3)
 		if err != nil {
 			return err
 		}
 
-		// Initialize chromosome if needed
 		if model.ChromosomeArms[chromNum] == nil {
 			model.ChromosomeArms[chromNum] = make(map[int][]int)
 		}
-
-		// Store: model.ChromosomeArms[chromosome][arm] = [start, length]
 		model.ChromosomeArms[chromNum][arm] = []int{start, length}
 	}
 
+	SetGenomeBits(model)
 	return nil
+}
+
+// SetGenomeBits computes genome_bits — the highest occupied bit position across
+// all chromosome arms — from ChromosomeArms and stores it in FreeParameters. It
+// must be called after chromosomes are loaded; both LoadChromosomes and
+// LoadChromosomesFromPath call it so every load path sets genome_bits. (Before
+// this, the user-model load path never set it, silently disabling all DNA /
+// mutation tracking.) Returns the computed value.
+func SetGenomeBits(model *core.Model) int {
+	totalBits := 0
+	for chrom := range model.ChromosomeArms {
+		if arm0, ok := model.ChromosomeArms[chrom][0]; ok && len(arm0) >= 2 {
+			if end := arm0[0] + arm0[1]; end > totalBits {
+				totalBits = end
+			}
+		}
+		if arm1, ok := model.ChromosomeArms[chrom][1]; ok && len(arm1) >= 2 {
+			if end := arm1[0] + arm1[1]; end > totalBits {
+				totalBits = end
+			}
+		}
+	}
+	if model.FreeParameters == nil {
+		model.FreeParameters = make(map[string]int)
+	}
+	model.FreeParameters["genome_bits"] = totalBits
+	return totalBits
 }
 
 // LoadActuarialTable loads actuarial_table.csv into model.DeathRisk

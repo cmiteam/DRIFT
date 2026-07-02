@@ -6,6 +6,7 @@ import (
 
 type Model struct {
 	Parameters      map[string]float64
+	StringParams    map[string]string // non-numeric params, e.g. birth_style=standard
 	Scenario        string
 	FreeParameters  map[string]int
 	PlotFlags       map[string]bool
@@ -37,6 +38,16 @@ type Pop struct {
 	SFSHistory    map[int][]int
 	MaleDB        map[int]Ancestor
 	FemaleDB      map[int]Ancestor
+}
+
+// StringParam returns a string-valued parameter, or def if unset/empty.
+func (m *Model) StringParam(key, def string) string {
+	if m.StringParams != nil {
+		if v, ok := m.StringParams[key]; ok && v != "" {
+			return v
+		}
+	}
+	return def
 }
 
 type IndData int

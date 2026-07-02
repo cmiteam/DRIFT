@@ -3,7 +3,6 @@ package utils
 import (
 	"drift/pkg/core"
 	"fmt"
-	"math/rand"
 	"strconv"
 	"strings"
 )
@@ -178,8 +177,8 @@ func Wander(model *core.Model, lat, lon int) (int, int) {
 	}
 
 	// Choose random offsets between -maxDistance and +maxDistance
-	offsetLat := rand.Intn(2*maxDistance+1) - maxDistance
-	offsetLon := rand.Intn(2*maxDistance+1) - maxDistance
+	offsetLat := RandIntn(2*maxDistance+1) - maxDistance
+	offsetLon := RandIntn(2*maxDistance+1) - maxDistance
 
 	// Calculate new position
 	newLat := lat + offsetLat

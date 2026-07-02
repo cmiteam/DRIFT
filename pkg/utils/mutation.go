@@ -2,10 +2,6 @@ package utils
 
 import (
 	"drift/pkg/core"
-	"math/rand"
-	"time"
-
-	"gonum.org/v1/gonum/stat/distuv"
 )
 
 func InheritMutations(pop *core.Pop, genomemask []uint64, parent int, child int, copy int) {
@@ -44,26 +40,24 @@ func InheritMutations(pop *core.Pop, genomemask []uint64, parent int, child int,
 
 func GenerateNewMutations(model *core.Model, pop *core.Pop, ind int) {
 
-	rand.Seed(time.Now().UnixNano())
-	poisson := distuv.Poisson{Lambda: model.Parameters["mu"]}
-	numNewMutations := int(poisson.Rand())
+	numNewMutations := RandPoisson(model.Parameters["mu"])
 
 	for i := 0; i < numNewMutations; i++ {
 		model.FreeParameters["mutID"]++
 		mutationID := model.FreeParameters["mutID"]
-		position := rand.Intn(int(model.FreeParameters["genome_bits"]))
+		position := RandIntn(int(model.FreeParameters["genome_bits"]))
 		mutationEffect := 0.0
-		isMutationNonNeutral := rand.Float64()
+		isMutationNonNeutral := RandFloat64()
 		if isMutationNonNeutral >= model.Parameters["f_neutral"] {
 			mutationEffect = WeibullRandom(model.Parameters["shape"], model.Parameters["scale"]) / model.Parameters["Weibull_adj"]
-			isMutationDeleterious := rand.Float64()
+			isMutationDeleterious := RandFloat64()
 			if isMutationDeleterious > model.Parameters["f_beneficial"] {
 				mutationEffect = -mutationEffect
 			}
 		}
 		pop.MutationHist[int(mutationEffect*model.Parameters["mu_scale_factor"])]++
 
-		strand := rand.Intn(2)
+		strand := RandIntn(2)
 		if pop.IndMutations[ind] == nil {
 			pop.IndMutations[ind] = make(map[int][]int)
 		}

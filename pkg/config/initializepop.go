@@ -4,33 +4,26 @@ package config
 import (
 	"drift/pkg/core"
 	"drift/pkg/methods"
+	"drift/pkg/modules"
 	"fmt"
 )
 
-// InitializePop creates and initializes a population based on the scenario parameter
+// Register the population-setup modules into the central registry (pkg/modules).
+// These are keyed by scenario name; setup dispatch is scenario-driven by default
+// but can be overridden with a setup_style parameter.
+func init() {
+	modules.RegisterSetup("default", methods.SetupPopDefault)
+	modules.RegisterSetup("flood", methods.SetupPopFlood)
+	modules.RegisterSetup("creation", methods.SetupPopCreation)
+}
+
+// InitializePop creates and initializes a population using the selected setup
+// module (scenario-driven, or the setup_style parameter if set).
 func InitializePop(model *core.Model) *core.Pop {
-	// Create base population structure
 	pop := createEmptyPop(model)
-
-	// Call the appropriate setup method
-	var err error
-	switch model.Scenario {
-	case "default":
-		err = methods.SetupPopDefault(model, pop)
-	case "flood":
-		err = methods.SetupPopFlood(model, pop)
-	case "creation":
-		err = methods.SetupPopCreation(model, pop)
-	default:
-		// If scenario not recognized, use default
-		print("Setting up default pop")
-		err = methods.SetupPopDefault(model, pop)
-	}
-
-	if err != nil {
+	if err := modules.DispatchSetup(model, pop); err != nil {
 		panic(fmt.Sprintf("Failed to initialize population: %v", err))
 	}
-
 	return pop
 }
 

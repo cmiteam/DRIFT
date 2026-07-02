@@ -2,7 +2,7 @@ package analysis
 
 import (
 	"drift/pkg/core"
-	"math/rand"
+	"drift/pkg/utils"
 )
 
 // LDSummary contains summary statistics for LD analysis
@@ -47,7 +47,7 @@ func CalculateLDSummary(model *core.Model, pop *core.Pop) *LDSummary {
 	for i := 0; i < len(segregatingSites); i++ {
 		for j := i + 1; j < len(segregatingSites); j++ {
 			// Sample pairs based on sampling rate
-			if sampleRate < 1.0 && rand.Float64() > sampleRate {
+			if sampleRate < 1.0 && utils.RandFloat64() > sampleRate {
 				continue
 			}
 

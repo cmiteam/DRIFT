@@ -58,3 +58,5 @@ map_height,Map Height,Text,int,2160,Maps
 frame_rate,Frame Rate,Text,float,1,Maps
 pixel_size,Pixel Size,Text,int,10,Maps
 point_size,Pixel Size,Text,int,10,Maps
+birth_style,Birth Module,Dropdown,string,standard,Modules
+death_style,Death Module,Dropdown,string,standard,Modules

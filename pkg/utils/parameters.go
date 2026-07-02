@@ -152,10 +152,15 @@ func SetParameter(model *core.Model, paramName, paramValue string) error {
 		return nil
 	}
 
-	// Handle numeric parameters
+	// Numeric parameters go in Parameters; anything non-numeric (e.g. a module
+	// selector like birth_style=standard) is stored as a string parameter.
 	value, err := strconv.ParseFloat(paramValue, 64)
 	if err != nil {
-		return fmt.Errorf("parameter %s: invalid float '%s': %w", paramName, paramValue, err)
+		if model.StringParams == nil {
+			model.StringParams = make(map[string]string)
+		}
+		model.StringParams[paramName] = paramValue
+		return nil
 	}
 	model.Parameters[paramName] = value
 
@@ -255,6 +260,24 @@ func SaveParameters(model *core.Model, destPath string) error {
 		}
 	}
 
+	// Check string parameters (e.g. module selectors like birth_style) for differences
+	for paramName, paramValue := range model.StringParams {
+		defaultVal, hasDefault := defaults[paramName]
+		if !hasDefault || paramValue != defaultVal {
+			if rec, exists := recordMap[paramName]; exists {
+				row := make([]string, 6)
+				copy(row, rec)
+				if len(row) < 6 {
+					row = append(row, "Main")
+				}
+				row[4] = paramValue
+				writer.Write(row)
+			} else {
+				writer.Write([]string{paramName, paramName, "Dropdown", "string", paramValue, "Modules"})
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -289,53 +312,12 @@ func LoadActuarialTableFromPath(model *core.Model, filepath string) error {
 	return nil
 }
 
-// LoadChromosomesFromPath loads chromosomes from a specific path
-func LoadChromosomesFromPath(model *core.Model, filepath string) error {
-	records, err := LoadCSV(filepath)
+// LoadChromosomesFromPath loads chromosomes from a specific path, parsing the
+// same one-row-per-arm format as LoadChromosomes (delegates to a shared parser).
+func LoadChromosomesFromPath(model *core.Model, path string) error {
+	records, err := LoadCSV(path)
 	if err != nil {
 		return err
 	}
-
-	records = StripHeader(records)
-	model.ChromosomeArms = make(map[int]map[int][]int)
-
-	for i, row := range records {
-		if len(row) < 5 {
-			continue
-		}
-
-		chrom, err := ParseInt(row[0], i+1, 0)
-		if err != nil {
-			return err
-		}
-
-		pStart, err := ParseInt(row[1], i+1, 1)
-		if err != nil {
-			return err
-		}
-
-		pLen, err := ParseInt(row[2], i+1, 2)
-		if err != nil {
-			return err
-		}
-
-		qStart, err := ParseInt(row[3], i+1, 3)
-		if err != nil {
-			return err
-		}
-
-		qLen, err := ParseInt(row[4], i+1, 4)
-		if err != nil {
-			return err
-		}
-
-		if model.ChromosomeArms[chrom] == nil {
-			model.ChromosomeArms[chrom] = make(map[int][]int)
-		}
-
-		model.ChromosomeArms[chrom][0] = []int{pStart, pLen}
-		model.ChromosomeArms[chrom][1] = []int{qStart, qLen}
-	}
-
-	return nil
+	return parseChromosomeRecords(model, records)
 }

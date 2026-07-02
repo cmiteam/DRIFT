@@ -4,8 +4,6 @@ import (
 	"drift/pkg/core"
 	"drift/pkg/individual"
 	"drift/pkg/utils"
-	"math/rand"
-	"time"
 )
 
 func MatingDistance(model *core.Model, pop *core.Pop, availableMen, availableWomen []int) {
@@ -16,8 +14,7 @@ func MatingDistance(model *core.Model, pop *core.Pop, availableMen, availableWom
 	influenceGrid := createInfluenceGrid(model, pop, availableWomen, maxDistance)
 
 	// Shuffle for random processing order
-	rand.Seed(time.Now().UnixNano())
-	rand.Shuffle(len(availableMen), func(i, j int) {
+	utils.RandShuffle(len(availableMen), func(i, j int) {
 		availableMen[i], availableMen[j] = availableMen[j], availableMen[i]
 	})
 
@@ -43,7 +40,7 @@ func MatingDistance(model *core.Model, pop *core.Pop, availableMen, availableWom
 
 		// Pick random woman if any available
 		if len(eligibleWomen) > 0 {
-			randomIndex := rand.Intn(len(eligibleWomen))
+			randomIndex := utils.RandIntn(len(eligibleWomen))
 			bestWoman := eligibleWomen[randomIndex]
 
 			// Create marriage

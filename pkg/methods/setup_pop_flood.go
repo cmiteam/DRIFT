@@ -5,8 +5,6 @@ import (
 	"drift/pkg/core"
 	"drift/pkg/individual"
 	"drift/pkg/utils"
-	"math/rand"
-	"time"
 )
 
 // SetupPopFlood creates a small number of long-lived couples
@@ -14,9 +12,6 @@ import (
 // extended lifespans, allowing them to build up a population over many generations.
 // Default is 3 couples, but can be configured via parameters.
 func SetupPopFlood(model *core.Model, pop *core.Pop) error {
-	// Initialize random number generator
-	rand.Seed(time.Now().UnixNano())
-
 	landCoordinates := utils.FindLandCells(model)
 	print("Found", len(landCoordinates), "land coordinates\n")
 
@@ -34,7 +29,7 @@ func SetupPopFlood(model *core.Model, pop *core.Pop) error {
 		womanID := couple*2 + 1
 
 		// Pick a random location for this couple
-		loc := landCoordinates[rand.Intn(len(landCoordinates))]
+		loc := landCoordinates[utils.RandIntn(len(landCoordinates))]
 
 		// Create the man
 		CreateFounder(pop, manID, 100, 650, 1, model, landCoordinates)

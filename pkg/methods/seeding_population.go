@@ -6,7 +6,7 @@ import (
 	"drift/pkg/utils"
 	"fmt"
 	"math"
-	"math/rand"
+	"sort"
 )
 
 func SeedingPopulation(model *core.Model, pop *core.Pop) {
@@ -41,14 +41,22 @@ func SeedingPopulation(model *core.Model, pop *core.Pop) {
 		pop.IndData[id][individual.NumCentromeres] = 0
 	}
 
+	// Fixed, sorted individual order so RNG is consumed deterministically
+	// (map iteration order is randomized).
+	sortedIDs := make([]int, 0, len(pop.IndData))
+	for id := range pop.IndData {
+		sortedIDs = append(sortedIDs, id)
+	}
+	sort.Ints(sortedIDs)
+
 	// For each bit position in genome
 	for bitPosition := 0; bitPosition < totalBits; bitPosition++ {
 		// Is that bit going to be variable?
-		if rand.Float64() < hetLevel {
+		if utils.RandFloat64() < hetLevel {
 			variableSites++
 
 			// Pick the frequency of the alt allele (exponential function, >0 to <= 0.5)
-			altFreq := -0.05 * math.Log(rand.Float64()) * 0.1 // Exponential decay
+			altFreq := -0.05 * math.Log(utils.RandFloat64()) * 0.1 // Exponential decay
 			//	if altFreq > 0.5 {
 			//		altFreq = 1 - altFreq // Cap at 50%
 			//	}
@@ -57,11 +65,11 @@ func SeedingPopulation(model *core.Model, pop *core.Pop) {
 			}
 
 			// Scan through each individual
-			for id := range pop.IndData {
+			for _, id := range sortedIDs {
 				// For each chromosome
 				for chromosome := 0; chromosome < 2; chromosome++ {
 					// If rand < probability of bit being set, set the bit to 1
-					if rand.Float64() < altFreq {
+					if utils.RandFloat64() < altFreq {
 						wordIdx := bitPosition / 64
 						bitIdx := bitPosition % 64
 						pop.Chromosomes[id][chromosome][wordIdx] |= (1 << bitIdx)

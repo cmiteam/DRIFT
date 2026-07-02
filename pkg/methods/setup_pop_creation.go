@@ -5,16 +5,11 @@ import (
 	"drift/pkg/core"
 	"drift/pkg/individual"
 	"drift/pkg/utils"
-	"math/rand"
-	"time"
 )
 
 // SetupPopCreation creates 2 founding individuals (Adam and Eve)
 // Both start at age 20 with extended lifespans
 func SetupPopCreation(model *core.Model, pop *core.Pop) error {
-	// Initialize random number generator
-	rand.Seed(time.Now().UnixNano())
-
 	landCoordinates := utils.FindLandCells(model)
 	print("Found", len(landCoordinates), "land coordinates\n")
 
@@ -24,7 +19,7 @@ func SetupPopCreation(model *core.Model, pop *core.Pop) error {
 	}
 
 	// Pick a random location for the couple
-	loc := landCoordinates[rand.Intn(len(landCoordinates))]
+	loc := landCoordinates[utils.RandIntn(len(landCoordinates))]
 
 	// Create Adam (male)
 	adamID := 0

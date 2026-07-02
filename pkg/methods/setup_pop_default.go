@@ -5,8 +5,7 @@ import (
 	"drift/pkg/core"
 	"drift/pkg/individual"
 	"drift/pkg/utils"
-	"math/rand"
-	"time"
+	"sort"
 )
 
 // SetupPopDefault creates a population with age distribution
@@ -14,9 +13,6 @@ import (
 // individuals distributed across different ages according to the cumulative
 // probability distribution defined in the model.
 func SetupPopDefault(model *core.Model, pop *core.Pop) error {
-	// Initialize random number generator
-	rand.Seed(time.Now().UnixNano())
-
 	// Get land coordinates (empty if track_map == 0)
 	landCoordinates := utils.FindLandCells(model)
 
@@ -29,12 +25,20 @@ func SetupPopDefault(model *core.Model, pop *core.Pop) error {
 	fitness := int(model.Parameters["mu_scale_factor"])
 	lifespan := int(model.Parameters["lifespan"])
 
+	// Ages sorted ascending so the inverse-CDF age draw is deterministic (map
+	// iteration order is randomized) and always picks the smallest matching age.
+	ages := make([]int, 0, len(model.CumulativeProb))
+	for a := range model.CumulativeProb {
+		ages = append(ages, a)
+	}
+	sort.Ints(ages)
+
 	for i := 0; i < popSize; i++ {
 		// Assign age based on cumulative probability distribution
 		age := 0
-		r := rand.Float64()
-		for a, cumProb := range model.CumulativeProb {
-			if r <= cumProb {
+		r := utils.RandFloat64()
+		for _, a := range ages {
+			if r <= model.CumulativeProb[a] {
 				age = a
 				break
 			}
@@ -55,7 +59,7 @@ func CreateFounder(pop *core.Pop, id int, age int, lifespan int, fitness int, mo
 	pop.IndData[id] = individual.MakeIndData()
 	pop.IndData[id][individual.BirthYear] = -age // Negative means born before simulation start
 	pop.IndData[id][individual.Lifespan] = lifespan
-	pop.IndData[id][individual.Sex] = rand.Intn(2) // 0 = male, 1 = female
+	pop.IndData[id][individual.Sex] = utils.RandIntn(2) // 0 = male, 1 = female
 	pop.IndData[id][individual.MarriageState] = -1 // Unmarried initially
 	pop.IndData[id][individual.NumBirths] = 0
 	pop.IndData[id][individual.LastBirthYear] = 0
@@ -70,7 +74,7 @@ func CreateFounder(pop *core.Pop, id int, age int, lifespan int, fitness int, mo
 	pop.IndData[id][individual.Daughters] = 0
 
 	// Assign random land location
-	loc := landCoordinates[rand.Intn(len(landCoordinates))]
+	loc := landCoordinates[utils.RandIntn(len(landCoordinates))]
 	pop.IndData[id][individual.Lat] = loc[0]
 	pop.IndData[id][individual.Lon] = loc[1]
 }
