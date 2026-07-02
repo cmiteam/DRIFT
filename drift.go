@@ -2,9 +2,11 @@ package main
 
 import (
 	"drift/pkg/analysis"
+	"drift/pkg/checkpoint"
 	"drift/pkg/config"
 	"drift/pkg/core"
 	"drift/pkg/events"
+	"drift/pkg/modules"
 	"drift/pkg/simulation"
 	"drift/pkg/utils"
 	"drift/pkg/visualization"
@@ -95,6 +97,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Fail fast if any selected phase module (birth/death/mating/seed/setup) isn't compiled in.
+	if err := modules.ValidateStyles(model); err != nil {
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+		os.Exit(1)
+	}
+
 	// Setup user-specific directories if username is specified
 	err = config.SetupUserDirectories(model)
 	if err != nil {
@@ -105,6 +113,25 @@ func main() {
 	// If output-dir was specified via command line, use it (overrides user directory)
 	if commands.OutputDir != "" {
 		model.ResultsDir = commands.OutputDir
+	}
+
+	// List the model's named saved states and exit, if requested.
+	if commands.ListSaves {
+		saves, err := checkpoint.List(model)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error listing saves: %v\n", err)
+			os.Exit(1)
+		}
+		if len(saves) == 0 {
+			fmt.Printf("No saved states in %s\n", checkpoint.SavesDir(model))
+		} else {
+			fmt.Printf("Saved states in %s:\n", checkpoint.SavesDir(model))
+			for _, s := range saves {
+				fmt.Printf("  %-20s year=%d run=%d n=%d scenario=%s seed=%d saved=%s\n",
+					s.Name, s.Year, s.Run, s.NumLiving, s.Scenario, s.RNGSeed, s.SavedAt)
+			}
+		}
+		return
 	}
 
 	// Setup directories
@@ -139,17 +166,49 @@ func main() {
 	numRuns := int(model.Parameters["num_runs"])
 	totalYears := int(model.Parameters["end_year"])
 
-	// Loop over the number of model runs
-	for run := 1; run <= numRuns; run++ {
-		print("\nRun ", run, "\n")
+	// Establish a reproducible RNG seed. If rng_seed is unset (<= 0), derive one
+	// from the clock and log it so the run can still be reproduced later by
+	// setting rng_seed to that value. Each run in a multi-run gets a distinct,
+	// deterministic seed (baseSeed + run).
+	baseSeed := int64(model.Parameters["rng_seed"])
+	if baseSeed <= 0 {
+		baseSeed = time.Now().UnixNano()
+		fmt.Printf("No rng_seed set; using generated seed %d (set rng_seed to this value to reproduce)\n", baseSeed)
+	}
+
+	// Optionally resume from a saved state instead of starting fresh. A named
+	// state (-load-state) is resolved to a path in the model's saves/ directory;
+	// -checkpoint-in takes a raw path.
+	resumePath := commands.CheckpointIn
+	if commands.LoadState != "" {
+		resumePath = checkpoint.SavePath(model, commands.LoadState)
+	}
+	var resumeCP *checkpoint.Checkpoint
+	if resumePath != "" {
+		resumeCP, err = checkpoint.Load(resumePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading saved state: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	// maybeCheckpoint writes a checkpoint of the current state if enabled.
+	maybeCheckpoint := func(pop *core.Pop) {
+		if commands.CheckpointOut == "" {
+			return
+		}
+		if err := checkpoint.Save(commands.CheckpointOut, model, pop); err != nil {
+			log.Printf("Error writing checkpoint: %v", err)
+		}
+	}
+
+	// runOne executes a single model run over pop, from startYear to totalYears.
+	runOne := func(run, startYear int, pop *core.Pop) {
 		model.FreeParameters["run"] = run
-
-		pop := config.InitializePop(model)
-
-		writeProgress(model.ResultsDir, 0, totalYears, len(pop.IndData), run, numRuns, "running")
+		writeProgress(model.ResultsDir, startYear, totalYears, len(pop.IndData), run, numRuns, "running")
 
 		// Loop over the number years in each model run
-		for year := 0; year <= totalYears; year++ {
+		for year := startYear; year <= totalYears; year++ {
 			model.FreeParameters["year"] = year
 			if year >= int(model.Parameters["seed_year"]) && model.FreeParameters["seed"] == -1 {
 				events.Seed(model, pop)
@@ -187,6 +246,27 @@ func main() {
 				simulation.Save(model, pop, animContainer)
 				writeProgress(model.ResultsDir, year, totalYears, len(pop.IndData), run, numRuns, "running")
 			}
+			// Checkpoint at the configured interval.
+			if commands.CheckpointInterval > 0 && year%commands.CheckpointInterval == 0 {
+				maybeCheckpoint(pop)
+			}
+
+			// Honor a graceful stop-and-save request (e.g. from the GUI "Stop &
+			// Save"): save this completed year's state under a name and finish the
+			// run cleanly (end-of-run analyses/outputs still run below).
+			if name, ok := checkpoint.StopRequested(model.ResultsDir); ok {
+				checkpoint.ClearStop(model.ResultsDir)
+				if name == "" {
+					name = "stopped"
+				}
+				if path, err := checkpoint.SaveNamed(model, pop, name); err != nil {
+					log.Printf("Error saving state on stop: %v", err)
+				} else {
+					fmt.Printf("Stop requested — saved run state %q (year %d, n=%d) to %s\n",
+						name, year, len(pop.IndData), path)
+				}
+				break
+			}
 		}
 
 		writeProgress(model.ResultsDir, totalYears, totalYears, len(pop.IndData), run, numRuns, "running")
@@ -216,6 +296,60 @@ func main() {
 				mteveResult.MtEveID, mteveResult.MtEveBirthYear, mteveResult.GenerationsBack)
 			fmt.Printf("Final MaleDB size: %d, FemaleDB size: %d\n", len(pop.MaleDB), len(pop.FemaleDB))
 			fmt.Printf("Living individuals: %d\n", len(pop.IndData))
+		}
+		if model.Parameters["track_IBD"] == 1 {
+			// Level 1 IBD prototype: co-inherited founder-derived segments.
+			// Defaults off; requires track_DNA so chromosomes exist to compare.
+			sampleSize := int(model.Parameters["ibd_sample_size"]) // 0 = use all individuals
+			minBits := int(model.Parameters["ibd_min_bits"])       // "long" segment threshold
+			ids := analysis.SampleIDs(pop, sampleSize)
+			ibdResult := analysis.ExtractIBD(model, pop, ids, minBits)
+			if err := analysis.SaveIBD(model, ibdResult); err != nil {
+				log.Printf("Error saving IBD results: %v", err)
+			}
+		}
+
+		// Final checkpoint at the end of the run.
+		maybeCheckpoint(pop)
+
+		// Save the end-of-run state under a name, if requested, so it can be
+		// loaded to start other runs (baseline / fork).
+		if commands.SaveState != "" {
+			name := commands.SaveState
+			if numRuns > 1 {
+				name = fmt.Sprintf("%s_run%d", name, run)
+			}
+			if path, err := checkpoint.SaveNamed(model, pop, name); err != nil {
+				log.Printf("Error saving state %q: %v", name, err)
+			} else {
+				fmt.Printf("Saved run state %q (year %d, n=%d) to %s\n",
+					name, model.FreeParameters["year"], len(pop.IndData), path)
+			}
+		}
+	}
+
+	if resumeCP != nil {
+		// Resume a single continuation from the checkpoint (exact, or a fork if
+		// fork-seed is set). Model config was loaded from files above; overlay the
+		// saved counters + RNG position and continue from the next year.
+		if err := checkpoint.Restore(model, resumeCP, int64(commands.ForkSeed)); err != nil {
+			fmt.Fprintf(os.Stderr, "Error restoring checkpoint: %v\n", err)
+			os.Exit(1)
+		}
+		mode := "exact resume"
+		if commands.ForkSeed != 0 {
+			mode = fmt.Sprintf("fork (fork_seed=%d)", commands.ForkSeed)
+		}
+		fmt.Printf("\nResuming run %d from checkpoint at year %d — %s\n", resumeCP.Run, resumeCP.Year, mode)
+		runOne(resumeCP.Run, resumeCP.Year+1, resumeCP.Pop)
+	} else {
+		// Loop over the number of model runs
+		for run := 1; run <= numRuns; run++ {
+			runSeed := baseSeed + int64(run)
+			utils.SeedRNG(runSeed)
+			fmt.Printf("\nRun %d (rng_seed=%d)\n", run, runSeed)
+			pop := config.InitializePop(model)
+			runOne(run, 0, pop)
 		}
 	}
 
