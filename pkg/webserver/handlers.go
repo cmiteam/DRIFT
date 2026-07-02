@@ -1,7 +1,9 @@
 package webserver
 
 import (
+	"drift/pkg/checkpoint"
 	"drift/pkg/config"
+	"drift/pkg/modules"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -146,6 +148,9 @@ type StartSimulationRequest struct {
 	TrackMutations int     `json:"track_mutations,omitempty"`
 	MapName        string  `json:"map_name,omitempty"`
 	Scaling        float64 `json:"scaling,omitempty"`
+	SaveState      string  `json:"save_state,omitempty"`
+	LoadState      string  `json:"load_state,omitempty"`
+	ForkSeed       int     `json:"fork_seed,omitempty"`
 }
 
 // handleSimulationStart handles starting a new simulation
@@ -228,6 +233,36 @@ func handleSimulationCancel(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "Job cancelled",
+	})
+}
+
+// handleSimulationStopSave requests a graceful stop of the running simulation:
+// it saves its current state under a name and finishes the run cleanly.
+func handleSimulationStopSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		respondError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		JobID    string `json:"job_id"`
+		SaveName string `json:"save_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	name := strings.TrimSpace(req.SaveName)
+	if name == "" {
+		name = "stopped"
+	}
+	if err := queue.StopSaveJob(req.JobID, name); err != nil {
+		respondError(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": fmt.Sprintf("Stopping and saving as %q; the run will finish the current year and exit.", name),
 	})
 }
 
@@ -446,6 +481,66 @@ func handleBaseModelsList(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"models": models,
+	})
+}
+
+// handleSavesList returns the named saved run-states for a model, with metadata.
+func handleSavesList(w http.ResponseWriter, r *http.Request) {
+	username := r.URL.Query().Get("username")
+	modelName := r.URL.Query().Get("model_name")
+	if username == "" || modelName == "" {
+		respondError(w, "username and model_name required", http.StatusBadRequest)
+		return
+	}
+	saves, err := checkpoint.List(checkpoint.ModelFor(username, modelName))
+	if err != nil {
+		respondError(w, fmt.Sprintf("Failed to list saves: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if saves == nil {
+		saves = []checkpoint.SaveInfo{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"saves":   saves,
+	})
+}
+
+// handleSavesDelete removes a named saved run-state.
+func handleSavesDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		respondError(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Username  string `json:"username"`
+		ModelName string `json:"model_name"`
+		Name      string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+	if req.Username == "" || req.ModelName == "" || req.Name == "" {
+		respondError(w, "username, model_name and name required", http.StatusBadRequest)
+		return
+	}
+	if err := checkpoint.DeleteNamed(checkpoint.ModelFor(req.Username, req.ModelName), req.Name); err != nil {
+		respondError(w, fmt.Sprintf("Failed to delete save: %v", err), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true})
+}
+
+// handlePhaseModules returns the available module names per phase parameter
+// (birth_style, death_style, mating_style, seed_style, setup_style) so the GUI
+// can render a dropdown for each. Populated from the compiled-in registry.
+func handlePhaseModules(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"styles": modules.AllStyles(),
 	})
 }
 

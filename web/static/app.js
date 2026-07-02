@@ -86,7 +86,12 @@ const PARAMETER_METADATA = {
     'wander': { tab: 'other', label: 'Wander Distance', type: 'int', min: 0, group: 'Mating & Geography' },
     'max_breeding_inds': { tab: 'other', label: 'Max Breeding Individuals', type: 'int', description: '-1 for unlimited', group: 'Mating & Geography' },
     'sex_chrom_index': { tab: 'other', label: 'Sex Chromosome Index', type: 'int', min: 1, group: 'Genetics' },
-    'animation_save_interval': { tab: 'other', label: 'Animation Save Interval', type: 'int', min: 1, group: 'Save Settings' }
+    'animation_save_interval': { tab: 'other', label: 'Animation Save Interval', type: 'int', min: 1, group: 'Save Settings' },
+
+    // Pluggable phase modules (options populated at runtime from /api/modules/list).
+    // phaseStyle marks a string-valued dropdown whose choices come from the registry.
+    'birth_style': { tab: 'other', label: 'Birth Module', type: 'dropdown', phaseStyle: true, group: 'Simulation Modules', description: 'Algorithm used for the birth phase' },
+    'death_style': { tab: 'other', label: 'Death Module', type: 'dropdown', phaseStyle: true, group: 'Simulation Modules', description: 'Algorithm used for the death phase' }
 };
 
 // Parameters that should never be shown in Other Parameters (already handled elsewhere)
@@ -110,9 +115,105 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function initializeApp() {
+    // Populate phase-module dropdown options from the compiled-in registry
+    // before the model form is first rendered.
+    await loadPhaseModules();
+
     // Setup event listeners
     setupEventListeners();
     setupFormChangeListeners();
+}
+
+// Fetch available phase modules from the registry and populate the options of
+// every phaseStyle dropdown in PARAMETER_METADATA. This is what makes a
+// newly-added module appear in the GUI automatically (no HTML edits needed).
+async function loadPhaseModules() {
+    try {
+        const response = await fetch(`${API_BASE}/modules/list`);
+        if (!response.ok) return;
+        const data = await response.json();
+        const styles = data.styles || {};
+        for (const [param, names] of Object.entries(styles)) {
+            const meta = PARAMETER_METADATA[param];
+            if (meta && meta.phaseStyle && Array.isArray(names)) {
+                meta.options = names.map(n => ({ value: n, label: prettifyStyleName(n) }));
+            }
+        }
+    } catch (err) {
+        console.error('Failed to load phase modules:', err);
+    }
+}
+
+// "age_distance" -> "Age Distance", "standard" -> "Standard"
+function prettifyStyleName(name) {
+    return String(name).split('_')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+}
+
+// Fetch the named saved states for the current user+model and populate the
+// "Start from saved state" dropdown and the summary list.
+async function loadSavedStates() {
+    const modelName = document.getElementById('model_name')?.value;
+    if (!state.currentUser || !modelName) return;
+    try {
+        const resp = await fetch(`${API_BASE}/saves/list?username=${encodeURIComponent(state.currentUser)}&model_name=${encodeURIComponent(modelName)}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const saves = data.saves || [];
+
+        const select = document.getElementById('load_state');
+        if (select) {
+            const current = select.value;
+            select.innerHTML = '<option value="">— none (fresh run) —</option>';
+            for (const s of saves) {
+                const opt = document.createElement('option');
+                opt.value = s.Name;
+                opt.textContent = `${s.Name} (year ${s.Year}, n=${s.NumLiving})`;
+                select.appendChild(opt);
+            }
+            select.value = current; // preserve selection if it still exists
+        }
+
+        const listDiv = document.getElementById('savedStatesList');
+        if (listDiv) {
+            if (saves.length === 0) {
+                listDiv.textContent = 'No saved states yet.';
+            } else {
+                listDiv.innerHTML = 'Saved states: ' + saves.map(s =>
+                    `<strong>${s.Name}</strong> (year ${s.Year}, n=${s.NumLiving}, seed ${s.RNGSeed})`
+                ).join(' &middot; ');
+            }
+        }
+    } catch (err) {
+        console.error('Failed to load saved states:', err);
+    }
+}
+
+// Delete the currently-selected saved state.
+async function handleDeleteSave() {
+    const modelName = document.getElementById('model_name')?.value;
+    const name = document.getElementById('load_state')?.value;
+    if (!name) {
+        alert('Select a saved state (in the "Start from saved state" dropdown) to delete.');
+        return;
+    }
+    if (!confirm(`Delete saved state "${name}"? This cannot be undone.`)) return;
+    try {
+        const resp = await fetch(`${API_BASE}/saves/delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: state.currentUser, model_name: modelName, name })
+        });
+        if (resp.ok) {
+            loadSavedStates();
+        } else {
+            const d = await resp.json().catch(() => ({}));
+            alert('Delete failed: ' + (d.error || resp.statusText));
+        }
+    } catch (err) {
+        alert('Delete failed: ' + err.message);
+    }
 }
 
 // Toggle between login and registration forms
@@ -169,6 +270,10 @@ function setupEventListeners() {
     // Base model dropdown change handler
     document.getElementById('base_model')?.addEventListener('change', handleBaseModelChange);
 
+    // Run-state (saved states) controls
+    document.getElementById('refreshSaves')?.addEventListener('click', loadSavedStates);
+    document.getElementById('deleteSave')?.addEventListener('click', handleDeleteSave);
+
     // Model management buttons
     document.getElementById('saveConfig')?.addEventListener('click', handleSaveModel);
     document.getElementById('resetToDefaults')?.addEventListener('click', handleResetToDefaults);
@@ -176,6 +281,7 @@ function setupEventListeners() {
 
     // Progress controls
     document.getElementById('cancelSim')?.addEventListener('click', handleCancelSimulation);
+    document.getElementById('stopSaveSim')?.addEventListener('click', handleStopSaveSimulation);
     document.getElementById('refreshProgress')?.addEventListener('click', checkProgress);
 
     // Download buttons
@@ -496,6 +602,9 @@ function populateFormFromParameters(params) {
     updateDependentContent('track_DNA', 'dnaParamsContent');
     updateDependentContent('track_mutations', 'mutationParamsContent');
 
+    // Refresh saved states for the now-current model
+    loadSavedStates();
+
     // Reset button states (no changes yet)
     updateChangeButtons();
 }
@@ -533,8 +642,16 @@ function renderOtherParameters(params) {
         }
     }
 
+    // Ensure pluggable-module dropdowns always appear, even for models that
+    // predate them (default to the registry default "standard").
+    for (const [key, meta] of Object.entries(PARAMETER_METADATA)) {
+        if (!meta.phaseStyle || meta.tab !== 'other' || (key in params)) continue;
+        const group = meta.group || 'Other';
+        (paramsByGroup[group] = paramsByGroup[group] || []).push({ key, value: 'standard', metadata: meta });
+    }
+
     // Render grouped parameters
-    const groupOrder = ['Population Dynamics', 'Bottleneck', 'Life Stage', 'Reproduction', 'Mating & Geography', 'Genetics', 'Save Settings'];
+    const groupOrder = ['Simulation Modules', 'Population Dynamics', 'Bottleneck', 'Life Stage', 'Reproduction', 'Mating & Geography', 'Genetics', 'Save Settings'];
 
     for (const groupName of groupOrder) {
         const groupParams = paramsByGroup[groupName];
@@ -924,6 +1041,15 @@ async function handleStartSimulation(e) {
         ...formParams
     };
 
+    // Run-state save / load / fork
+    const saveState = (document.getElementById('save_state')?.value || '').trim();
+    const loadState = document.getElementById('load_state')?.value || '';
+    if (saveState) params.save_state = saveState;
+    if (loadState) {
+        params.load_state = loadState;
+        params.fork_seed = parseInt(document.getElementById('fork_seed')?.value) || 0;
+    }
+
     console.log('Starting simulation with params:', params);
 
     try {
@@ -1165,7 +1291,8 @@ function collectFormParameters() {
         if (!id) return;
 
         // Skip non-parameter inputs (handled separately)
-        if (id === 'base_model' || id === 'model_name' || id === 'map_name') return;
+        if (id === 'base_model' || id === 'model_name' || id === 'map_name' ||
+            id === 'save_state' || id === 'load_state' || id === 'fork_seed') return;
 
         const metadata = PARAMETER_METADATA[id];
         const fieldType = metadata?.type || determineFieldType(id, input.value, metadata);
@@ -1173,8 +1300,11 @@ function collectFormParameters() {
         if (input.type === 'checkbox') {
             parameters[id] = input.checked ? 1 : 0;
         } else if (input.tagName === 'SELECT') {
-            // Selects with dropdown type that have numeric values
-            if (fieldType === 'dropdown' && metadata?.options) {
+            // Phase-module selectors carry a string name; keep it as-is.
+            if (metadata?.phaseStyle) {
+                parameters[id] = input.value;
+            } else if (fieldType === 'dropdown' && metadata?.options) {
+                // Numeric-valued dropdowns (e.g. mating_style, selection)
                 parameters[id] = parseIntSafe(input.value, 0);
             } else {
                 // Keep as string if not a numeric dropdown
@@ -1335,6 +1465,36 @@ function stopProgressPolling() {
     if (state.progressInterval) {
         clearInterval(state.progressInterval);
         state.progressInterval = null;
+    }
+}
+
+// Handle Stop & Save: gracefully stop the running sim, saving its state under a
+// name so it can be reloaded (Run State panel on the Setup tab).
+async function handleStopSaveSimulation() {
+    if (!state.currentJobId) return;
+
+    const name = prompt('Save the run state as (name):', 'stopped');
+    if (name === null) return; // user cancelled the prompt
+
+    try {
+        const response = await fetch(`${API_BASE}/simulation/stop-save`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ job_id: state.currentJobId, save_name: name.trim() })
+        });
+        const data = await response.json();
+        if (response.ok) {
+            const statusDiv = document.getElementById('setupStatus');
+            statusDiv.textContent = data.message || 'Stopping and saving...';
+            statusDiv.className = 'status-message success';
+            checkProgress();
+            // Refresh the saved-states list once the run has had a moment to finish.
+            setTimeout(loadSavedStates, 3000);
+        } else {
+            alert('Failed to stop & save: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        alert('Error stopping simulation: ' + error.message);
     }
 }
 

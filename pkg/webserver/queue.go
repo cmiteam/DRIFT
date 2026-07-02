@@ -1,6 +1,7 @@
 package webserver
 
 import (
+	"drift/pkg/checkpoint"
 	"encoding/csv"
 	"fmt"
 	"log"
@@ -18,6 +19,7 @@ type SimulationStatus string
 const (
 	StatusQueued    SimulationStatus = "queued"
 	StatusRunning   SimulationStatus = "running"
+	StatusStopping  SimulationStatus = "stopping"
 	StatusCompleted SimulationStatus = "completed"
 	StatusFailed    SimulationStatus = "failed"
 	StatusCancelled SimulationStatus = "cancelled"
@@ -47,6 +49,9 @@ type SimulationJob struct {
 	TrackMutations int              `json:"track_mutations,omitempty"`
 	MapName        string           `json:"map_name,omitempty"`
 	Scaling        float64          `json:"scaling,omitempty"`
+	SaveState      string           `json:"save_state,omitempty"`
+	LoadState      string           `json:"load_state,omitempty"`
+	ForkSeed       int              `json:"fork_seed,omitempty"`
 	cmd            *exec.Cmd
 }
 
@@ -108,6 +113,9 @@ func (q *SimulationQueue) AddJob(username, modelName string, params interface{})
 		job.TrackMutations = req.TrackMutations
 		job.MapName = req.MapName
 		job.Scaling = req.Scaling
+		job.SaveState = req.SaveState
+		job.LoadState = req.LoadState
+		job.ForkSeed = req.ForkSeed
 	}
 
 	q.jobs = append(q.jobs, job)
@@ -170,6 +178,23 @@ func (q *SimulationQueue) GetUserJobs(username string) []*SimulationJob {
 	}
 
 	return userJobs
+}
+
+// StopSaveJob requests a graceful stop of the running job: the simulation saves
+// its current state under saveName and finishes the run cleanly (results and
+// analyses are still written). Unlike CancelJob this does not kill the process.
+func (q *SimulationQueue) StopSaveJob(jobID, saveName string) error {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if q.running == nil || q.running.ID != jobID {
+		return fmt.Errorf("job %s is not currently running", jobID)
+	}
+	if err := checkpoint.RequestStop(q.running.OutputDir, saveName); err != nil {
+		return fmt.Errorf("failed to request stop: %w", err)
+	}
+	q.running.Status = StatusStopping
+	return nil
 }
 
 // CancelJob cancels a queued or running job
@@ -277,6 +302,16 @@ func (q *SimulationQueue) runSimulation(job *SimulationJob) error {
 		"-model", job.ModelName,
 		"-output-dir", job.OutputDir,
 		"-map-root", "maps",
+	}
+	// Run-state save / load / fork (checkpointing).
+	if job.SaveState != "" {
+		args = append(args, "-save-state", job.SaveState)
+	}
+	if job.LoadState != "" {
+		args = append(args, "-load-state", job.LoadState)
+		if job.ForkSeed != 0 {
+			args = append(args, "-fork-seed", strconv.Itoa(job.ForkSeed))
+		}
 	}
 
 	var cmd *exec.Cmd

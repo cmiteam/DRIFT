@@ -324,6 +324,33 @@
                         </div>
                     </div>
 
+                    <!-- Run State: save at end of run, or start from a saved state (fork) -->
+                    <div class="form-section" id="runStateSection">
+                        <h3>Run State (Save / Load / Fork)</h3>
+                        <p class="param-description">Save the population at the end of a run under a name, then load it to start other runs — exactly, or as a divergent fork.</p>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="save_state">Save state after run as:</label>
+                                <input type="text" id="save_state" placeholder="(optional) e.g. baseline">
+                            </div>
+                            <div class="form-group">
+                                <label for="load_state">Start from saved state:</label>
+                                <select id="load_state">
+                                    <option value="">— none (fresh run) —</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="fork_seed" title="0 = exact resume; any other value = divergent fork">Fork seed:</label>
+                                <input type="number" id="fork_seed" value="0">
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <button type="button" id="refreshSaves" class="btn btn-secondary">Refresh Saved States</button>
+                            <button type="button" id="deleteSave" class="btn btn-secondary">Delete Selected</button>
+                        </div>
+                        <div id="savedStatesList" class="param-description">No saved states yet.</div>
+                    </div>
+
                     <div class="button-group">
                         <button type="submit" class="btn btn-primary btn-large">Start Simulation</button>
                         <button type="button" id="saveConfig" class="btn btn-secondary">Save Model</button>
@@ -371,6 +398,7 @@
                         </div>
 
                         <div class="button-group">
+                            <button id="stopSaveSim" class="btn btn-primary">Stop &amp; Save</button>
                             <button id="cancelSim" class="btn btn-danger">Cancel Simulation</button>
                             <button id="refreshProgress" class="btn btn-secondary">Refresh</button>
                         </div>

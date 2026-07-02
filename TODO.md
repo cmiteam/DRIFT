@@ -1,0 +1,382 @@
+# DRIFT — Roadmap & TODO
+
+Feature backlog for evolving DRIFT from a working base model into robust population-modeling
+software. Items are grouped by theme and roughly ordered by research payoff. Stubs are fine —
+the goal is to capture direction so work can proceed incrementally.
+
+Status key: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` needs design decision
+
+---
+
+## 0. Quick wins / foundations (do first)
+
+> **Phase 0 landed 2026-06-25.** Runs are now reproducible under a fixed seed, and genetics is
+> active on the user-model (GUI) path. Verified: two runs with the same `rng_seed` produce
+> byte-identical results CSVs; genetics-active baseline (n=100, t=500, no animations) ≈ 0.48 s.
+
+- [x] **Deterministic, per-run RNG.** Replaced all 8 `rand.Seed(time.Now().UnixNano())` reseeds and
+  every direct `math/rand` call with a single shared, seeded generator (`pkg/utils/rng.go`:
+  `SeedRNG`, `RandIntn/Float64/Shuffle/Poisson`). Seeded once per run in `drift.go` from a new
+  `rng_seed` param (auto-generated + logged when unset; each run gets `baseSeed + run`). The gonum
+  `distuv.Poisson` draw was replaced with a seed-driven `RandPoisson` (gonum dep removed via
+  `go mod tidy`). Unit tests in `pkg/utils/rng_test.go`.
+  - [x] **Map-iteration determinism.** A fixed seed alone was *not* enough — Go randomizes map
+    iteration order, and the sim consumed RNG while ranging over `pop.IndData` / `ChromosomeArms` /
+    `CumulativeProb`. Sorted the ID/chromosome/age lists before RNG consumption in `Mating`,
+    `Birth` (incl. `createMask` meiosis), `Death` (`generateKeyList`), `SetupPopDefault`, and the
+    single/population seeders. This was the actual blocker to byte-identical runs.
+- [x] **Fix `genome_bits` on the user-model path.** Root cause was deeper than a missing call:
+  `LoadChromosomesFromPath` (user-model path) parsed a **5-column-per-chromosome** format while the
+  actual `chromosome_data.csv` files are **4-column-per-arm**, so it silently skipped every row →
+  empty `ChromosomeArms` → `genome_bits` = 0 → genetics a no-op. Fixed by making both loaders share
+  one parser (`parseChromosomeRecords` in `pkg/utils/csv.go`) plus a `SetGenomeBits` helper called
+  by every load path. Also initialized `FreeParameters["seed"] = -1` (+ indID/mutID/last_pop_size)
+  in `manager.go` `LoadModel`, without which the founder genome was never even seeded on this path.
+- [ ] **Fix or retire the `-base-model` CLI path.** `InitializeModelWithBaseModel` loads base params
+  then calls `utils.LoadParameters` (`pkg/utils/csv.go`), which *resets* `model.Parameters` to
+  `parameter_defaults.csv`, discarding the base model's overrides. Symptoms: wrong model name
+  (writes `Default_results.csv`), wrong flags (`track_map` re-enabled → empty-map load → panic).
+  Only the user-model path (`-username/-model`) is currently usable. Found 2026-07-02.
+- [ ] **Activate mutation dominance.** `Mutation.Dominance` (`pkg/core/types.go:75`) exists but is
+  hardcoded to `0` and ignored. Fitness is currently purely additive
+  (`fitnessEffect += mutation.Effect`, `pkg/utils/mutation.go:103`). Add a dominance coefficient
+  *h* and compute genotype fitness per-locus. Unlocks realistic recessive-load behavior under
+  bottlenecks — central to founder/Flood scenarios.
+
+## 1. Genetics realism
+
+- [ ] **Per-locus genotype fitness with dominance** (see above) instead of strand-summed effects.
+- [ ] **Epistasis / synergistic load.** Toggle between additive, multiplicative, and synergistic
+  fitness models so they can be compared (live debate in the genetic-entropy literature).
+- [ ] **Mutation-class spectrum.** Separate classes: point / indel / CNV / large deletion, each
+  with its own rate and effect distribution.
+- [ ] **Variable mutation rate.** Regional rate variation / hotspots instead of one uniform `mu`
+  with uniformly-random position (`pkg/utils/mutation.go:48-54`).
+- [ ] **Linkage-aware mutation positions.** Tie mutation position to the `ChromosomeArms`
+  structure so LD, recombination, and selection interact properly.
+
+## 2. Selection & demography
+
+- [ ] **Resolve fitness/survivorship TODO** (`pkg/simulation/birth.go:55-56`). Fitness currently
+  only gates birth probability. Wire it into death/viability (`pkg/methods/death_fitness.go` is a
+  one-line stub) with a parameter to select fecundity vs. viability vs. both selection.
+- [ ] **Density dependence / carrying capacity.** Add a logistic carrying-capacity term (ideally
+  local to map density) so runs aren't pure exponential-growth-or-extinction. Enables realistic
+  post-bottleneck recovery curves.
+- [ ] **Scriptable environmental events.** Generalize the `events` package (currently just `Seed`)
+  into a registry of scheduled events: famine, epidemic, migration pulse, etc.
+
+## 3. Spatial & ecological depth
+
+- [ ] **Habitat suitability maps.** Let map cells carry carrying-capacity / mortality multipliers
+  (builds on existing `Lat`/`Lon` + `Wander`).
+- [ ] **Barriers and corridors** affecting movement.
+- [ ] **Deme / island models** with migration matrices — enables real population structure and Fst.
+
+## 4. Analysis, validation & reproducibility
+
+- [ ] **Deterministic seeding** (see 0 — also a prerequisite for everything in this section).
+- [ ] **Fst / population-structure statistics** to complement existing SFS / LD / coalescence.
+- [ ] **Runs-of-homozygosity** analysis.
+- [ ] **Fixation / mutation-load time series** output.
+- [ ] **Parameter sweeps / batch experiments.** Expand a parameter grid into many queued runs
+  (the webserver already has a `queue`), with aggregated cross-run summary output. Turns DRIFT
+  from "one sim" into an experiment platform.
+
+## 5. Software hardening
+
+- [ ] **Unified, validated config schema** with clear errors. Currently three loading paths
+  (base-model / user-model / legacy) in `drift.go:66-92`.
+- [ ] **Checkpoint / resume** for long runs (serialize `Pop` to disk).
+- [ ] **Test suite** for genetics kernels (meiosis, mutation inheritance, SFS) so refactors are safe.
+- [ ] **Structured run manifests.** Write the full resolved parameter set + seed + git SHA
+  alongside every result for traceability.
+
+## 6. Population-genetics statistics & out-of-Africa testing
+
+The strategic goal: make DRIFT output directly comparable to (a) real human data and (b) the
+published OoA demographic models, expressed in the field's own statistics, reproducibly. A result
+is only defensible against critics if it's stated in a stat that can't be dismissed as
+non-standard. Items below are ordered along the recommended sequencing thread.
+
+Serves three project goals — **(1)** creationist models of human history, **(2)** testing the
+out-of-Africa story, **(3)** countering critics.
+
+### 6a. Real-data interoperability (credibility multiplier) — goals 2, 3
+
+- [ ] **VCF import/export.** Lets the *same* pipeline (PLINK, vcftools, ADMIXTURE, EIGENSOFT) run
+  on simulated and on real 1000 Genomes / HGDP data — critics can't dismiss results produced with
+  their own tools. **Highest-leverage single feature.**
+- [ ] **Read real recombination maps and real human chromosome structure** (builds on the existing
+  `ChromosomeArms` scaffold) so LD patterns are comparable to real data.
+- [ ] **Tree-sequence (tskit) output** (NEAR-TERM — promoted from longer-term; see §7). Becoming the
+  field lingua franca and a massive scaling/compression win (millions of individuals × whole
+  genomes become tractable). Opens the `tskit`/`msprime`/`Relate`/`tsinfer` ecosystem. **Three of
+  the five §7 cutting-edge bets depend on this** — it is the enabling substrate, not a nicety.
+
+### 6b. Differentiation & admixture statistics (the modern OoA toolkit) — goal 2
+
+- [ ] **Fst** between populations — Hudson's and Weir & Cockerham estimators. (See also §4.) The
+  OoA story is fundamentally about continental differentiation.
+- [ ] **f-statistics: f2, f3, f4, and D-statistics (ABBA-BABA).** The Patterson/Reich tools used to
+  argue admixture, tree topology, and "Africa as outgroup." Non-negotiable for testing/countering
+  OoA — it's how the claims are actually made.
+- [ ] **Joint / multi-population SFS (2D/3D).** Current SFS is single-population; the OoA model is
+  fit to the *joint* SFS of African/European/Asian samples (dadi, fastsimcoal, momi).
+
+### 6c. Run their model in your engine — goals 1, 2
+
+- [ ] **Implement canonical OoA demographic models as scenarios** — Gutenkunst 2009 / Gravel 2011
+  three-population model (bottleneck, split times, growth, migration). Lets DRIFT *run* the
+  standard model and show exactly what it predicts.
+- [ ] **Serial founder effect vs. single-origin dispersal.** The flagship OoA signature is the
+  near-linear decline of heterozygosity with distance from Addis Ababa (Ramachandran 2005,
+  Prugnolle 2005). With existing spatial structure + `Wander`, test whether a single-origin
+  (Babel) dispersal produces the *same* gradient — a direct head-to-head.
+
+### 6d. Effective population size & the bottleneck question — goals 1, 3
+
+- [ ] **LD-based recent-Ne estimation (GONE-style)** and an **Ne-through-time output.** Creationist
+  history posits recent severe bottlenecks (Flood, Babel); PSMC/MSMC/GONE inferences of these are
+  actively debated. From known simulated truth, DRIFT can show what these methods get right/wrong.
+
+### 6e. Molecular-clock / dating layer — goals 1, 3
+
+- [ ] **Coalescence → calendar dates under explicit, swappable mutation-rate / generation-time
+  assumptions**, with a **sensitivity analysis** showing how the famous dates (~200 kya) move as
+  assumptions change. Builds on existing Y-Adam/Mt-Eve generations-back output. Makes the
+  timescale dependency quantitative rather than rhetorical.
+
+### 6f. DFE & genetic load — goal 1
+
+- [ ] **Literature-anchored distribution of fitness effects** (gamma/Weibull mixtures — already
+  using Weibull), with genetic-load and mutational-meltdown tracking across timescales. Connects
+  to the dominance/epistasis items in §1.
+
+### 6g. Haplotype & selection statistics — goal 2
+
+- [ ] **EHH, iHS, XP-EHH, and LD-decay curves.** Standard selection-scan / haplotype-structure
+  stats; XP-EHH is cross-population. Useful for realism and for testing selection claims tied to
+  the OoA expansion.
+
+### 6h. Credibility backbone (do regardless) — goal 3
+
+- [ ] **Validation suite against analytic neutral expectations** — Tajima's D ≈ 0 under
+  neutrality, expected SFS shape, θ = 4Nµ recovery, Hardy-Weinberg. Demonstrating the engine
+  reproduces textbook results *before* any creationist argument is made is the foundation that
+  makes everything else defensible.
+- [ ] **ABC-readiness.** Once standard summary stats are emitted, DRIFT slots into Approximate
+  Bayesian Computation — reframing it from "a simulator" to "an inference engine that can fit any
+  model, including ours."
+
+## 7. Emerging frontiers / cutting-edge bets
+
+Where the field is heading (~2025–2026) and where DRIFT's architecture gives it a structural edge.
+
+**The key insight:** DRIFT is simultaneously forward-time, individual-based, pedigree-tracking,
+*and* spatially explicit. That combination natively produces — as *known ground truth* — the three
+objects the modern field spends enormous effort merely *estimating*: the true ARG (genealogy),
+time-stamped + geo-located ancient samples, and true IBD segments. Coalescent tools run backward
+and struggle with serial/ancient samples and geography; inference tools estimate these with
+uncertainty. **DRIFT knows the answer.** The durable edge is not out-computing inference tools but
+being the ground-truth generator that exposes how much their deep-time conclusions depend on their
+priors. (SLiM + tree-recording has similar *capability* — the white space is the framing and the
+single-origin / young-population question, which no one is pursuing from this angle.)
+
+### Field shifts to be aware of (context, not tasks)
+
+- **Tree sequences / ARGs are the new substrate** (`tskit`, `tsinfer`, `Relate`, `ARG-Needle`,
+  `SINGER`) — the field moved from summary stats to inferring the full genealogy. See §6a tskit.
+- **Ancient-DNA time-series is rewriting human history** (Reich lab AADR, 10,000+ genomes). The OoA
+  story is now an *aDNA* story — models get judged against time-transects, not just modern variation.
+- **Simulation-based (neural) inference is eating ABC** — the simulator becomes the training-data
+  generator. Raw genotype/tree output matters more than hand-computed statistics.
+- **IBD-based inference of recent history** (`hap-IBD`, `iLASH`, Refined IBD) sees the recent
+  timescale SFS methods are blind to.
+- **Mutation-rate crisis** — direct pedigree rates (~1.2×10⁻⁸) are ~half the phylogenetic rate and
+  vary across populations/time; unsettled in the field itself, and it compresses clock dates.
+- **Pangenomes / T2T / structural variation** — moving past the SNP to complete genomes and graphs.
+
+### Cutting-edge bets (ranked by impact-per-effort)
+
+- [~] **2. Long-IBD as a falsifiable signature of recent common ancestry. [HIGHEST IMPACT/EFFORT]**
+  A young, single-origin population predicts a distinctive *excess of long IBD segments* and recent
+  TMRCA — exactly the regime classic SFS methods can't see. Compute *true* IBD from DRIFT's real
+  pedigrees + recombining genomes and compare to what `hap-IBD` infers from real human data. The
+  cleanest, most underexploited testable prediction the framework makes.
+  - [x] Level 1 prototype: `pkg/analysis/ibd.go` (`ExtractIBD`/`SaveIBD`), wired into `drift.go`
+    behind the `track_IBD` flag (default off). Measures co-inherited founder-derived segments;
+    emits a segment table + log-binned length distribution. Builds clean.
+  - [ ] Validate the length distribution against a known run; convert bit-lengths → cM (needs §6a
+    recombination map).
+  - [ ] Level 2 (true IBD): unique per-founder-haplotype labels threaded through meiosis, or
+    tree-sequence recording — removes the over-coarsening noted in `ibd.go`.
+  - [x] Fixed a latent bit-order bug found while building IBD: `CountContiguousBlocks`
+    (`pkg/utils/genetics.go`) used MSB-first `%064b` strings while bits are set LSB-first, so any
+    haplotype block straddling a 64-bit word boundary was over-counted — inflating
+    `IndData[NumBlocks]`. Rewritten to scan genome positions with the canonical convention;
+    regression test in `pkg/utils/genetics_test.go`. NOTE: previously-saved `NumBlocks` values are
+    biased high and not comparable to new runs.
+- [ ] **1. Known-truth ARG, stress-tested for assumption-dependence.** Emit a true tree sequence
+  (depends on §6a tskit), run `Relate`/`tsinfer`/`SINGER` on DRIFT's genotypes, quantify the
+  true-vs-inferred gap, and show how inferred dates/Ne move as clock and generation-time priors
+  vary. Novel, publishable, on-trend.
+- [ ] **3. Ancient-sample time-series output.** Emit samples at specified generations and map
+  locations, formatted to compare against real aDNA transects. Fights the OoA debate on its actual
+  current frontier. Builds on forward-time + `Lat`/`Lon`.
+- [ ] **4. Simulation-based-inference data generator.** Position DRIFT as the labeled-data engine
+  for neural SBI under alternative (young) models. Future-proofs DRIFT as ABC fades; no one in the
+  creationist space is doing it. (Relates to §6h ABC-readiness.)
+- [ ] **5. Mutation-rate-honest dating.** Extend the §6e clock layer to use direct pedigree rates
+  and explicitly propagate rate uncertainty into dates — capitalizing on a discrepancy the
+  mainstream itself has not resolved.
+
+> Defensive note: if DRIFT doesn't speak tree-sequence it becomes an island, and raw
+> genotype/tree output is becoming more important than reimplementing every statistic. Lean toward
+> emitting VCF + tree sequences and letting standard tools compute stats. This is why §6a tskit was
+> promoted to near-term.
+
+## 8. Experiment infrastructure
+
+Two features that turn DRIFT from "run a sim" into "run controlled experiments." Both build on the
+Phase 0 determinism work.
+
+### 8a. Pluggable phase modules (registry + dropdown) — DONE (2026-06-25)
+
+Let users select the algorithm for each simulation phase (birth, death, mating, seeding, setup)
+by name, and add their own, rather than editing the call site. Chosen over the "edit a line to
+call `BobsBirth`" alternative because the selected algorithm is **recorded in the model params**
+(provenance — an edited call site leaves no trace in the output, undermining Phase 0), is
+**GUI-selectable**, and **composes with forks** (§8b).
+
+Mechanism (Go can't enumerate functions by name at runtime, so a name prefix alone can't drive a
+dropdown): a **registry** per phase. Each module self-registers in `init()` under a string key;
+the dropdown lists the registry keys; the choice is stored as a `*_style` string param and
+dispatched at call time. File/function naming (`birth_*.go`) is human convention, not the
+discovery mechanism.
+
+- [x] String-parameter support on the model: `core.Model.StringParams` + `StringParam(key, def)`;
+  `SetParameter` and `LoadParameters` route non-numeric values there (`Parameters` stays float64).
+- [x] Birth/Death registries + `"standard"` default modules + dispatchers + `Available*Styles()`
+  (`pkg/simulation/module_registry.go`). Existing `Birth`/`Death` became `birthStandard`/
+  `deathStandard`, self-registered via `init()`; the exported `Birth`/`Death` are now dispatchers
+  keyed on `birth_style` / `death_style`. Defaults added to `parameter_defaults.csv`. Unit tests
+  in `module_registry_test.go`. Verified end-to-end: normal run dispatches; bogus style →
+  `unknown birth_style "bogus"; available: [standard]`.
+- [x] Validate the selected style at model load — `ValidateStyles(model)` called in `drift.go`
+  (fails fast with an "available: [...]" message).
+- [x] Unified all phases in a new `pkg/modules` package (imports only `core`, so any package can
+  register without a cycle). Birth/Death register from `simulation`, mating from `simulation`,
+  seeding from `events`, setup from `config` — each via `init()`. `Birth`/`Death`/`Mating`/`Seed`/
+  `InitializePop` became thin dispatchers.
+- [x] Legacy **integer** `mating_style` / `seed_style` codes still resolve (0/1/2 → names) via
+  `resolveStyle`; new models can use string names, which take precedence. Setup stays
+  scenario-driven with an optional `setup_style` override. Verified: legacy-int and string-style
+  runs both dispatch with zero fallback warnings.
+- [x] Webserver endpoint `GET /api/modules/list` returns `modules.AllStyles()` (available names per
+  phase) for the GUI dropdowns. Verified live: returns birth/death/mating/seed/setup lists.
+- [x] Frontend: `birth_style` / `death_style` dropdowns in the model editor ("Simulation Modules"
+  group), options fetched from `/api/modules/list` (`loadPhaseModules` in `web/static/app.js`).
+  String params round-trip through save/load: `handleModelSave` routes strings to `StringParams`,
+  `SaveParameters` persists them, `handleModelLoad` merges them back. Verified live: load returns
+  the styles, save persists without corrupting the CSV. (The already-working integer
+  `mating_style` / `seed_style` dropdowns were left as-is; making them registry-populated too is
+  optional polish.)
+- [ ] (Future) per-module parameter schemas; optional embedded scripting (Lua/Starlark) for true
+  no-recompile user algorithms — deferred (hot-path cost + complexity).
+
+### 8b. Checkpoint / save / resume / fork — CORE DONE (2026-06-25)
+
+Stop a run and serialize full state; resume it exactly, or **fork** it into N divergent
+continuations. Enables the core experimental design: run to year T (e.g. a Flood/Babel
+bottleneck), checkpoint that population as a **baseline**, then vary one thing (a param, a seed,
+or — via §8a — an algorithm) across forks while holding all shared history constant.
+
+- [x] `pkg/checkpoint`: versioned `Checkpoint` (schema v1) serializes `Pop` (all maps) +
+  `FreeParameters` counters + RNG state via `encoding/gob`; `Save`/`Load`/`Restore`. Model config
+  is reloaded from files on resume, then the checkpoint is overlaid (state only — no `Model.Map` /
+  animation state). `ensurePopMaps` guards against nil-map panics on resume. Round-trip +
+  exact-stream + fork-divergence unit tests in `checkpoint_test.go`.
+- [x] `RNGState() []byte` / `RestoreRNG([]byte)` in `pkg/utils/rng.go`. Required swapping the shared
+  generator's source to a small custom xoshiro256** (seeded via splitmix64) because math/rand's
+  default source is not serializable in Go 1.23; state is 4×uint64 = 32 bytes. Determinism tests
+  still pass.
+- [x] CLI: `-checkpoint-out`, `-checkpoint-interval`, `-checkpoint-in`, `-fork-seed`. Run loop
+  refactored into a `runOne(run, startYear, pop)` closure so a fresh multi-run and a single resumed
+  continuation share one body. Verified end-to-end: exact resume is byte-identical to an
+  uninterrupted run (years ≥260 matched); a fork (`-fork-seed=999`) diverges from the same
+  checkpoint.
+- [x] **Named saves** (`pkg/checkpoint/named.go`): a finished run can save its end state under a
+  name into the model's `saves/` directory (`-save-state=<name>`), reload it to start other runs
+  (`-load-state=<name>`, combine with `-fork-seed`), and list them (`-list-saves`). API:
+  `SaveNamed`/`LoadNamed`/`List`/`SavePath` (names contained to the saves dir). Verified end-to-end:
+  normal run saves "baseline"; loading it continues byte-identically to the reference run; forking
+  it diverges. Tests in `named_test.go`.
+- [x] **GUI save/load/fork.** A "Run State" panel in the model editor (`web/static/index.html` +
+  `app.js`): save the end-of-run state under a name, pick a saved state to start from, and set a
+  fork seed. Endpoints `GET /api/saves/list` and `POST /api/saves/delete`; `save_state`/`load_state`/
+  `fork_seed` thread through `StartSimulationRequest` → `SimulationJob` → `runSimulation` CLI args.
+  Saved states are anchored to the model (`users/<user>/models/<model>/saves`) via
+  `SavesDir`/`ModelFor` regardless of the run's output dir. Verified live: list/delete round-trip;
+  a CLI save appears in the canonical dir the endpoint reads.
+- [x] **Graceful stop-and-save of a running sim.** File-based signal (`pkg/checkpoint/stop.go`:
+  `RequestStop`/`StopRequested`/`ClearStop`) — chosen over OS signals, which are unreliable on
+  Windows. The webserver's new `StopSaveJob` drops a `.stop` (with a save name) into the run's
+  output dir; the sim checks it each year, saves state under that name, and finishes the run cleanly
+  (results + analyses still written) — no hard kill. GUI: a "Stop & Save" button on the Progress tab
+  (`/api/simulation/stop-save`); the forceful `Cancel` (hard kill) remains as a fallback. Added a
+  `stopping` job status. Verified end-to-end: sim honors the stop, saves at the current year, clears
+  the flag, and the save appears in the model's saves list. Tests in `stop_test.go`. (Also works
+  from the CLI: `touch <output-dir>/.stop`.)
+- [ ] Resume currently continues a single run; extend to resume/fork within a multi-run batch if
+  needed.
+
+### 8c. Batch / experiment runner (auto-run many models & configurations)
+
+Automatically launch many runs from one spec, so a whole experiment is a single action instead of
+dozens of manual starts. Ties together replicates (same params, many seeds → a distribution),
+parameter sweeps (varying params → a grid), multiple models, and §8b saved states/forks. This is
+the applied form of §4's "parameter sweeps / batch experiments" and the natural payoff of the
+determinism (§0) + checkpoint/fork (§8b) work.
+
+Requested capabilities:
+- [ ] **Run many models in one batch** — a list of models, each started either **from scratch** or
+  **from a named saved state** (§8b) as the common baseline.
+- [ ] **Replicates** — run the same model+parameters N times with distinct, deterministic seeds
+  (`baseSeed + index`) to build a distribution across stochastic realizations.
+- [ ] **Parameter sweeps** — expand a grid/list of parameter values (e.g. `mu × max_pop_size`) into
+  one run per combination; optionally crossed with replicates (combinations × replicates).
+- [ ] **Fork sweeps** — from one saved baseline, fan out runs that vary a single thing (seed, a
+  parameter, or a phase module from §8a) while holding all shared history constant.
+
+Design notes:
+- An **experiment spec** (CSV/JSON, or a GUI form): models, source (scratch | saved-state name),
+  replicate count, and the sweep grid. Expand it into N queued jobs.
+- Reuse the existing web **queue** (`pkg/webserver/queue.go`) — a batch is just many `AddJob`s; or a
+  CLI batch runner for headless use. Each job gets a unique output dir + recorded seed/params.
+- **Aggregate output**: a cross-run summary table (one row per run: params, seed, key final stats)
+  plus per-run result CSVs, so a sweep is analyzable without hand-collating.
+- **Provenance**: every run records its resolved params + seed (+ source saved-state, + git SHA) —
+  see the run-manifests item in §5. Essential for reproducibility of the whole experiment.
+- Concurrency/throughput: the queue currently runs jobs one at a time; a batch of hundreds may want
+  a worker pool (bounded parallelism) — note the determinism guarantee holds because each run is a
+  separate process with its own seed.
+
+---
+
+### Suggested starting order
+
+1. Per-run deterministic RNG (§0) — makes all later results trustworthy and reproducible.
+2. Dominance-aware fitness (§0 / §1) — unlocks the founder-effect / bottleneck research questions.
+3. Fitness → survivorship (§2) and a test harness (§5) so the above can be validated.
+
+**OoA-testing thread (§6), in order:** VCF export (§6a) → Fst + f-statistics + joint SFS (§6b) →
+implement the standard OoA model as a scenario (§6c) → validate against neutral expectations
+(§6h). This chain lets DRIFT run the mainstream model and a Babel model in the *same engine*,
+score both with the *same* statistics the field uses, on data comparable to *real* human
+genomes — the comparison a critic can't dismiss on methodological grounds.
+
+**Cutting-edge thread (§7):** the enabling substrate is tree-sequence (tskit) output (§6a,
+now near-term). The sharpest standalone first bet that does *not* require tskit is long-IBD of
+recent common ancestry (§7 bet 2) — it rides on true pedigrees + recombining genomes DRIFT
+already has, and yields a clean falsifiable prediction. tskit then unlocks bets 1 and 3.

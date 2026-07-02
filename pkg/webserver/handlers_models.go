@@ -62,10 +62,20 @@ func handleModelSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Update parameters
+	// Update parameters. Numeric values go in Parameters; strings (e.g. module
+	// selectors like birth_style) go in StringParams. Keep each key in exactly
+	// one map so it isn't persisted twice.
+	if model.StringParams == nil {
+		model.StringParams = make(map[string]string)
+	}
 	for key, value := range req.Parameters {
-		if floatVal, ok := value.(float64); ok {
-			model.Parameters[key] = floatVal
+		switch v := value.(type) {
+		case float64:
+			model.Parameters[key] = v
+			delete(model.StringParams, key)
+		case string:
+			model.StringParams[key] = v
+			delete(model.Parameters, key)
 		}
 	}
 
@@ -130,10 +140,20 @@ func handleModelLoad(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Merge numeric and string parameters into one map for the client (so module
+	// selectors like birth_style reach the GUI dropdowns).
+	params := make(map[string]interface{}, len(model.Parameters)+len(model.StringParams))
+	for k, v := range model.Parameters {
+		params[k] = v
+	}
+	for k, v := range model.StringParams {
+		params[k] = v
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success":    true,
-		"parameters": model.Parameters,
+		"parameters": params,
 		"scenario":   model.Scenario,
 		"base_model": model.BaseModelID,
 	})

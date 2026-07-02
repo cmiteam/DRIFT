@@ -39,12 +39,16 @@ func Start() error {
 	mux.HandleFunc("/api/simulation/start", handleSimulationStart)
 	mux.HandleFunc("/api/simulation/status", handleSimulationStatus)
 	mux.HandleFunc("/api/simulation/cancel", handleSimulationCancel)
+	mux.HandleFunc("/api/simulation/stop-save", handleSimulationStopSave)
 	mux.HandleFunc("/api/progress/", handleProgress)
 	mux.HandleFunc("/api/results/", handleResults)
 	mux.HandleFunc("/api/plot-data/", handlePlotData)
 	mux.HandleFunc("/api/users", handleGetUsers)
 	mux.HandleFunc("/api/basemodels/list", handleBaseModelsList)
 	mux.HandleFunc("/api/basemodels/parameters", handleBaseModelParameters)
+	mux.HandleFunc("/api/modules/list", handlePhaseModules)
+	mux.HandleFunc("/api/saves/list", handleSavesList)
+	mux.HandleFunc("/api/saves/delete", handleSavesDelete)
 	mux.HandleFunc("/api/maps/list", handleMapsList)
 
 	// Model management routes
