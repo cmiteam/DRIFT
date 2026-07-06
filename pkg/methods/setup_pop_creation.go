@@ -23,7 +23,7 @@ func SetupPopCreation(model *core.Model, pop *core.Pop) error {
 
 	// Create Adam (male)
 	adamID := 0
-	CreateFounder(pop, adamID, 20, 900, 1, model, landCoordinates)
+	CreateFounder(pop, adamID, 20, 900, 1, model, landCoordinates, 0)
 	pop.IndData[adamID][individual.Sex] = 0 // Male
 	pop.IndData[adamID][individual.MarriageState] = 1 // Married to Eve
 	pop.IndData[adamID][individual.Lat] = loc[0]
@@ -33,7 +33,7 @@ func SetupPopCreation(model *core.Model, pop *core.Pop) error {
 
 	// Create Eve (female)
 	eveID := 1
-	CreateFounder(pop, eveID, 20, 900, 1, model, landCoordinates)
+	CreateFounder(pop, eveID, 20, 900, 1, model, landCoordinates, 0)
 	pop.IndData[eveID][individual.Sex] = 1 // Female
 	pop.IndData[eveID][individual.MarriageState] = 0 // Married to Adam
 	pop.IndData[eveID][individual.Lat] = loc[0]

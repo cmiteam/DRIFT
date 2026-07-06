@@ -210,6 +210,12 @@ func main() {
 		// Loop over the number years in each model run
 		for year := startYear; year <= totalYears; year++ {
 			model.FreeParameters["year"] = year
+			// Advance any demographic scenario (§6c) for this year — fires splits,
+			// migrates per the epoch matrix, and sets per-deme caps — before the
+			// year's Birth/Mating/Death. No-op when no scenario is attached.
+			if model.DemographyScheduler != nil {
+				model.DemographyScheduler.Apply(model, pop)
+			}
 			if year >= int(model.Parameters["seed_year"]) && model.FreeParameters["seed"] == -1 {
 				events.Seed(model, pop)
 				model.FreeParameters["seed"] = 1
@@ -306,6 +312,62 @@ func main() {
 			ibdResult := analysis.ExtractIBD(model, pop, ids, minBits)
 			if err := analysis.SaveIBD(model, ibdResult); err != nil {
 				log.Printf("Error saving IBD results: %v", err)
+			}
+		}
+		if model.Parameters["export_VCF"] == 1 {
+			// VCF export (§6a): standard interchange format so external tools
+			// (PLINK, vcftools, ADMIXTURE) run on DRIFT output as on real data.
+			// Requires track_DNA so chromosomes exist. vcf_sample_size 0 = all.
+			sampleSize := int(model.Parameters["vcf_sample_size"])
+			includeFixed := model.Parameters["vcf_include_fixed"] == 1
+			ids := analysis.SampleIDs(pop, sampleSize)
+			if _, err := analysis.ExportVCF(model, pop, ids, includeFixed); err != nil {
+				log.Printf("Error exporting VCF: %v", err)
+			}
+		}
+		if model.Parameters["track_Fst"] == 1 {
+			// Fst between demes (§6b): Hudson's + Weir & Cockerham estimators.
+			// Requires track_DNA (chromosomes) and num_demes >= 2 (structure to
+			// measure). fst_sample_size 0 = all individuals.
+			sampleSize := int(model.Parameters["fst_sample_size"])
+			ids := analysis.SampleIDs(pop, sampleSize)
+			fstResult := analysis.ComputeFst(model, pop, ids)
+			if err := analysis.SaveFst(model, fstResult); err != nil {
+				log.Printf("Error saving Fst results: %v", err)
+			}
+		}
+		if model.Parameters["track_fstats"] == 1 {
+			// f-statistics (§6b): f2, f3(admixture), f4/D (ABBA-BABA). Requires
+			// track_DNA and num_demes >= 2. Which demes fill the f3/f4 slots is set
+			// by fstats_demes (empty = auto-enumerate). fstats_sample_size 0 = all.
+			sampleSize := int(model.Parameters["fstats_sample_size"])
+			ids := analysis.SampleIDs(pop, sampleSize)
+			fstatsResult := analysis.ComputeFStats(model, pop, ids)
+			if err := analysis.SaveFStats(model, fstatsResult); err != nil {
+				log.Printf("Error saving f-statistics: %v", err)
+			}
+		}
+		if model.Parameters["track_joint_sfs"] == 1 {
+			// Joint 2D/3D SFS (§6b): the object OoA demographic models are fit to.
+			// Axis demes from joint_sfs_demes (empty = first eligible demes).
+			// Requires track_DNA and num_demes >= 2. joint_sfs_sample_size 0 = all.
+			sampleSize := int(model.Parameters["joint_sfs_sample_size"])
+			ids := analysis.SampleIDs(pop, sampleSize)
+			jsfs := analysis.ComputeJointSFS(model, pop, ids)
+			if err := analysis.SaveJointSFS(model, jsfs); err != nil {
+				log.Printf("Error saving joint SFS: %v", err)
+			}
+		}
+		if model.Parameters["track_het_distance"] == 1 {
+			// Heterozygosity vs distance-from-origin (§6c): the serial-founder
+			// gradient (Ramachandran 2005). Per-deme He/Ho tagged with each deme's
+			// serial-split rank + an He~rank slope, for the OoA-vs-Babel head-to-head.
+			// Requires track_DNA and >= 2 eligible demes. het_distance_sample_size 0 = all.
+			sampleSize := int(model.Parameters["het_distance_sample_size"])
+			ids := analysis.SampleIDs(pop, sampleSize)
+			hd := analysis.ComputeHetDistance(model, pop, ids)
+			if err := analysis.SaveHetDistance(model, hd); err != nil {
+				log.Printf("Error saving heterozygosity-distance results: %v", err)
 			}
 		}
 

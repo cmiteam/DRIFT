@@ -62,53 +62,62 @@ func deathStandard(model *core.Model, pop *core.Pop) int {
 		}
 	}
 
-	// Adjust max population size based on bottleneck
-	maxPopSize := int(model.Parameters["max_pop_size"])
-	if int(model.Parameters["bottleneck_start"]) <= model.FreeParameters["year"] && int(model.Parameters["bottleneck_end"]) >= model.FreeParameters["year"] {
-		maxPopSize = int(model.Parameters["bottleneck_size"])
-	}
+	// Steps 2 & 3: enforce carrying capacity. When a demographic scenario is active
+	// (roadmap §6c), model.DemeCaps holds a per-deme census target for this year and
+	// supersedes the global max_pop_size / max_growth_rate limits — each deme is
+	// trimmed to its own cap. Otherwise the original single-population behavior runs
+	// unchanged (strict no-op for non-demography runs: byte-identical results).
+	if len(model.DemeCaps) > 0 {
+		deaths += cullByDeme(model, pop, &deadPeopleData)
+	} else {
+		// Adjust max population size based on bottleneck
+		maxPopSize := int(model.Parameters["max_pop_size"])
+		if int(model.Parameters["bottleneck_start"]) <= model.FreeParameters["year"] && int(model.Parameters["bottleneck_end"]) >= model.FreeParameters["year"] {
+			maxPopSize = int(model.Parameters["bottleneck_size"])
+		}
 
-	// Step 2: Trim excess population by randomly culling individuals
-	excess := len(pop.IndData) - maxPopSize
-	keyList = generateKeyList(&pop.IndData, model.FreeParameters["seed"])
-	keyList = pickVictims(excess, keyList)
-	for _, ind := range keyList {
-		if model.FreeParameters["seed"] == ind {
-			break
+		// Step 2: Trim excess population by randomly culling individuals
+		excess := len(pop.IndData) - maxPopSize
+		keyList = generateKeyList(&pop.IndData, model.FreeParameters["seed"])
+		keyList = pickVictims(excess, keyList)
+		for _, ind := range keyList {
+			if model.FreeParameters["seed"] == ind {
+				break
+			}
+			if int(model.Parameters["track_dead"]) == 1 {
+				deadPersonString := deadString(model, pop, ind)
+				deadPersonString += ",R\n"
+				deadPeopleData += deadPersonString
+			}
+			RIP(ind, pop, model)
+			deaths++
+			pop.Tracking["cull_deaths"]++
 		}
-		if int(model.Parameters["track_dead"]) == 1 {
-			deadPersonString := deadString(model, pop, ind)
-			deadPersonString += ",R\n"
-			deadPeopleData += deadPersonString
-		}
-		RIP(ind, pop, model)
-		deaths++
-		pop.Tracking["cull_deaths"]++
-	}
 
-	// Step 3: Tamp down population growth rate by randomly culling individuals.
-	// Round up so small populations can grow at all: int(6 * 1.05) = 6 (locks pop),
-	// but ceil(6 * 1.05) = 7 (lets it grow by one).
-	allowedNumInds := int(math.Ceil(float64(model.FreeParameters["last_pop_size"]) * model.Parameters["max_growth_rate"]))
-	if allowedNumInds > int(model.Parameters["max_pop_size"]) {
-		allowedNumInds = int(model.Parameters["max_pop_size"])
-	}
+		// Step 3: Tamp down population growth rate by randomly culling individuals.
+		// Round up so small populations can grow at all: int(6 * 1.05) = 6 (locks pop),
+		// but ceil(6 * 1.05) = 7 (lets it grow by one).
+		allowedNumInds := int(math.Ceil(float64(model.FreeParameters["last_pop_size"]) * model.Parameters["max_growth_rate"]))
+		if allowedNumInds > int(model.Parameters["max_pop_size"]) {
+			allowedNumInds = int(model.Parameters["max_pop_size"])
+		}
 
-	diff := len(pop.IndData) - allowedNumInds
-	keyList = generateKeyList(&pop.IndData, model.FreeParameters["seed"])
-	keyList = pickVictims(diff, keyList)
-	for _, ind := range keyList {
-		if model.FreeParameters["seed"] == ind {
-			break
+		diff := len(pop.IndData) - allowedNumInds
+		keyList = generateKeyList(&pop.IndData, model.FreeParameters["seed"])
+		keyList = pickVictims(diff, keyList)
+		for _, ind := range keyList {
+			if model.FreeParameters["seed"] == ind {
+				break
+			}
+			if int(model.Parameters["track_dead"]) == 1 {
+				deadPersonString := deadString(model, pop, ind)
+				deadPersonString += ",R\n"
+				deadPeopleData += deadPersonString
+			}
+			RIP(ind, pop, model)
+			deaths++
+			pop.Tracking["cull_deaths"]++
 		}
-		if int(model.Parameters["track_dead"]) == 1 {
-			deadPersonString := deadString(model, pop, ind)
-			deadPersonString += ",R\n"
-			deadPeopleData += deadPersonString
-		}
-		RIP(ind, pop, model)
-		deaths++
-		pop.Tracking["cull_deaths"]++
 	}
 
 	// Step 4: Reduce population to specified number of breeding individuals, if called for, by randomly culling individuals
@@ -141,6 +150,54 @@ func deathStandard(model *core.Model, pop *core.Pop) int {
 	}
 
 	return deaths
+}
+
+// cullByDeme trims each deme to its per-deme census cap (model.DemeCaps), used when
+// a demographic scenario is active (roadmap §6c) instead of the global carrying-
+// capacity limits. Demes are processed in ascending id order and individuals culled
+// in sorted order (via generateKeyList + pickVictims) so a fixed rng_seed stays
+// reproducible. Returns the number of individuals removed.
+func cullByDeme(model *core.Model, pop *core.Pop, deadPeopleData *string) int {
+	seed := model.FreeParameters["seed"]
+	trackDead := int(model.Parameters["track_dead"]) == 1
+
+	// Group living individuals by deme (skipping the protected seed individual).
+	byDeme := make(map[int][]int)
+	for id := range pop.IndData {
+		if id == seed {
+			continue
+		}
+		d := pop.IndData[id][individual.Deme]
+		byDeme[d] = append(byDeme[d], id)
+	}
+
+	// Iterate demes in ascending id order for deterministic RNG consumption.
+	demes := make([]int, 0, len(byDeme))
+	for d := range byDeme {
+		demes = append(demes, d)
+	}
+	sort.Ints(demes)
+
+	removed := 0
+	for _, d := range demes {
+		cap, ok := model.DemeCaps[d]
+		if !ok {
+			continue // no cap declared for this deme: leave it untouched
+		}
+		members := byDeme[d]
+		sort.Ints(members)
+		excess := len(members) - cap
+		victims := pickVictims(excess, members)
+		for _, ind := range victims {
+			if trackDead {
+				*deadPeopleData += deadString(model, pop, ind) + ",R\n"
+			}
+			RIP(ind, pop, model)
+			removed++
+			pop.Tracking["cull_deaths"]++
+		}
+	}
+	return removed
 }
 
 // generateKeyList creates a slice of all individual IDs

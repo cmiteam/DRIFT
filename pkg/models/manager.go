@@ -3,6 +3,7 @@ package models
 
 import (
 	"drift/pkg/core"
+	"drift/pkg/demography"
 	"drift/pkg/utils"
 	"encoding/csv"
 	"fmt"
@@ -104,6 +105,23 @@ func (m *ModelManager) LoadModel(username, modelName string) (*core.Model, error
 	model.FreeParameters["seed"] = -1
 	model.FreeParameters["last_pop_size"] = 0
 	model.FreeParameters["mutID"] = 0
+
+	// Attach a demographic scenario (roadmap §6c) if the model ships one. Look for
+	// a user override first, then the base model's demography.json. Absent = no
+	// scenario (ordinary single-population / island run).
+	demogPath := filepath.Join(configPath, "demography.json")
+	if _, err := os.Stat(demogPath); os.IsNotExist(err) {
+		demogPath = filepath.Join(m.BaseModelsPath, metadata.BaseModel, "demography.json")
+	}
+	if _, err := os.Stat(demogPath); err == nil {
+		scenario, err := demography.Load(demogPath)
+		if err != nil {
+			return nil, err
+		}
+		model.DemographyScheduler = scenario
+		fmt.Printf("Loaded demographic scenario %q (%d epochs, %d simulated years) from %s\n",
+			scenario.Name, len(scenario.Epochs), scenario.TotalYears(), demogPath)
+	}
 
 	return model, nil
 }

@@ -1,0 +1,49 @@
+{
+  "name": "OutOfAfrica_3G09",
+  "source": "Gutenkunst et al. 2009 PLoS Genet (three-population out-of-Africa), as tabulated in stdpopsim OutOfAfrica_3G09; Gravel et al. 2011 PNAS refined the same structure. Values are the published diploid Ne, times in generations before present, and per-generation per-lineage migration rates. Forward-time epoch durations below are the differences between the published split times (T_AF=8800, T_B=5600, T_EU_AS=848 generations ago) plus a short ancestral burn-in.",
+  "generation_time": 25,
+  "rescale": 10,
+  "epochs": [
+    {
+      "name": "ancestral",
+      "duration_gen": 200,
+      "demes": [
+        { "id": 0, "size": 7300 }
+      ]
+    },
+    {
+      "name": "african_expansion",
+      "duration_gen": 3200,
+      "demes": [
+        { "id": 0, "size": 12300 }
+      ]
+    },
+    {
+      "name": "out_of_africa",
+      "duration_gen": 4752,
+      "split": { "parent": 0, "child": 1, "child_founders": 2100 },
+      "demes": [
+        { "id": 0, "size": 12300 },
+        { "id": 1, "size": 2100 }
+      ],
+      "migration": [
+        { "a": 0, "b": 1, "rate": 0.00025 }
+      ]
+    },
+    {
+      "name": "eurasian_split",
+      "duration_gen": 848,
+      "split": { "parent": 1, "child": 2, "child_founders": 510 },
+      "demes": [
+        { "id": 0, "size": 12300 },
+        { "id": 1, "size": 1000, "growth": 0.004 },
+        { "id": 2, "size": 510, "growth": 0.0055 }
+      ],
+      "migration": [
+        { "a": 0, "b": 1, "rate": 0.00003 },
+        { "a": 0, "b": 2, "rate": 0.000019 },
+        { "a": 1, "b": 2, "rate": 0.000096 }
+      ]
+    }
+  ]
+}

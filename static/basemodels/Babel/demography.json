@@ -1,0 +1,75 @@
+{
+  "name": "Babel_SingleOrigin_Serial",
+  "source": "A single-recent-origin (Babel-style) counterpart to the out-of-Africa OutOfAfrica_3G09 scenario, authored as a sibling demography.json to run in the SAME engine under the SAME fixed seed. One origin deme disperses SEQUENTIALLY into a chain of daughter demes (0 -> 1 -> 2 -> 3 -> 4); each dispersal founds the next deme from a small, DECAYING sample of the previous one (2500 -> 1500 -> 900 -> 500 diploids), producing a serial founder effect. Deme N therefore sits N founder steps from the origin (its serial-split rank), exactly the axis the heterozygosity-vs-distance analysis fits. The scientific question (roadmap 6c, second bullet): does a single-origin serial dispersal reproduce the near-linear heterozygosity decline (Ramachandran 2005 / Prugnolle 2005) claimed as an out-of-Africa signature? Sizes are diploid Ne, times in generations, migration per-generation per-lineage (nearest-neighbour stepping-stone only, to preserve the linear structure). generation_time and rescale Q match the OoA file for a like-for-like comparison.",
+  "generation_time": 25,
+  "rescale": 10,
+  "epochs": [
+    {
+      "name": "babel_origin",
+      "duration_gen": 200,
+      "demes": [
+        { "id": 0, "size": 10000 }
+      ]
+    },
+    {
+      "name": "disperse_1",
+      "duration_gen": 400,
+      "split": { "parent": 0, "child": 1, "child_founders": 2500 },
+      "demes": [
+        { "id": 0, "size": 10000 },
+        { "id": 1, "size": 2500 }
+      ],
+      "migration": [
+        { "a": 0, "b": 1, "rate": 0.00005 }
+      ]
+    },
+    {
+      "name": "disperse_2",
+      "duration_gen": 400,
+      "split": { "parent": 1, "child": 2, "child_founders": 1500 },
+      "demes": [
+        { "id": 0, "size": 10000 },
+        { "id": 1, "size": 2500 },
+        { "id": 2, "size": 1500 }
+      ],
+      "migration": [
+        { "a": 0, "b": 1, "rate": 0.00005 },
+        { "a": 1, "b": 2, "rate": 0.00005 }
+      ]
+    },
+    {
+      "name": "disperse_3",
+      "duration_gen": 400,
+      "split": { "parent": 2, "child": 3, "child_founders": 900 },
+      "demes": [
+        { "id": 0, "size": 10000 },
+        { "id": 1, "size": 2500 },
+        { "id": 2, "size": 1500 },
+        { "id": 3, "size": 900 }
+      ],
+      "migration": [
+        { "a": 0, "b": 1, "rate": 0.00005 },
+        { "a": 1, "b": 2, "rate": 0.00005 },
+        { "a": 2, "b": 3, "rate": 0.00005 }
+      ]
+    },
+    {
+      "name": "disperse_4",
+      "duration_gen": 400,
+      "split": { "parent": 3, "child": 4, "child_founders": 500 },
+      "demes": [
+        { "id": 0, "size": 10000 },
+        { "id": 1, "size": 2500 },
+        { "id": 2, "size": 1500 },
+        { "id": 3, "size": 900 },
+        { "id": 4, "size": 500 }
+      ],
+      "migration": [
+        { "a": 0, "b": 1, "rate": 0.00005 },
+        { "a": 1, "b": 2, "rate": 0.00005 },
+        { "a": 2, "b": 3, "rate": 0.00005 },
+        { "a": 3, "b": 4, "rate": 0.00005 }
+      ]
+    }
+  ]
+}

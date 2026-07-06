@@ -20,7 +20,11 @@ import (
 
 // SchemaVersion is bumped whenever the Checkpoint layout changes so that old
 // blobs fail loudly instead of decoding into a mismatched struct.
-const SchemaVersion = 1
+//
+// v2 (§6b): added the Deme field to the IndData enum, lengthening each
+// individual's serialized []int; v1 saves have shorter slices and would
+// mis-index, so they are rejected on load.
+const SchemaVersion = 2
 
 // Checkpoint is the serialized state of a run at a point in time.
 type Checkpoint struct {

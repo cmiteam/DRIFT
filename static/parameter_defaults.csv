@@ -51,6 +51,23 @@ track_LD,Linkage Disequilibrium,checkbox,float,0,Tracking
 ld_max_pairs,Maximum SNP pairs for LD analysis,ld_max_pairs,float,10000,Analysis
 ld_min_freq,Minimum allele frequency for LD,ld_min_freq,float,0.01,Analysis
 ld_max_variance,Max variance for LD,ld_max_var,float,0.01,Analysis
+export_VCF,Export VCF,Check,bool,0,Analysis
+vcf_sample_size,VCF Sample Size,Text,int,0,Analysis
+vcf_include_fixed,VCF Include Fixed Sites,Check,bool,0,Analysis
+num_demes,Number of Demes,Text,int,1,Population
+deme_migration_rate,Deme Migration Rate,Text,float,0,Population
+track_Fst,Track Fst,Check,bool,0,Analysis
+fst_sample_size,Fst Sample Size,Text,int,0,Analysis
+track_fstats,Track f-statistics,Check,bool,0,Analysis
+fstats_sample_size,f-stats Sample Size,Text,int,0,Analysis
+fstats_demes,f-stats Deme Slots,Text,string,,Analysis
+track_joint_sfs,Track Joint SFS,Check,bool,0,Analysis
+joint_sfs_sample_size,Joint SFS Sample Size,Text,int,0,Analysis
+joint_sfs_demes,Joint SFS Demes,Text,string,,Analysis
+track_het_distance,Track Heterozygosity vs Distance,Check,bool,0,Analysis
+het_distance_sample_size,Het-Distance Sample Size,Text,int,0,Analysis
+deme_inheritance,Deme Inheritance,Text,string,paternal,Population
+generation_time,Generation Time (yrs),Text,float,25,Population
 track_map,Track on Map,Check,bool,1,Maps
 animation_save_interval,Animation Save Interval,Text,int,10,Maps
 map_width,Map Width,Text,int,3840,Maps

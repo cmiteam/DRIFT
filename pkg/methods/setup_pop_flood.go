@@ -32,7 +32,7 @@ func SetupPopFlood(model *core.Model, pop *core.Pop) error {
 		loc := landCoordinates[utils.RandIntn(len(landCoordinates))]
 
 		// Create the man
-		CreateFounder(pop, manID, 100, 650, 1, model, landCoordinates)
+		CreateFounder(pop, manID, 100, 650, 1, model, landCoordinates, 0)
 		pop.IndData[manID][individual.Sex] = 0 // Ensure male
 		pop.IndData[manID][individual.MarriageState] = womanID
 		pop.IndData[manID][individual.Lat] = loc[0]
@@ -41,7 +41,7 @@ func SetupPopFlood(model *core.Model, pop *core.Pop) error {
 		pop.IndData[manID][individual.Lifespan] = 650
 
 		// Create the woman
-		CreateFounder(pop, womanID, 100, 650, 1, model, landCoordinates)
+		CreateFounder(pop, womanID, 100, 650, 1, model, landCoordinates, 0)
 		pop.IndData[womanID][individual.Sex] = 1 // Ensure female
 		pop.IndData[womanID][individual.MarriageState] = manID
 		pop.IndData[womanID][individual.Lat] = loc[0]

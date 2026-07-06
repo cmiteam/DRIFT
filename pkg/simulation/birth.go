@@ -187,6 +187,16 @@ func createChild(model *core.Model, pop *core.Pop, dad, mom, child int) {
 	pop.IndData[child] = individual.MakeIndData()
 	pop.IndData[child][individual.Dad] = dad
 	pop.IndData[child][individual.Mom] = mom
+	// Deme is inherited from one parent (pairs with individual-level migration in
+	// Mating). Paternal by default; set deme_inheritance="maternal" to switch. In a
+	// patrilocal island model the father's deme is the natural default, and it makes
+	// deme membership consistent with the Y-chromosome line. With num_demes=1 every
+	// deme is 0 so the choice has no effect (the single-population no-op is preserved).
+	demeParent := dad
+	if model.StringParam("deme_inheritance", "paternal") == "maternal" {
+		demeParent = mom
+	}
+	pop.IndData[child][individual.Deme] = pop.IndData[demeParent][individual.Deme]
 	pop.IndData[child][individual.Sex] = utils.RandIntn(2)
 	pop.IndData[child][individual.BirthYear] = model.FreeParameters["year"]
 	pop.IndData[child][individual.Lifespan] = lifespan

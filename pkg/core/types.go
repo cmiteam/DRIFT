@@ -23,6 +23,29 @@ type Model struct {
 	HetHistory      []float64
 	TimeHistory     []int
 	ResultsDir      string // Directory for saving results (supports GUI mode)
+
+	// Demographic scenario (roadmap §6c). When a model ships a demography.json
+	// (e.g. the canonical out-of-Africa model), the loader attaches a scheduler
+	// here; the run loop calls Apply once per year to advance the schedule
+	// (per-deme sizes, split events, and the migration matrix). Nil for ordinary
+	// runs, in which case the engine keeps its existing single-cap / scalar-
+	// migration behavior unchanged.
+	DemographyScheduler DemographyScheduler
+	// DemeCaps is the per-deme census target for the CURRENT year, written by the
+	// scheduler's Apply. When non-empty, Death culls each deme to its cap instead
+	// of applying the global max_pop_size / max_growth_rate limits. Nil/empty when
+	// no scenario is active (strict no-op: existing runs are byte-identical).
+	DemeCaps map[int]int
+}
+
+// DemographyScheduler advances a time-varying demographic scenario. Defined here
+// (rather than in pkg/demography) so core.Model can hold one without importing the
+// implementation — pkg/demography imports core, not the reverse. Apply is called
+// once per simulated year, after model.FreeParameters["year"] is set and before
+// Birth: it performs any split due this year, migrates individuals per the current
+// epoch's migration matrix, and writes the per-deme caps into model.DemeCaps.
+type DemographyScheduler interface {
+	Apply(model *Model, pop *Pop)
 }
 
 type Pop struct {
@@ -74,6 +97,7 @@ const (
 	LastBirthYear                    // year of last birth
 	Sons                             // number of sons born to this individual
 	Daughters                        // number of daughters born to this individual
+	Deme                             // deme (subpopulation) membership; 0 = single-population default
 	IndDataFieldCount                // number of fields in IndData
 )
 const EmptyField = -999

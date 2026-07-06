@@ -104,9 +104,22 @@ out-of-Africa story, **(3)** countering critics.
 
 ### 6a. Real-data interoperability (credibility multiplier) — goals 2, 3
 
-- [ ] **VCF import/export.** Lets the *same* pipeline (PLINK, vcftools, ADMIXTURE, EIGENSOFT) run
+- [~] **VCF import/export.** Lets the *same* pipeline (PLINK, vcftools, ADMIXTURE, EIGENSOFT) run
   on simulated and on real 1000 Genomes / HGDP data — critics can't dismiss results produced with
   their own tools. **Highest-leverage single feature.**
+  - [x] **Export** (`pkg/analysis/vcf.go`: `ExportVCF`), wired into `drift.go` behind the
+    `export_VCF` flag (default off; requires `track_DNA`). Emits VCF v4.2: each genome bit becomes
+    one biallelic SNP with a fixed REF=A (ancestral, bit 0) / ALT=T (derived, bit 1) convention;
+    genotypes are **phased** (`|`) since the two strand copies are tracked through meiosis; POS is
+    per-chromosome 1-based (base = min arm start; contig length = arm span) derived from
+    `ChromosomeArms`; INFO carries AC/AN. `vcf_sample_size` bounds columns (0 = all); segregating
+    sites only unless `vcf_include_fixed=1`. Reuses `SampleIDs`. Unit tests in `vcf_test.go`;
+    verified end-to-end (QuickTest, seed_style=1/`init_heterozygosity`>0 so standing variation
+    persists) → structurally valid VCF (field counts, POS-in-contig, GT form all check out).
+    NOTE: population seeding with `init_heterozygosity=0` (or a lone single-founder seed that drifts
+    to loss) yields empty `pop.Chromosomes` and thus an empty VCF — genome tracking needs standing
+    variation to export.
+  - [ ] **Import** — parse real 1000G/HGDP VCF into DRIFT structures (larger, separate task).
 - [ ] **Read real recombination maps and real human chromosome structure** (builds on the existing
   `ChromosomeArms` scaffold) so LD patterns are comparable to real data.
 - [ ] **Tree-sequence (tskit) output** (NEAR-TERM — promoted from longer-term; see §7). Becoming the
@@ -116,23 +129,159 @@ out-of-Africa story, **(3)** countering critics.
 
 ### 6b. Differentiation & admixture statistics (the modern OoA toolkit) — goal 2
 
-- [ ] **Fst** between populations — Hudson's and Weir & Cockerham estimators. (See also §4.) The
-  OoA story is fundamentally about continental differentiation.
-- [ ] **f-statistics: f2, f3, f4, and D-statistics (ABBA-BABA).** The Patterson/Reich tools used to
+- [x] **Fst** between populations — Hudson's and Weir & Cockerham estimators. (See also §4.) The
+  OoA story is fundamentally about continental differentiation. **Landed 2026-07-06.**
+  - **Deme infrastructure (island model).** DRIFT was single-population, so §6b needed a definition
+    of "populations." Chosen (over on-the-fly Lat/Lon binning) to add a first-class `Deme` field to
+    the `IndData` enum (`pkg/core/types.go` + `pkg/individual/individual.go`, kept in lockstep).
+    Founders are partitioned across `num_demes` demes round-robin, and — when a real map exists —
+    also placed in distinct spatial blocks (`partitionLandByDeme` in `setup_pop_default.go`) so
+    demes are geographically separated too. Deme is inherited maternally at birth (`createChild`).
+    `Mating` now, for `num_demes > 1`, first migrates individuals between demes with prob
+    `deme_migration_rate` (the island-model gene-flow channel), then dispatches the selected mating
+    module **once per deme** — reusing every existing mating module unchanged. `num_demes = 1`
+    (default) is a strict no-op: byte-identical to pre-deme behavior (verified). Checkpoint
+    `SchemaVersion` bumped 1→2 (the new field lengthens the serialized `IndData` slice; old saves
+    rejected loudly).
+  - **Estimators** (`pkg/analysis/fst.go`: `ComputeFst`/`SaveFst`, behind the `track_Fst` flag).
+    Both computed as a ratio-of-sums across sites (Bhatia et al. 2013): **Hudson's Fst** (pairwise)
+    and **Weir & Cockerham 1984 θ** (pairwise + a global value over all demes, using observed
+    heterozygosity from the phased strand copies). Reuses `SampleIDs`/`buildContigs`/`bitAt`; a
+    shared `demeMembers`/`countSite` substrate that f-stats + joint-SFS will build on. Demes with
+    <2 sampled diploids are dropped; <2 eligible demes → empty result. Writes
+    `<model>_fst_run%d_year%d.csv` (one row per deme pair + a global-θ row). Params: `num_demes`,
+    `deme_migration_rate`, `track_Fst`, `fst_sample_size` in `parameter_defaults.csv`.
+  - **Tests** (`fst_test.go`): hand-computed fixtures — complete differentiation → Fst = 1;
+    all-heterozygous identical demes → W&C = 0 exactly, Hudson ≤ 0; intermediate → Hudson = 1/3,
+    W&C = 1/2; plus the guard cases. **Verified end-to-end** (QuickTest, seed_style=1,
+    init_heterozygosity=0.1, 3 demes): isolated demes (m=0) → global θ ≈ 0.37; high migration
+    (m=0.5) → θ ≈ 0.0004 with all 3 demes persisting; `num_demes=1` → no Fst; fixed `rng_seed` →
+    byte-identical results (determinism intact).
+  - NOTE: with no migration and a shared carrying capacity, a small deme can drift to extinction —
+    expected island dynamics, but tune `num_demes`/`start_pop_size`/`max_pop_size` if all demes must
+    persist to the end.
+- [x] **f-statistics: f2, f3, f4, and D-statistics (ABBA-BABA).** The Patterson/Reich tools used to
   argue admixture, tree topology, and "Africa as outgroup." Non-negotiable for testing/countering
-  OoA — it's how the claims are actually made.
-- [ ] **Joint / multi-population SFS (2D/3D).** Current SFS is single-population; the OoA model is
+  OoA — it's how the claims are actually made. **Landed 2026-07-06.**
+  - **Estimators** (`pkg/analysis/fstats.go`: `ComputeFStats`/`SaveFStats`, behind `track_fstats`).
+    All sample-size-unbiased and computed as a mean/ratio of sums across polymorphic sites
+    (Patterson 2012 / Peter 2016), reusing the fst.go substrate (`demeMembers`/`countSite`) and
+    `buildContigs`/`bitAt`. Per site: **f2**(A,B) = (pA−pB)²−pA(1−pA)/(nA−1)−pB(1−pB)/(nB−1);
+    **f3**(T;B,C) = (pT−pB)(pT−pC)−pT(1−pT)/(nT−1) (bias term on the target only; **< 0 ⇒ admixture
+    in T**); **f4**(A,B;C,D) = (pA−pB)(pC−pD) (no bias term for four distinct demes); **D-statistic**
+    (ABBA-BABA) in the symmetric form D = Σ(ABBA−BABA)/Σ(ABBA+BABA), sharing f4's per-site kernel
+    with opposite sign. Frequencies are sample derived-allele frequencies; n = 2×sampled diploids.
+  - **Deme-slot selection (hybrid, chosen with Rob).** f2 is symmetric → always all unordered pairs.
+    f3/f4/D are driven by the `fstats_demes` string param: empty ⇒ **auto** (every deme as an f3
+    target × every other pair; every 4-deme quartet in its 3 independent f4/D pairings); `"T;B,C"`
+    ⇒ a single f3; `"A,B;C,D"` ⇒ a single f4 + its D. (In a CSV param file the comma-bearing value
+    must be quoted, e.g. `"0,1;2,3"`.) One uniform CSV `<model>_fstats_run%d_year%d.csv`
+    (Stat,DemeA..D,Value,NumSites).
+  - **Tests** (`fstats_test.go`): exact per-site kernel checks + end-to-end fixtures — complete
+    differentiation ⇒ f2 = 1; midway target ⇒ f3 = −1/3 (admixture); clean ABBA ⇒ f4 = −1, D = +1;
+    auto-enumeration counts (4 demes ⇒ 6 f2 / 12 f3 / 3 f4-D); explicit-spec and malformed-spec
+    (falls back to f2-only) guards. **Verified end-to-end** (QuickTest base, seed_style=1,
+    init_heterozygosity=0.1): 3 demes/m=0.05 → auto 3 f2/3 f3/0 f4; 4 demes/m=0.02 + `"0,1;2,3"`
+    → explicit 6 f2/0 f3/1 f4-D; fixed `rng_seed` → byte-identical.
+- [x] **Joint / multi-population SFS (2D/3D).** Current SFS is single-population; the OoA model is
   fit to the *joint* SFS of African/European/Asian samples (dadi, fastsimcoal, momi).
+  **Landed 2026-07-06.** (`pkg/analysis/joint_sfs.go`: `ComputeJointSFS`/`SaveJointSFS`, behind
+  `track_joint_sfs`.) Generalizes sfs.go's single-population derived-allele counting to a per-deme
+  matrix: a cell (i,j[,k]) counts sites at which each axis deme has that many derived alleles in
+  its sample; only sites segregating in the combined axis-deme sample are counted. Axis demes from
+  `joint_sfs_demes` (2 or 3; empty ⇒ first eligible demes). Long-format CSV (one row per non-empty
+  cell) that loads directly into numpy/dadi. Tests (`joint_sfs_test.go`): 2D/3D cell placement,
+  explicit-deme selection, single-deme guard, CSV shape. Verified end-to-end (3D over 3 demes).
+  - **Deme inheritance is now PATERNAL by default** (was maternal), parameterized via
+    `deme_inheritance` (`paternal`|`maternal`) in createChild — patrilocal island model, consistent
+    with the Y-line. No effect when num_demes=1 (all demes 0), so the single-population no-op holds.
 
 ### 6c. Run their model in your engine — goals 1, 2
 
-- [ ] **Implement canonical OoA demographic models as scenarios** — Gutenkunst 2009 / Gravel 2011
+- [x] **Implement canonical OoA demographic models as scenarios** — Gutenkunst 2009 / Gravel 2011
   three-population model (bottleneck, split times, growth, migration). Lets DRIFT *run* the
-  standard model and show exactly what it predicts.
-- [ ] **Serial founder effect vs. single-origin dispersal.** The flagship OoA signature is the
+  standard model and show exactly what it predicts. **Landed 2026-07-06.**
+  - **Scenario format (chosen with Rob): a JSON demography file + a per-year scheduler.**
+    `pkg/demography` parses a `demography.json` authored in the *published* units of the field
+    (diploid Ne, times in generations, per-generation migration rates) as an ordered list of
+    **epochs**; each epoch declares its active demes (with optional exponential `growth`), an
+    optional `split`, and the pairwise `migration` matrix. `Scenario` implements a new
+    `core.DemographyScheduler` interface; `manager.LoadModel` attaches it when a model ships a
+    `demography.json` (user-config override, else the base model's). The run loop calls
+    `Apply(model,pop)` once per year (before Birth). Same mechanism will run a Babel model.
+  - **Forward-time / units mapping.** DRIFT ticks in calendar years; the published models are in
+    WF generations. Two header knobs bridge them: `generation_time` (yrs/gen, default 25) and a
+    **rescale `Q`** (default in the shipped file = 10) — the standard sim rescaling (divide every
+    Ne and generation count by Q, multiply rates by Q). So an epoch of D generations spans
+    `round(D/Q * generation_time)` years, Ne→census cap `round(Ne/Q)`, and per-gen migration `m`→
+    per-year prob `m*Q/generation_time`. Q is the single speed⇄fidelity knob (Q=1 = full scale).
+  - **Splits = relabel a random subset** (chosen with Rob, over seeding fresh founders): a split
+    carves the child deme out of the parent by relabelling `round(child_founders/Q)` random living
+    members (capped at half the parent), preserving shared ancestry so Fst/f-stats/joint-SFS show
+    the real tree. All RNG consumed in sorted-id order → runs stay byte-reproducible.
+  - **Engine integration.** `core.Model` gained `DemographyScheduler` + a `DemeCaps` runtime map.
+    `death.go` culls **per-deme** to `DemeCaps` when a scenario is active (supersedes the global
+    `max_pop_size`/`max_growth_rate`); `mating.go` mates within each *present* deme and skips its
+    scalar island-migration (the scheduler owns migration). Both are gated so non-demography runs
+    are a **strict no-op** (byte-identical — verified). No checkpoint schema bump: the scheduler is
+    rebuilt from the JSON on load and caps are recomputed each year (nothing new serialized).
+  - **Shipped model:** `static/basemodels/OoA/demography.json` = Gutenkunst 2009 OutOfAfrica_3G09
+    (N_A 7300 → N_AF 12300; OOA bottleneck N_B 2100; EUR 1000·e^{0.004t}, ASN 510·e^{0.0055t};
+    m_AF-B 25e-5, m_AF-EU 3e-5, m_AF-AS 1.9e-5, m_EU-AS 9.6e-5; T_AF/T_B/T_EU_AS = 8800/5600/848
+    gen). At Q=10 the whole history is 22,500 DRIFT years. `OoA/parameters.csv` set up to drive it
+    (num_demes=1 at setup → scheduler activates demes; init_heterozygosity=0.1 + seed_style=1 for
+    standing variation; track_Fst/fstats/joint_sfs on; generation_time=25). `generation_time` added
+    to `parameter_defaults.csv`.
+  - **Tests** (`pkg/demography/demography_test.go`): timeline/epoch-boundary math, cap rescaling +
+    exponential growth (+clamp past present), per-gen→per-year migration conversion (+clamp),
+    deterministic capped split, symmetric migration, `Apply` split-firing + cap-setting, and a load
+    of the shipped OoA file (4 epochs, both splits, 22,500 yrs). **Verified end-to-end** with a
+    compact scenario (`users/smoke/models/OoAtest`, generation_time=1/Q=1, ~130 yrs, fixed
+    rng_seed=777): both splits fire, 3 demes persist, and the stats recover the OoA topology
+    (AFR,(EUR,ASN)) — Fst(AFR-EUR)≈Fst(AFR-AS) > Fst(EUR-AS); all f3 > 0 (no admixture); 3D joint
+    SFS populated. Two runs byte-identical; a non-demography model (QuickTest) attaches no scenario.
+    CSV gotcha still applies (comma-bearing string params like `fstats_demes` must be quoted).
+- [x] **Serial founder effect vs. single-origin dispersal.** The flagship OoA signature is the
   near-linear decline of heterozygosity with distance from Addis Ababa (Ramachandran 2005,
-  Prugnolle 2005). With existing spatial structure + `Wander`, test whether a single-origin
-  (Babel) dispersal produces the *same* gradient — a direct head-to-head.
+  Prugnolle 2005). Tests whether a single-origin (Babel) dispersal produces the *same* gradient —
+  a direct head-to-head, run in the same engine under the same fixed seed. **Landed 2026-07-06.**
+  - **Distance axis = serial-split RANK (chosen with Rob), not geography.** The demography engine
+    is aspatial (abstract demes; `doSplit` relabels `individual.Deme` only, never Lat/Lon), and the
+    published gradient's geographic distance is itself just a proxy for the *number of cumulative
+    founder events*. So the causally-correct, spatial-structure-free axis is each deme's serial-
+    founder rank: origin demes = rank 0, and a split's child = parent rank + 1. Exposed via
+    `demography.Scenario.DemeRanks()` (a forward pass over epoch splits); the analysis reads it
+    through an OPTIONAL `demeRanker` interface (type-asserted), so `core.DemographyScheduler` is
+    unchanged and mocks/ordinary schedulers need not implement it. No geographic/`Wander` machinery
+    added — that would be the follow-up if a literal km-from-origin axis is ever wanted.
+  - **Founder-size decay = a Babel-scenario PARAMETER (chosen with Rob), not a scheduler feature.**
+    A decaying serial chain is just successive split epochs with smaller `child_founders` in the
+    JSON — exactly how OoA specifies 2100/510. Zero new scheduler code; the model stays an auditable
+    published-units file. `doSplit`'s existing half-parent cap naturally reinforces the founder
+    effect on the deeper splits.
+  - **Analysis** (`pkg/analysis/hetdistance.go`: `ComputeHetDistance`/`SaveHetDistance`, behind
+    `track_het_distance`). Per deme, over the *shared* pooled-polymorphic site set (the Fst NumSites
+    convention, so demes share a denominator): **expected heterozygosity He** = Nei unbiased gene
+    diversity mean_sites (2n/(2n-1))·2p(1-p), and **observed het Ho** = mean_sites het/n (reusing
+    fst.go's `demeMembers`/`countSite` + vcf.go's `buildContigs`/`bitAt`). Each deme tagged with its
+    rank; an OLS line He~rank is fitted — its **slope is the head-to-head number** (diversity lost
+    per founder step), with R² for linearity. Writes two CSVs: `<model>_hetdistance_*` (per-deme
+    table) and `<model>_hetgradient_*` (one-row slope/intercept/R²/HasRanks summary). Params
+    `track_het_distance`/`het_distance_sample_size` in `parameter_defaults.csv`.
+  - **Shipped Babel model:** `static/basemodels/Babel/{demography.json,parameters.csv}` (registered
+    in `registry.csv`) — one origin (Ne 10000) dispersing sequentially 0→1→2→3→4 with decaying
+    founders (2500→1500→900→500) and nearest-neighbour stepping-stone migration; Q=10, gt=25 to
+    match OoA, 4500 DRIFT years. `track_het_distance=1` also added to `OoA/parameters.csv` so both
+    emit the gradient.
+  - **Tests** (`demography_test.go` `TestDemeRanks` — OoA-shaped 0/1/2 and serial 0/1/2/3;
+    `hetdistance_test.go` — declining-gradient fixture with slope exactly −1/3, no-scheduler
+    label-fallback, single-deme guard, CSV shape). **Verified end-to-end** with compact
+    `users/smoke/models/{OoAtest,Babeltest}` (Q=1, gt=1, fixed rng_seed=777): both scenarios run in
+    the same engine, all splits fire, ranks resolve (`HasRanks=true`), and both emit comparable
+    per-deme He and an He~rank slope. Reruns byte-identical (determinism intact); non-demography
+    models leave the flag off (strict no-op). NOTE: the compact smoke runs are too short/small to
+    develop a strong gradient (sampling noise dominates the smallest deme) — the shipped base models
+    (Babel 4500 yr / OoA 22,500 yr at Q=10) are the ones that produce the research-grade decline.
 
 ### 6d. Effective population size & the bottleneck question — goals 1, 3
 

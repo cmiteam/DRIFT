@@ -26,6 +26,7 @@ const (
 	LastBirthYear                    // year of last birth
 	Sons                             // number of sons born to this individual
 	Daughters                        // number of daughters born to this individual
+	Deme                             // deme (subpopulation) membership; 0 = single-population default
 	IndDataFieldCount                // number of fields in IndData
 )
 
@@ -84,6 +85,8 @@ func GetStringField(field IndData) string {
 		return "Sons"
 	case Daughters:
 		return "Daughters"
+	case Deme:
+		return "Deme"
 	default:
 		return "UnknownField"
 	}

@@ -4,6 +4,7 @@ import (
 	"drift/pkg/core"
 	"drift/pkg/individual"
 	"drift/pkg/modules"
+	"drift/pkg/utils"
 	"sort"
 )
 
@@ -28,8 +29,113 @@ func Mating(model *core.Model, pop *core.Pop) {
 	sort.Ints(availableMen)
 	sort.Ints(availableWomen)
 
-	// Dispatch to the mating module selected by the mating_style parameter.
-	modules.DispatchMating(model, pop, availableMen, availableWomen)
+	// When a demographic scenario is active (roadmap §6c), the scheduler already
+	// migrated individuals per the epoch's migration matrix (in Apply, before Birth)
+	// and owns population structure, so here we only mate within each deme that is
+	// currently present in the population — no scalar island migration.
+	if model.DemographyScheduler != nil {
+		mateByDeme(model, pop, availableMen, availableWomen)
+		return
+	}
+
+	numDemes := int(model.Parameters["num_demes"])
+	if numDemes <= 1 {
+		// Single-population default: identical to pre-deme behavior.
+		modules.DispatchMating(model, pop, availableMen, availableWomen)
+		return
+	}
+
+	// Island model (roadmap §6b): individuals may migrate between demes, then mate
+	// only within their (possibly new) deme. This gives the discrete population
+	// structure the differentiation statistics (Fst / f-stats) measure.
+	migrateDemes(model, pop, numDemes)
+
+	// Mate within each deme independently by dispatching the selected module once
+	// per deme. Reuses every existing mating module unchanged (they simply operate
+	// on the deme's subset of eligible men/women). Iterate demes in ascending order
+	// so RNG is consumed deterministically.
+	menByDeme := bucketByDeme(pop, availableMen)
+	womenByDeme := bucketByDeme(pop, availableWomen)
+	for deme := 0; deme < numDemes; deme++ {
+		men := menByDeme[deme]
+		women := womenByDeme[deme]
+		if len(men) == 0 || len(women) == 0 {
+			continue
+		}
+		modules.DispatchMating(model, pop, men, women)
+	}
+}
+
+// mateByDeme dispatches the selected mating module once per deme actually present
+// in the population (unlike the island path, the set of demes changes over a
+// demographic run as splits activate new demes). Demes are iterated in ascending
+// order so RNG is consumed deterministically.
+func mateByDeme(model *core.Model, pop *core.Pop, availableMen, availableWomen []int) {
+	menByDeme := bucketByDeme(pop, availableMen)
+	womenByDeme := bucketByDeme(pop, availableWomen)
+
+	demeSet := make(map[int]struct{}, len(menByDeme)+len(womenByDeme))
+	for d := range menByDeme {
+		demeSet[d] = struct{}{}
+	}
+	for d := range womenByDeme {
+		demeSet[d] = struct{}{}
+	}
+	demes := make([]int, 0, len(demeSet))
+	for d := range demeSet {
+		demes = append(demes, d)
+	}
+	sort.Ints(demes)
+
+	for _, deme := range demes {
+		men := menByDeme[deme]
+		women := womenByDeme[deme]
+		if len(men) == 0 || len(women) == 0 {
+			continue
+		}
+		modules.DispatchMating(model, pop, men, women)
+	}
+}
+
+// migrateDemes moves each individual to a uniformly-random *other* deme with
+// probability deme_migration_rate. This is the island model's gene-flow channel:
+// a migrant subsequently mates in its new deme. Individuals are visited in sorted
+// order so the RNG stream (hence the whole run) stays reproducible under a fixed
+// rng_seed. A no-op when the migration rate is 0.
+func migrateDemes(model *core.Model, pop *core.Pop, numDemes int) {
+	m := model.Parameters["deme_migration_rate"]
+	if m <= 0 || numDemes < 2 {
+		return
+	}
+	ids := make([]int, 0, len(pop.IndData))
+	for id := range pop.IndData {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+	for _, id := range ids {
+		if utils.RandFloat64() >= m {
+			continue
+		}
+		cur := pop.IndData[id][individual.Deme]
+		// Draw a different deme uniformly: pick in [0, numDemes-1) then shift past
+		// the current one.
+		dst := utils.RandIntn(numDemes - 1)
+		if dst >= cur {
+			dst++
+		}
+		pop.IndData[id][individual.Deme] = dst
+	}
+}
+
+// bucketByDeme groups ids by their Deme field, preserving the (already sorted)
+// input order within each bucket.
+func bucketByDeme(pop *core.Pop, ids []int) map[int][]int {
+	buckets := make(map[int][]int)
+	for _, id := range ids {
+		d := pop.IndData[id][individual.Deme]
+		buckets[d] = append(buckets[d], id)
+	}
+	return buckets
 }
 
 // createInfluenceGrid creates a grid where each cell contains IDs of women who can mate there
