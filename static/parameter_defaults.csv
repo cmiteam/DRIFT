@@ -66,6 +66,8 @@ joint_sfs_sample_size,Joint SFS Sample Size,Text,int,0,Analysis
 joint_sfs_demes,Joint SFS Demes,Text,string,,Analysis
 track_het_distance,Track Heterozygosity vs Distance,Check,bool,0,Analysis
 het_distance_sample_size,Het-Distance Sample Size,Text,int,0,Analysis
+track_validation,Neutral Validation Report,Check,bool,0,Analysis
+validation_sample_size,Validation Sample Size,Text,int,0,Analysis
 deme_inheritance,Deme Inheritance,Text,string,paternal,Population
 generation_time,Generation Time (yrs),Text,float,25,Population
 track_map,Track on Map,Check,bool,1,Maps

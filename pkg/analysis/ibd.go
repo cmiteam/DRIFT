@@ -195,8 +195,11 @@ func SampleIDs(pop *core.Pop, n int) []int {
 	for id := range pop.Chromosomes {
 		ids = append(ids, id)
 	}
+	// Sort BEFORE shuffling so the subsample is a deterministic function of the RNG
+	// stream: ids come from map iteration order (randomized per run), so shuffling
+	// that directly would select a different subset each run under the same seed.
+	sort.Ints(ids)
 	if n <= 0 || n >= len(ids) {
-		sort.Ints(ids) // stable output when not subsampling
 		return ids
 	}
 	utils.RandShuffle(len(ids), func(i, j int) { ids[i], ids[j] = ids[j], ids[i] })

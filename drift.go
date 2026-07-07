@@ -9,6 +9,7 @@ import (
 	"drift/pkg/modules"
 	"drift/pkg/simulation"
 	"drift/pkg/utils"
+	"drift/pkg/validation"
 	"drift/pkg/visualization"
 	"drift/pkg/webserver"
 	"encoding/json"
@@ -49,6 +50,42 @@ func main() {
 
 	// Parse the command-line arguments
 	commands := config.ParseCommandLine()
+
+	// Neutral-expectation validation harness (roadmap §6h). Standalone mode: drives
+	// the real engine through a strictly neutral scenario over replicate seeds and
+	// checks the emergent statistics (SFS, theta_W/theta_pi, Tajima's D, HWE) against
+	// DRIFT's characterized neutral baseline. Exits non-zero if any check fails so it
+	// can gate CI. Does not need a model.
+	if commands.Validate {
+		cfg := validation.DefaultNeutralConfig()
+		fmt.Printf("Running neutral-expectation validation (§6h): R=%d replicates, N=%d, mu=%.3g, burn-in=%dy ...\n",
+			cfg.Replicates, cfg.N, cfg.Mu, cfg.BurnInYears)
+		res := validation.RunNeutral(cfg)
+		tol := validation.CharacterizedTolerances()
+		validation.PrintSummary(res, tol)
+
+		if err := os.MkdirAll(commands.Results, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating results dir: %v\n", err)
+			os.Exit(1)
+		}
+		path := filepath.Join(commands.Results, "neutral_validation.csv")
+		if err := validation.WriteAveragedReport(path, res, tol); err != nil {
+			fmt.Fprintf(os.Stderr, "Error writing validation report: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Wrote validation report to %s\n", path)
+
+		allPass := true
+		for _, c := range res.Checks(tol) {
+			if !c.Pass {
+				allPass = false
+			}
+		}
+		if !allPass {
+			os.Exit(1)
+		}
+		return
+	}
 
 	// If web mode is enabled, start the web server
 	if commands.WebMode {
@@ -368,6 +405,16 @@ func main() {
 			hd := analysis.ComputeHetDistance(model, pop, ids)
 			if err := analysis.SaveHetDistance(model, hd); err != nil {
 				log.Printf("Error saving heterozygosity-distance results: %v", err)
+			}
+		}
+		if model.Parameters["track_validation"] == 1 {
+			// Neutral-expectation validation (§6h), single-realization diagnostic:
+			// computes SFS/theta/Tajima's D/HWE from THIS run's mutation pool and
+			// scores them against DRIFT's characterized neutral baseline. Requires
+			// track_mutations. For the rigorous replicated pass/fail, run `-validate`
+			// (pkg/validation) instead; a single run's Tajima's D is noisy (SD ~ 1).
+			if err := analysis.SaveNeutralValidation(model, pop); err != nil {
+				log.Printf("Error writing neutral validation report: %v", err)
 			}
 		}
 

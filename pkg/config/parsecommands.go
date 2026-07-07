@@ -24,6 +24,8 @@ type Config struct {
 	SaveState string // name to save the end-of-run state under (in the model's saves/ dir)
 	LoadState string // name of a saved state to start from (resume/fork)
 	ListSaves bool   // list named saves for the model and exit
+
+	Validate bool // run the §6h neutral-expectation validation harness and exit
 }
 
 // Default values for command-line parameters
@@ -85,6 +87,9 @@ func ParseCommandLine() *Config {
 	listSavesArg := flag.Bool("list-saves",
 		false,
 		"list the model's named saved states and exit")
+	validateArg := flag.Bool("validate",
+		false,
+		"run the neutral-expectation validation harness (roadmap §6h) and exit")
 
 	// Parse the command-line arguments
 	flag.Parse()
@@ -115,5 +120,7 @@ func ParseCommandLine() *Config {
 		SaveState: *saveStateArg,
 		LoadState: *loadStateArg,
 		ListSaves: *listSavesArg,
+
+		Validate: *validateArg,
 	}
 }

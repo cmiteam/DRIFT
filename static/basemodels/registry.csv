@@ -5,3 +5,4 @@ Flood,Biblical Flood,Population bottleneck at year 1656 with 8 individuals follo
 Creation,Creation Model,Start with 2 individuals (Adam and Eve),creation
 OoA,Out of Africa,Severe population bottleneck modeling the pre-Out of Africa event,default
 Babel,Babel Single Origin,Single recent origin with sequential dispersal (serial founder effect) as an out-of-Africa counterpart,default
+Neutral,Neutral Validation,Strictly neutral single panmictic population for validating DRIFT against analytic neutral expectations (Tajima's D / SFS / theta / HWE),default

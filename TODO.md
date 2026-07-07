@@ -310,10 +310,51 @@ out-of-Africa story, **(3)** countering critics.
 
 ### 6h. Credibility backbone (do regardless) — goal 3
 
-- [ ] **Validation suite against analytic neutral expectations** — Tajima's D ≈ 0 under
-  neutrality, expected SFS shape, θ = 4Nµ recovery, Hardy-Weinberg. Demonstrating the engine
-  reproduces textbook results *before* any creationist argument is made is the foundation that
-  makes everything else defensible.
+- [x] **Validation suite against analytic neutral expectations.** Demonstrates the engine
+  reproduces (or, where it deviates, transparently *characterizes*) textbook neutral results
+  before any creationist argument is made. **Landed 2026-07-07.**
+  - **KEY ARCHITECTURAL FINDING.** DRIFT has two independent genetic-bookkeeping systems, and
+    only one supports the θ = 4Nµ equilibrium: the **Chromosomes bitfield** (read by
+    SFS/VCF/Fst/joint-SFS/het-distance) holds only FOUNDER standing variation seeded at t=0 and
+    receives **no de-novo input** during a run — it only drifts to loss/fixation, never reaching
+    mutation-drift equilibrium. De-novo mutations enter the **mutation pool** (`pop.IndMutations`
+    + `pop.MutationPool`, gated by `track_mutations`), which has continuous Poisson(mu) input and
+    hence the equilibrium the neutral expectations require. §6h therefore computes its SFS/θ/
+    Tajima's D/HWE from the **mutation pool**, not the bitfield.
+  - **Statistics** (`pkg/analysis/neutral.go`: `ComputeNeutralStats`, `SampleLiving`, expected
+    1/i SFS + `SFSShapeChiSquare`, `BuildReport`/`SaveNeutralValidation`). Each distinct mutation
+    id is one infinite-sites segregating "site"; derived count = carrying strand copies in the
+    sample; het iff exactly one strand carries it. Genome-wide θ_W = S/a_n, θ_π = Σ 2d(2n−d)/
+    (2n(2n−1)); Tajima's D / Fu-Li reuse `stats.go`. Unit tests (`neutral_test.go`) verify every
+    statistic on a hand-built pool (exact θ_π=1.25, θ_W=3/a₇, D=0.3304, F_IS=0.3143, SFS bins).
+  - **End-to-end harness** (`pkg/validation/`, `RunNeutral` + `-validate` CLI). Drives the REAL
+    engine (Birth/Mating/Death, mutation kernel, xoshiro RNG) through a strictly neutral scenario
+    (`track_mutations=1`, `f_neutral=1` ⇒ every mutation neutral, `track_DNA=0`, `num_demes=1`)
+    over replicate seeds; averages to tame Monte-Carlo noise and pools the SFS across replicates.
+    θ equilibrates by ~500 y; default burn-in 1500 y, 12 replicates, N=120, mu=1.
+  - **WHAT DRIFT ACTUALLY DOES (finding, decided with Rob).** Two textbook expectations hold and
+    are asserted tightly: **HWE** (F_IS ≈ 0) and **θ recovery** (θ_W and θ_π both recover a
+    stable, reproducible θ ⇒ implied **Ne = θ_W/(2mu)** consistent across seeds; Ne ≈ 0.15–0.20 N
+    — emergent because DRIFT is overlapping-generations/monogamous/age-structured, NOT WF). But
+    DRIFT does **not** reproduce the WF **Tajima's D ≈ 0**: under strict neutrality it robustly
+    yields **D ≈ −0.55 to −0.9** and **θ_π/θ_W ≈ 0.75** (a systematic *excess of rare variants*)
+    across every sustainable life history tested — a real consequence of its high reproductive
+    variance (monogamy ⇒ many zero-offspring individuals; high-fecundity birth-then-cull ⇒ a
+    repeated within-generation expansion/contraction that skews the coalescent). Per Rob's call,
+    the harness **characterizes** this reproducible baseline (regression guard) rather than
+    faking D ≈ 0; any D/SFS-based inference on DRIFT output must account for the skew.
+  - **Runnable modes.** `drift -validate` runs the replicated harness, writes
+    `neutral_validation.csv`, and exits non-zero on failure (CI gate). Any normal
+    mutation-tracking run with `track_validation=1` also emits a single-realization diagnostic
+    (`<model>_validation_*.csv`). Shipped **`Neutral`** base model (`static/basemodels/Neutral/`,
+    registered) + a compact `users/smoke/models/Neutraltest` fixture (verified e2e: PASS,
+    D=−0.94, F_IS=−0.11, Ne/N=0.17). e2e reproducibility + all checks tested in
+    `pkg/validation/validation_test.go`.
+  - **Also fixed** a latent determinism bug in `SampleIDs`/`SampleLiving`: the id slice was built
+    from randomized map-iteration order and then shuffled, so a subsample differed between runs
+    under a fixed seed. Now sorted before shuffling (subsample is a deterministic function of the
+    RNG stream). Mutation-pool sums also iterate ids in sorted order (float addition isn't
+    associative) so θ_π/F_IS are bit-reproducible.
 - [ ] **ABC-readiness.** Once standard summary stats are emitted, DRIFT slots into Approximate
   Bayesian Computation — reframing it from "a simulator" to "an inference engine that can fit any
   model, including ours."
