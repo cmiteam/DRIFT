@@ -58,12 +58,12 @@ func birthStandard(model *core.Model, pop *core.Pop) {
 			pop.IndData[ind][individual.MarriageState] = -1
 			continue
 		}
-		// TO DO: fitness ALSO affects survivorship each year, work out a way to
-		// use fitness for birth OR survivorship OR both
+		// Fitness selection is governed by selection_mode (roadmap §2): it can act on
+		// fecundity (here), viability (death.go), both, or neither.
 
 		// the average of the maternal and paternal fitness affects birth probability
 		fitness := 1.0
-		if model.Parameters["track_mutations"] == 1 {
+		if fecunditySelection(model) {
 			pfit := float64(pop.IndData[dad][individual.Fitness])
 			mfit := float64(pop.IndData[mom][individual.Fitness])
 			fitness = (pfit + mfit) / 2

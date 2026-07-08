@@ -42,10 +42,10 @@ func deathStandard(model *core.Model, pop *core.Pop) int {
 		die := utils.RandFloat64() // low roll = death
 		riskModification := model.Parameters["min_lifespan"] / float64(pop.IndData[ind][individual.Lifespan])
 		fitness := 1.0
-		if model.Parameters["track_mutations"] == 1 {
+		if viabilitySelection(model) {
 			fitness = float64(pop.IndData[ind][individual.Fitness]) / model.Parameters["mu_scale_factor"]
 		}
-		adjustedDeathRisk := deathrisk * riskModification * fitness
+		adjustedDeathRisk := deathrisk * riskModification * viabilityHazardFactor(fitness)
 		if die < adjustedDeathRisk {
 			if model.FreeParameters["seed"] == ind {
 				if age < pop.IndData[ind][individual.Lifespan] {

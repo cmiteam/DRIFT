@@ -70,9 +70,18 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` needs 
 
 ## 2. Selection & demography
 
-- [ ] **Resolve fitness/survivorship TODO** (`pkg/simulation/birth.go:55-56`). Fitness currently
-  only gates birth probability. Wire it into death/viability (`pkg/methods/death_fitness.go` is a
-  one-line stub) with a parameter to select fecundity vs. viability vs. both selection.
+- [x] **Resolve fitness/survivorship TODO.** Fitness now acts on birth, survival, both, or neither,
+  selected by a new **`selection_mode`** string param (`fecundity` (default) | `viability` | `both`
+  | `none`), plumbed via `pkg/simulation/selection.go`. `birth.go`'s fecundity gate is now
+  `fecunditySelection(model)`. **Also fixed an inverted viability bug:** `deathStandard` multiplied
+  death risk by raw `fitness` (≤1 for deleterious load), which made *less-fit* individuals die
+  *less*; it now multiplies by `viabilityHazardFactor(fitness) = clamp₀(2 − fitness)` (= 1 − load),
+  so lower fitness ⇒ higher hazard, gated on `viabilitySelection(model)`. The `selection` dropdown
+  param and `pkg/methods/death_fitness.go` (empty stub) were both dead and are left as-is.
+  **Compatibility:** neutral runs have fitness = 1 ⇒ hazard factor 1 and birth prob 1 under every
+  mode ⇒ byte-identical (§6h unaffected); only non-neutral runs change (and the old viability
+  direction was a bug). Unit tests in `pkg/simulation/selection_test.go`; verified e2e (modes
+  diverge; viability raises mean fitness 0.99411→0.99438 by purging load). Landed 2026-07-07.
 - [ ] **Density dependence / carrying capacity.** Add a logistic carrying-capacity term (ideally
   local to map density) so runs aren't pure exponential-growth-or-extinction. Enables realistic
   post-bottleneck recovery curves.
