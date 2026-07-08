@@ -79,8 +79,31 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` needs 
   for `fitness_model`, `selection_mode=none` so genotypes stay byte-identical — nMuts=3190 in all):
   mean fitness ordered synergistic 0.97372 < additive 0.97453 < multiplicative 0.97488, the expected
   severity ordering. Landed 2026-07-08.
-- [ ] **Mutation-class spectrum.** Separate classes: point / indel / CNV / large deletion, each
-  with its own rate and effect distribution.
+- [x] **Mutation-class spectrum.** `GenerateNewMutations` (`pkg/utils/mutation.go`) now draws a
+  configurable spectrum of mutation classes (point / indel / CNV / large deletion, …) instead of a
+  single uniform `mu` + one Weibull DFE. Each class (`pkg/utils/mutation_class.go`: `MutationClass`)
+  carries its own **rate** (Poisson mean), effect distribution (**reuses the existing Weibull
+  machinery** — per-class `shape`/`scale`/`Weibull_adj` + `f_neutral`/`f_beneficial`), dominance,
+  and a **target `size`** (bits). The kernel iterates classes in spec order, drawing
+  `Poisson(class.rate)` per class and stamping each mutation with its **class index** (new
+  `core.Mutation.Class`) and **size** (`core.Mutation.Size`) so downstream stats can filter/partition
+  by class. Configured via a new **`mutation_classes`** string param — a `;`-separated list of
+  `<name> key=value …` entries (fields whitespace/`;`-separated, never commas ⇒ no CSV quoting;
+  omitted fields inherit the model globals, e.g. `point rate=8; indel rate=1 scale=0.15 size=10`).
+  **Compatibility:** with `mutation_classes` unset the spectrum collapses to a single "point" class
+  whose rate/DFE are the model globals, so the kernel draws the **identical RNG stream** (one
+  `Poisson(mu)`, then the same per-mutation draws) and builds the identical pool as before — a strict
+  no-op (`TestDefaultSpectrumByteIdentical` asserts field-for-field pool equality + aligned RNG tail
+  vs an inlined copy of the legacy kernel; `drift -validate` still **PASS**, D=−0.89, π/W=0.740,
+  Ne/N=0.188, unchanged). Param added to `parameter_defaults.csv` (Mutation group, empty default).
+  Unit tests (`mutation_class_test.go`: byte-identity, spec parsing + field inheritance/overrides +
+  malformed-token skip, and a real-kernel run over 3000 individuals confirming counts track rates
+  and mean |effect| tracks scale). **Verified end-to-end** through the real engine (temp
+  `smoke/MutClassTest`, 3 classes point/indel/large_del, checkpoint→reload→tally): at year 400 the
+  segregating pool partitions by class with counts 91:18:10 (rates 0.7:0.2:0.1), sizes 1/10/1000, and
+  mean |effect| ordered 9e-9 < 1.5e-7 < 3.9e-7 (scales 0.01/0.15/0.5) — distinguishable rates and
+  effects. Landed 2026-07-08. NOTE: `core.Mutation` gained two fields; gob tolerates the addition so
+  old checkpoints still decode (Class=0/point, Size=0), no `SchemaVersion` bump.
 - [ ] **Variable mutation rate.** Regional rate variation / hotspots instead of one uniform `mu`
   with uniformly-random position (`pkg/utils/mutation.go:48-54`).
 - [ ] **Linkage-aware mutation positions.** Tie mutation position to the `ChromosomeArms`

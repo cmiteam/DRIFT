@@ -2,7 +2,6 @@ package utils
 
 import (
 	"drift/pkg/core"
-	"math"
 	"sort"
 )
 
@@ -40,53 +39,68 @@ func InheritMutations(pop *core.Pop, genomemask []uint64, parent int, child int,
 	}
 }
 
+// GenerateNewMutations adds de-novo mutations to individual ind, drawing each
+// mutation class in the configured spectrum (roadmap §1) independently.
+//
+// For each class it draws Poisson(class.Rate) new mutations and, per mutation,
+// the same sequence as the historical single-class kernel: position, a
+// neutral/non-neutral coin, (if non-neutral) a Weibull magnitude + a
+// deleterious/beneficial coin, then a strand. The mutation records its class
+// index and target size so downstream stats can partition by class.
+//
+// NEUTRAL NO-OP (preserved for the §6h -validate harness): with mutation_classes
+// unset the spectrum is a single point class whose rate and DFE are the model's
+// global mu / Weibull / dominance params, so the loop draws exactly one
+// Poisson(mu) and then the identical per-mutation RNG stream as before the
+// spectrum existed — strictly-neutral runs stay byte-identical.
 func GenerateNewMutations(model *core.Model, pop *core.Pop, ind int) {
+	classes := MutationClasses(model)
+	muScale := model.Parameters["mu_scale_factor"]
+	genomeBits := int(model.FreeParameters["genome_bits"])
 
-	numNewMutations := RandPoisson(model.Parameters["mu"])
-
-	// Dominance coefficient h for new mutations. Default 0.5 (additive) when the
-	// param is absent — models created before fitness_dominance existed don't
-	// carry the key, and a bare map lookup would silently yield h=0 (recessive).
-	dominancePct := 50
-	if h, ok := model.Parameters["fitness_dominance"]; ok {
-		dominancePct = int(math.Round(h * 100))
-	}
-
-	for i := 0; i < numNewMutations; i++ {
-		model.FreeParameters["mutID"]++
-		mutationID := model.FreeParameters["mutID"]
-		position := RandIntn(int(model.FreeParameters["genome_bits"]))
-		mutationEffect := 0.0
-		isMutationNonNeutral := RandFloat64()
-		if isMutationNonNeutral >= model.Parameters["f_neutral"] {
-			mutationEffect = WeibullRandom(model.Parameters["shape"], model.Parameters["scale"]) / model.Parameters["Weibull_adj"]
-			isMutationDeleterious := RandFloat64()
-			if isMutationDeleterious > model.Parameters["f_beneficial"] {
-				mutationEffect = -mutationEffect
+	for classIdx, class := range classes {
+		numNewMutations := RandPoisson(class.Rate)
+		for i := 0; i < numNewMutations; i++ {
+			model.FreeParameters["mutID"]++
+			mutationID := model.FreeParameters["mutID"]
+			position := RandIntn(genomeBits)
+			mutationEffect := 0.0
+			isMutationNonNeutral := RandFloat64()
+			if isMutationNonNeutral >= class.FNeutral {
+				mutationEffect = WeibullRandom(class.Shape, class.Scale) / class.WeibullAdj
+				isMutationDeleterious := RandFloat64()
+				if isMutationDeleterious > class.FBeneficial {
+					mutationEffect = -mutationEffect
+				}
 			}
-		}
-		pop.MutationHist[int(mutationEffect*model.Parameters["mu_scale_factor"])]++
+			pop.MutationHist[int(mutationEffect*muScale)]++
 
-		strand := RandIntn(2)
-		if pop.IndMutations[ind] == nil {
-			pop.IndMutations[ind] = make(map[int][]int)
-		}
-		if pop.IndMutations[ind][strand] == nil {
-			pop.IndMutations[ind][strand] = []int{}
-		}
-		pop.IndMutations[ind][strand] = append(pop.IndMutations[ind][strand], mutationID)
-		pop.MutationPool[mutationID] = core.Mutation{
-			Id:       mutationID,
-			Position: position,
-			Effect:   mutationEffect,
-			Origin:   ind,
-			Count:    1,
-			// Dominance coefficient h, stored as an int percentage (h*100): 0 =
-			// fully recessive, 100 = fully dominant, 50 = additive/codominant. It
-			// weights a mutation's Effect in the heterozygous state (see
-			// CountFitnessAndMutations). A single global h (fitness_dominance) is
-			// used for now; a per-mutation DFE-linked h would just vary this line.
-			Dominance: dominancePct,
+			strand := RandIntn(2)
+			if pop.IndMutations[ind] == nil {
+				pop.IndMutations[ind] = make(map[int][]int)
+			}
+			if pop.IndMutations[ind][strand] == nil {
+				pop.IndMutations[ind][strand] = []int{}
+			}
+			pop.IndMutations[ind][strand] = append(pop.IndMutations[ind][strand], mutationID)
+			pop.MutationPool[mutationID] = core.Mutation{
+				Id:       mutationID,
+				Position: position,
+				Effect:   mutationEffect,
+				Origin:   ind,
+				Count:    1,
+				// Dominance coefficient h, stored as an int percentage (h*100): 0 =
+				// fully recessive, 100 = fully dominant, 50 = additive/codominant. It
+				// weights a mutation's Effect in the heterozygous state (see
+				// CountFitnessAndMutations). Inherited from the class (which defaults
+				// to the global fitness_dominance); a per-mutation DFE-linked h would
+				// just vary this line.
+				Dominance: class.Dominance,
+				// Class spectrum bookkeeping (roadmap §1): the class index and its
+				// target size, so downstream analysis can filter by mutation class.
+				Class: classIdx,
+				Size:  class.Size,
+			}
 		}
 	}
 }

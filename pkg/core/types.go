@@ -109,6 +109,12 @@ type Mutation struct {
 	Origin    int     // Original individual
 	Dominance int     // 0, 100, or somewhere in between
 	Count     int     // Number of instances in circulation
+	Class     int     // Mutation-class index (roadmap §1): 0 = point, 1.. per the
+	// configured mutation_classes spectrum. Lets downstream stats filter/partition
+	// mutations by class (point / indel / CNV / large deletion). Default 0 (point),
+	// which is also the gob zero value, so old checkpoints decode unchanged.
+	Size int // Target size in genome bits recorded for this mutation's class
+	// (1 for point substitutions; larger for indel / CNV / large-deletion classes).
 }
 
 type AlleleCounts struct {
