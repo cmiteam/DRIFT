@@ -149,8 +149,8 @@ func birthStandard(model *core.Model, pop *core.Pop) {
 					utils.InheritMutations(pop, genomemask0, dad, child, 0)
 					utils.InheritMutations(pop, genomemask1, mom, child, 1)
 					utils.GenerateNewMutations(model, pop, child)
-					numMutations, mutationLoad := utils.CountFitnessAndMutations(pop, child)
-					fitness := 1 + mutationLoad
+					numMutations, mutationFitness := utils.CountFitnessAndMutations(pop, child, model)
+					fitness := mutationFitness
 					pop.IndData[child][individual.Fitness] = int(float64(fitness) * model.Parameters["mu_scale_factor"])
 					pop.IndData[child][individual.NumMutations] = numMutations
 				}

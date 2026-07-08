@@ -110,15 +110,15 @@ func addMutation(pop *core.Pop, ind int, position int, copy int, value int) {
 // homozygous derived and contributes its full Effect; carried on ONE strand it
 // is heterozygous and contributes h*Effect, where h is the mutation's dominance
 // coefficient (Mutation.Dominance/100; h=0 recessive, 0.5 additive, 1 dominant).
-// Per-locus contributions are summed additively (fitness = 1 + load; Effect is
-// negative for deleterious mutations). Homozygosity here means the SAME mutation
+// Per-locus contributions are combined per the fitness_model param (see
+// CombineFitness, fitness.go). Homozygosity here means the SAME mutation
 // on both strands (identity by descent) — the mechanism that makes recessive
 // load express under bottlenecks/founder events, when IBD rises.
 //
 // Returns the total number of mutation copies carried (both strands) and the
-// summed fitness load. Iteration is done in sorted order (strands, then mutation
+// combined relative fitness (per fitness_model). Iteration is sorted (strands, then mutation
 // ids) so the float sum is reproducible under a fixed seed.
-func CountFitnessAndMutations(pop *core.Pop, ind int) (int, float64) {
+func CountFitnessAndMutations(pop *core.Pop, ind int, model *core.Model) (int, float64) {
 	strands := pop.IndMutations[ind]
 	if len(strands) == 0 {
 		return 0, 0.0
@@ -148,7 +148,7 @@ func CountFitnessAndMutations(pop *core.Pop, ind int) (int, float64) {
 	}
 	sort.Ints(ids)
 
-	load := 0.0
+	contribs := make([]float64, 0, len(ids))
 	for _, id := range ids {
 		mutation, found := pop.MutationPool[id]
 		if !found {
@@ -156,11 +156,11 @@ func CountFitnessAndMutations(pop *core.Pop, ind int) (int, float64) {
 		}
 		if copies[id] >= 2 {
 			// Homozygous derived: full effect.
-			load += mutation.Effect
+			contribs = append(contribs, mutation.Effect)
 		} else {
 			// Heterozygous: effect weighted by the dominance coefficient h.
-			load += float64(mutation.Dominance) / 100.0 * mutation.Effect
+			contribs = append(contribs, float64(mutation.Dominance)/100.0*mutation.Effect)
 		}
 	}
-	return numCopies, load
+	return numCopies, CombineFitness(contribs, model)
 }

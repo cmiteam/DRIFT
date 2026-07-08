@@ -59,8 +59,26 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` needs 
   Done 2026-07-07 alongside the §0 dominance item: `CountFitnessAndMutations` now scores each
   mutation locus by zygosity (hom = full `Effect`, het = `h·Effect`) rather than the old
   strand-keyed sum. Epistasis / multiplicative-vs-additive across loci remains the next §1 item.
-- [ ] **Epistasis / synergistic load.** Toggle between additive, multiplicative, and synergistic
-  fitness models so they can be compared (live debate in the genetic-entropy literature).
+- [x] **Epistasis / synergistic load.** A new **`fitness_model`** string param
+  (`additive` (default) | `multiplicative` | `synergistic`) toggles how the per-locus contributions
+  from `CountFitnessAndMutations` combine into relative fitness (`pkg/utils/fitness.go`:
+  `CombineFitness`/`FitnessModel`). With c_i = locus i's contribution (full `Effect` if homozygous
+  derived, h·`Effect` if het; from the §0 dominance scoring) and L = Σc_i the additive load:
+  **additive** w = 1 + L; **multiplicative** w = Π(1 + c_i) (independent loci — can't cross zero, so
+  always ≥ additive for deleterious load); **synergistic** w = 1 + L + β·L·|L| (deleterious load
+  *accelerates* — each further mutation costs more than the last, the genetic-entropy claim), where
+  β is a new **`epistasis_coefficient`** param (default 1; β = 0 reduces synergistic exactly to
+  additive; for uniform effect s this is the standard quadratic w = 1 + n·s − β·n²·s²).
+  `CountFitnessAndMutations` now takes the model and returns the *combined fitness* (was the additive
+  load); `birth.go` uses it directly. **Compatibility:** the additive path is unchanged arithmetic
+  (fitness = 1 + Σc_i, same sorted-id summation order, no new RNG); with no non-neutral mutations
+  every c_i = 0 ⇒ all three models return exactly 1.0 ⇒ neutral runs byte-identical (§6h `-validate`
+  still PASS). Both new params added to `parameter_defaults.csv` (Mutation group). Unit tests
+  (`mutation_test.go`: per-model combination values, additive-unchanged, and an explicit
+  zero-load-⇒-1.0 no-op guard for all three). **Verified end-to-end** (three models identical but
+  for `fitness_model`, `selection_mode=none` so genotypes stay byte-identical — nMuts=3190 in all):
+  mean fitness ordered synergistic 0.97372 < additive 0.97453 < multiplicative 0.97488, the expected
+  severity ordering. Landed 2026-07-08.
 - [ ] **Mutation-class spectrum.** Separate classes: point / indel / CNV / large deletion, each
   with its own rate and effect distribution.
 - [ ] **Variable mutation rate.** Regional rate variation / hotspots instead of one uniform `mu`
