@@ -37,15 +37,28 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` needs 
   `parameter_defaults.csv`, discarding the base model's overrides. Symptoms: wrong model name
   (writes `Default_results.csv`), wrong flags (`track_map` re-enabled → empty-map load → panic).
   Only the user-model path (`-username/-model`) is currently usable. Found 2026-07-02.
-- [ ] **Activate mutation dominance.** `Mutation.Dominance` (`pkg/core/types.go:75`) exists but is
-  hardcoded to `0` and ignored. Fitness is currently purely additive
-  (`fitnessEffect += mutation.Effect`, `pkg/utils/mutation.go:103`). Add a dominance coefficient
-  *h* and compute genotype fitness per-locus. Unlocks realistic recessive-load behavior under
-  bottlenecks — central to founder/Flood scenarios.
+- [x] **Activate mutation dominance.** `Mutation.Dominance` was hardcoded to `0` and ignored, and
+  the old `CountFitnessAndMutations` was **broken** — it ranged over `pop.IndMutations[child]` whose
+  keys are strand indices (0/1), not mutation ids, so it summed the Effect of mutation ids 0/1 only
+  and reported `numMutations` as the strand count (≤2). Rewrote it as **per-locus genotype fitness
+  with dominance** (`pkg/utils/mutation.go`): each distinct mutation id is one biallelic locus
+  (infinite-sites); carried on both inherited strands ⇒ homozygous ⇒ full `Effect`; on one strand ⇒
+  heterozygous ⇒ `h·Effect`. Load sums additively (fitness = 1 + load). `Mutation.Dominance` is now
+  populated at creation from a new global **`fitness_dominance`** param (h·100; default **0.5** =
+  additive, 0 = recessive, 1 = dominant) and read back per-locus, so h travels with each mutation
+  (a future DFE-linked per-mutation h is a one-line change). Homozygosity = the *same* mutation id
+  on both strands (identity by descent) — the mechanism that makes recessive load express under
+  bottlenecks/founder events. **Compatibility:** no new RNG is drawn and neutral runs (Effect=0)
+  give load=0 ⇒ byte-identical (§6h validation unaffected); only non-neutral mutation runs change
+  (and they were broken before). Unit tests in `pkg/utils/mutation_test.go`; verified e2e
+  (recessive hides het load, dominant depresses fitness). Landed 2026-07-07.
 
 ## 1. Genetics realism
 
-- [ ] **Per-locus genotype fitness with dominance** (see above) instead of strand-summed effects.
+- [x] **Per-locus genotype fitness with dominance** (see §0) instead of strand-summed effects.
+  Done 2026-07-07 alongside the §0 dominance item: `CountFitnessAndMutations` now scores each
+  mutation locus by zygosity (hom = full `Effect`, het = `h·Effect`) rather than the old
+  strand-keyed sum. Epistasis / multiplicative-vs-additive across loci remains the next §1 item.
 - [ ] **Epistasis / synergistic load.** Toggle between additive, multiplicative, and synergistic
   fitness models so they can be compared (live debate in the genetic-entropy literature).
 - [ ] **Mutation-class spectrum.** Separate classes: point / indel / CNV / large deletion, each

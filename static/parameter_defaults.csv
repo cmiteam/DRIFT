@@ -41,6 +41,7 @@ mutation_hist,Mutation Histogram,Check,bool,1,Mutation
 shape,Weibull Shape,Text,float,1,Mutation
 scale,Weibull Scale,Text,float,0.05,Mutation
 Weibull_adj,Weibull Adjustment,Text,int,1000000,Mutation
+fitness_dominance,Mutation Dominance (h),Text,float,0.5,Mutation
 track_drift,Track Drift,Check,bool,0,Tracking
 track_dead,Track Dead,Check,bool,0,Tracking
 track_SFS,Site Frequency Spectrum,checkbox,float,0,Tracking
