@@ -48,6 +48,11 @@ func InheritMutations(pop *core.Pop, genomemask []uint64, parent int, child int,
 // deleterious/beneficial coin, then a strand. The mutation records its class
 // index and target size so downstream stats can partition by class.
 //
+// The position is drawn uniformly by default, or — when the class carries a
+// regional rate map (the `mutation_rate_map` param, or a per-class `ratemap=`
+// override; roadmap §1) — in proportion to per-region rate multipliers so
+// mutations concentrate in hotspots. The uniform path is the strict no-op.
+//
 // NEUTRAL NO-OP (preserved for the §6h -validate harness): with mutation_classes
 // unset the spectrum is a single point class whose rate and DFE are the model's
 // global mu / Weibull / dominance params, so the loop draws exactly one
@@ -63,7 +68,15 @@ func GenerateNewMutations(model *core.Model, pop *core.Pop, ind int) {
 		for i := 0; i < numNewMutations; i++ {
 			model.FreeParameters["mutID"]++
 			mutationID := model.FreeParameters["mutID"]
-			position := RandIntn(genomeBits)
+			// Position draw: uniform by default (strict no-op — the identical single
+			// RandIntn(genome_bits) draw as before variable rates existed), or a
+			// rate-weighted draw when this class carries a regional rate map (§1).
+			var position int
+			if class.RateMap == nil {
+				position = RandIntn(genomeBits)
+			} else {
+				position = class.RateMap.Draw()
+			}
 			mutationEffect := 0.0
 			isMutationNonNeutral := RandFloat64()
 			if isMutationNonNeutral >= class.FNeutral {

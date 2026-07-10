@@ -29,6 +29,12 @@ type MutationClass struct {
 	WeibullAdj  float64 // divisor applied to the drawn magnitude
 	Dominance   int      // h*100 stamped on new mutations of this class
 	Size        int      // target size in genome bits recorded on each mutation
+	// RateMap makes this class's mutation POSITIONS non-uniform along the genome
+	// (roadmap §1). Nil = uniform (the strict no-op: RandIntn(genome_bits)); non-nil
+	// draws positions weighted by regional rate multipliers. A class inherits the
+	// global `mutation_rate_map` by default and can override it per-class via a
+	// `ratemap=` token (or opt out to uniform with `ratemap=none`).
+	RateMap *RateMap
 }
 
 // dominancePct reads the global dominance coefficient h (fitness_dominance) as an
@@ -81,8 +87,14 @@ func defaultMutationClass(model *core.Model) MutationClass {
 //
 //	point rate=8; indel rate=1 scale=0.15 size=10; large_deletion rate=0.1 fneutral=0 fbeneficial=0 scale=0.4 size=1000
 func MutationClasses(model *core.Model) []MutationClass {
+	genomeBits := int(model.FreeParameters["genome_bits"])
+	// Global regional rate map, shared by every class unless a class overrides it.
+	// Empty spec -> nil -> uniform positions (strict no-op; see parseRateMap).
+	globalMap := parseRateMap(model.StringParam("mutation_rate_map", ""), genomeBits)
+
 	spec := strings.TrimSpace(model.StringParam("mutation_classes", ""))
 	base := defaultMutationClass(model)
+	base.RateMap = globalMap
 	if spec == "" {
 		return []MutationClass{base}
 	}
@@ -93,7 +105,7 @@ func MutationClasses(model *core.Model) []MutationClass {
 		if entry == "" {
 			continue
 		}
-		classes = append(classes, parseMutationClass(entry, base))
+		classes = append(classes, parseMutationClass(entry, base, genomeBits))
 	}
 	if len(classes) == 0 {
 		// Spec was all separators/whitespace — fall back to the legacy no-op.
@@ -104,7 +116,7 @@ func MutationClasses(model *core.Model) []MutationClass {
 
 // parseMutationClass parses one class entry, starting from base (the model
 // globals) and overriding only the fields the entry names.
-func parseMutationClass(entry string, base MutationClass) MutationClass {
+func parseMutationClass(entry string, base MutationClass, genomeBits int) MutationClass {
 	fields := strings.Fields(entry)
 	c := base
 	if len(fields) == 0 {
@@ -136,6 +148,11 @@ func parseMutationClass(entry string, base MutationClass) MutationClass {
 			c.Dominance = int(math.Round(h * 100))
 		case "size":
 			c.Size = int(math.Round(parseFloatDefault(val, float64(c.Size))))
+		case "ratemap", "rate_map":
+			// Per-class override of the regional rate map. Regions use ',' here
+			// (the class spec already consumes ';'). A value that parses to no
+			// usable map (e.g. "none"/"uniform") yields nil -> uniform positions.
+			c.RateMap = parseRateMap(val, genomeBits)
 		}
 	}
 	return c

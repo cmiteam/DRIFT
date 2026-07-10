@@ -104,8 +104,31 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` needs 
   mean |effect| ordered 9e-9 < 1.5e-7 < 3.9e-7 (scales 0.01/0.15/0.5) — distinguishable rates and
   effects. Landed 2026-07-08. NOTE: `core.Mutation` gained two fields; gob tolerates the addition so
   old checkpoints still decode (Class=0/point, Size=0), no `SchemaVersion` bump.
-- [ ] **Variable mutation rate.** Regional rate variation / hotspots instead of one uniform `mu`
-  with uniformly-random position (`pkg/utils/mutation.go:48-54`).
+- [x] **Variable mutation rate.** Regional rate variation / hotspots instead of one uniform `mu`
+  with a uniformly-random position. A new **`mutation_rate_map`** string param (Mutation group)
+  makes the per-position mutation rate non-uniform: a `;`-separated list of `START-END:MULT` regions
+  (genome-bit range → rate multiplier; positions outside every region keep the baseline multiplier
+  1), e.g. `1000-2000:10; 50000-51000:0.1` = a 10× hotspot + a 0.1× coldspot. Parsed
+  (`pkg/utils/mutation_rate_map.go`: `RateMap`/`parseRateMap`/`Draw`) into weighted genome segments
+  (weight = mult·length); `GenerateNewMutations`' position draw becomes a rate-weighted sample
+  (`RandFloat64` picks a segment, then `RandIntn` within it) **only when a map is present** —
+  otherwise it stays the literal `RandIntn(genome_bits)`. **Composable with the class spectrum:** a
+  single global map is shared by all classes by default; a class can override via a `ratemap=`
+  token in its `mutation_classes` entry (regions comma-separated to dodge the spec's `;`), or opt
+  back to uniform with `ratemap=none` — one separator-agnostic parser serves both. Kept off the
+  `ChromosomeArms`/CSV path deliberately (a per-arm field would force a `chromosome_data.csv` format
+  change and conflate structure with rate policy; a separate map file would miss the params-file
+  provenance). **Compatibility:** `mutation_rate_map` unset ⇒ nil `RateMap` ⇒ the identical single
+  `RandIntn(genome_bits)` draw ⇒ strictly-neutral runs byte-identical (`drift -validate` still
+  **PASS**, D=−0.8930, π/W=0.740, Ne/N=0.188, unchanged). A map that is baseline-1 everywhere also
+  returns nil (indistinguishable from uniform, no stream change). Param added to
+  `parameter_defaults.csv` (Mutation group, empty default). Unit tests
+  (`mutation_rate_map_test.go`: spec parsing/clamping/degenerate-nil, weighted-draw concentration,
+  the empty-map byte-identity no-op vs the legacy uniform oracle, and per-class override/opt-out).
+  **Verified end-to-end** through the real binary (compact Default-based smoke run,
+  `mutation_rate_map=1500-1600:200` over a 3046-bit genome, checkpoint→tally): 66.9% of the
+  segregating de-novo pool landed in the 100-bit (3.3%-of-genome) hotspot vs 3.6% for the
+  same-seed uniform control — an ~18× enrichment where expected. Landed 2026-07-09.
 - [ ] **Linkage-aware mutation positions.** Tie mutation position to the `ChromosomeArms`
   structure so LD, recombination, and selection interact properly.
 
