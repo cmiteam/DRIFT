@@ -5,9 +5,37 @@ import (
 	"sort"
 )
 
-func InheritMutations(pop *core.Pop, genomemask []uint64, parent int, child int, copy int) {
+// InheritMutations passes a parent's de-novo mutations to a child gamete through
+// the same per-birth recombination mask (genomemask) that meiosis applies to the
+// founder Chromosomes bitfield, so mutations that share an arm co-segregate and
+// recombination breaks their linkage with distance (roadmap §1, linkage-aware
+// positions). The genomemask bit at a mutation's Position decides whether it is
+// inherited on this gamete.
+//
+// LINKAGE MODEL (opt-in, default byte-identical). Historically this used the
+// OPPOSITE mask polarity from meiosis: a strand-0 mutation was inherited where
+// mask==0, whereas meiosis takes the copy-0 bitfield allele where mask==1. So a
+// de-novo mutation and a founder allele at the SAME position anti-segregated —
+// the pool and the bitfield were inconsistent users of the same coordinate space
+// (the §6h "de-novo mutations bypass the bitfield" finding). With
+// linkage_model="arm" the polarity is aligned with meiosis, so a mutation at
+// position P now follows the founder bit at P and the two systems co-segregate.
+//
+// The default linkage_model="legacy" preserves the original (inverted) polarity
+// exactly — InheritMutations consumes no RNG, so both paths leave the RNG stream
+// untouched and the default run stays byte-identical (the §6h -validate gate).
+func InheritMutations(model *core.Model, pop *core.Pop, genomemask []uint64, parent int, child int, copy int) {
 	if _, exists := pop.IndMutations[child]; !exists {
 		pop.IndMutations[child] = map[int][]int{0: {}, 1: {}}
+	}
+
+	// Which mask bit value keeps a strand-0 / strand-1 mutation on this gamete.
+	// Legacy: strand0 where mask==0, strand1 where mask==1 (inverted vs meiosis).
+	// Arm: swap them so mutation@P tracks the founder bitfield allele@P (meiosis
+	// takes copy0 where mask==1), reconciling the pool with the bitfield.
+	var keep0, keep1 uint64 = 0, 1
+	if model.StringParam("linkage_model", "legacy") == "arm" {
+		keep0, keep1 = 1, 0
 	}
 
 	for _, mutationID := range pop.IndMutations[parent][0] {
@@ -18,7 +46,7 @@ func InheritMutations(pop *core.Pop, genomemask []uint64, parent int, child int,
 		bitIdx := mutation.Position % 64
 		inheritedStrand := (genomemask[wordIdx] >> bitIdx) & 1
 
-		if int(inheritedStrand) == 0 {
+		if inheritedStrand == keep0 {
 			pop.IndMutations[child][copy] = append(pop.IndMutations[child][copy], mutationID)
 			pop.MutationCount++
 			pop.MutationPool[mutationID] = mutation
@@ -31,7 +59,7 @@ func InheritMutations(pop *core.Pop, genomemask []uint64, parent int, child int,
 		bitIdx := mutation.Position % 64
 		inheritedStrand := (genomemask[wordIdx] >> bitIdx) & 1
 
-		if int(inheritedStrand) == 1 {
+		if inheritedStrand == keep1 {
 			pop.IndMutations[child][copy] = append(pop.IndMutations[child][copy], mutationID)
 			mutation.Count++
 			pop.MutationPool[mutationID] = mutation

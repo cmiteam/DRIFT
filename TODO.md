@@ -129,8 +129,44 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` needs 
   `mutation_rate_map=1500-1600:200` over a 3046-bit genome, checkpoint→tally): 66.9% of the
   segregating de-novo pool landed in the 100-bit (3.3%-of-genome) hotspot vs 3.6% for the
   same-seed uniform control — an ~18× enrichment where expected. Landed 2026-07-09.
-- [ ] **Linkage-aware mutation positions.** Tie mutation position to the `ChromosomeArms`
-  structure so LD, recombination, and selection interact properly.
+- [x] **Linkage-aware mutation positions.** Tie mutation position to the `ChromosomeArms`
+  structure so LD, recombination, and selection interact properly. **Landed 2026-07-23.**
+  - **KEY FINDING (probed empirically before building).** The `ChromosomeArms` ranges *tile*
+    the genome bit space contiguously with no gaps (chr1 `[0,251)`, chr2 `[251,497)`, … up to
+    `genome_bits`), so a de-novo mutation's flat `RandIntn(genome_bits)` position **already** lives
+    on a specific chromosome/arm, and because `InheritMutations` and `meiosis` consume the *same*
+    per-birth `createMask` genomemask, mutations **already** co-segregate by position — a 40k-trial
+    probe on the real kernel showed same-arm pairs co-inherit 0.98 (close) decaying to 0.60 (far)
+    via recombination. So requirement (a) — same-arm mutations physically linked & recombining —
+    was **already satisfied**; the roadmap's "no linkage relationship" was inaccurate.
+  - **The real defect was requirement (b): pool↔bitfield inconsistency.** `InheritMutations` used
+    the *inverted* mask polarity vs `meiosis` (kept a strand-0 mutation where `mask==0`, but meiosis
+    takes the copy-0 founder allele where `mask==1`), so a de-novo mutation and a founder bitfield
+    allele at the **same position perfectly anti-segregated** (probe: agreement 0.000). This is the
+    §6h "de-novo mutations bypass the bitfield" finding made concrete — the two systems were
+    inconsistent users of the same coordinate space.
+  - **Fix (opt-in, chosen with Rob — "reconcile only", scope A over a recombination-model
+    overhaul).** A new **`linkage_model`** string param (Mutation group): default **`legacy`** =
+    the original inverted polarity (byte-identical); **`arm`** aligns `InheritMutations` polarity
+    with `meiosis` so a mutation at position P now follows the founder bit at P and the pool
+    co-segregates with the bitfield (probe under `arm`: agreement 1.000, exactly). Plus a
+    **`PositionArm(model,pos) → (chrom,arm,ok)`** helper (`pkg/utils/genetics.go`) making the
+    position→arm mapping explicit for downstream stats — computed on demand, so **no `core.Mutation`
+    field / checkpoint-schema change**. `InheritMutations` gained a leading `*core.Model` param
+    (both `birth.go` callers updated). The quirky single-interior-segment `createMask` recombination
+    model was left untouched and its overhaul deferred to §6a (real recombination maps).
+  - **Compatibility.** `InheritMutations` consumes **no RNG**, so both polarities leave the RNG
+    stream untouched; with `linkage_model` unset/`legacy` the kept-mutation set is identical
+    ⇒ strictly-neutral runs byte-identical. Verified: `drift -validate` still **PASS**, D=−0.8930,
+    π/W=0.740, Ne/N=0.188, unchanged. Param added to `parameter_defaults.csv` (Mutation group,
+    default `legacy`).
+  - **Tests.** `pkg/utils/mutation_linkage_test.go` — `PositionArm` boundary/out-of-range mapping;
+    a legacy byte-identity oracle (verbatim copy of the old loop) asserting field-for-field pool
+    equality over several masks incl. the unset-default; explicit arm-polarity flip. `pkg/simulation/
+    linkage_test.go` — end-to-end through the *real* `createMask`+`meiosis`+`InheritMutations`:
+    `TestLinkageBitfieldReconciliation` (legacy agreement ≈0 vs arm ≈1 with a founder bit at the
+    same locus) and `TestLinkageSameArmDecay` (close pair co-inherit >0.9, far pair detectably less
+    — recombination breaks linkage). Full suite green; §6h validation package still passes.
 
 ## 2. Selection & demography
 

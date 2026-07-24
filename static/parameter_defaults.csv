@@ -47,6 +47,7 @@ fitness_model,Fitness Model,Text,string,additive,Mutation
 epistasis_coefficient,Epistasis Coefficient,Text,float,1,Mutation
 mutation_classes,Mutation Classes,Text,string,,Mutation
 mutation_rate_map,Mutation Rate Map,Text,string,,Mutation
+linkage_model,Linkage Model,Text,string,legacy,Mutation
 track_drift,Track Drift,Check,bool,0,Tracking
 track_dead,Track Dead,Check,bool,0,Tracking
 track_SFS,Site Frequency Spectrum,checkbox,float,0,Tracking

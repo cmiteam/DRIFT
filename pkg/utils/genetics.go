@@ -66,6 +66,30 @@ func countBlocksInBitRange(words []uint64, start, length int) int {
 	return blocks
 }
 
+// PositionArm maps a genome bit position back to the chromosome and arm whose
+// [start, start+length) range contains it (roadmap §1, linkage-aware positions).
+// The chromosome arms tile the genome coordinate space contiguously, so a de-novo
+// mutation's flat bit index already lives on a specific arm; this makes that
+// mapping explicit so downstream analysis can partition mutations by chromosome/
+// arm, and so linkage-aware inheritance reasons in the same coordinate frame as
+// the founder bitfield. Arms never overlap, so the containing (chrom, arm) is
+// unique. Returns (chrom, arm, true) on a hit, or (0, 0, false) when the position
+// falls outside every arm (only possible for a malformed/partial map).
+func PositionArm(model *core.Model, pos int) (int, int, bool) {
+	for chrom := range model.ChromosomeArms {
+		for arm := 0; arm < 2; arm++ {
+			armData := model.ChromosomeArms[chrom][arm]
+			if len(armData) < 2 {
+				continue
+			}
+			if pos >= armData[0] && pos < armData[0]+armData[1] {
+				return chrom, arm, true
+			}
+		}
+	}
+	return 0, 0, false
+}
+
 func BitwiseOR(a, b []uint64) []uint64 {
 	result := make([]uint64, len(a))
 	for i := range a {

@@ -146,8 +146,8 @@ func birthStandard(model *core.Model, pop *core.Pop) {
 
 				// Assign mutations, both inherited and de novo
 				if model.Parameters["track_mutations"] > 0 {
-					utils.InheritMutations(pop, genomemask0, dad, child, 0)
-					utils.InheritMutations(pop, genomemask1, mom, child, 1)
+					utils.InheritMutations(model, pop, genomemask0, dad, child, 0)
+					utils.InheritMutations(model, pop, genomemask1, mom, child, 1)
 					utils.GenerateNewMutations(model, pop, child)
 					numMutations, mutationFitness := utils.CountFitnessAndMutations(pop, child, model)
 					fitness := mutationFitness
