@@ -97,7 +97,18 @@ func deathStandard(model *core.Model, pop *core.Pop) int {
 		// Step 3: Tamp down population growth rate by randomly culling individuals.
 		// Round up so small populations can grow at all: int(6 * 1.05) = 6 (locks pop),
 		// but ceil(6 * 1.05) = 7 (lets it grow by one).
-		allowedNumInds := int(math.Ceil(float64(model.FreeParameters["last_pop_size"]) * model.Parameters["max_growth_rate"]))
+		//
+		// When a logistic carrying-capacity term is active (roadmap §2), the growth
+		// ceiling is density-dependent (declines to 1 as N -> K) so the population
+		// recovers along an S-curve toward K instead of at a constant rate; otherwise
+		// this is the original constant-max_growth_rate cull, byte-identical. The
+		// max_pop_size hard cap below remains an absolute safety ceiling above K.
+		var allowedNumInds int
+		if densityRegulated(model) {
+			allowedNumInds = logisticGrowthCeiling(float64(model.FreeParameters["last_pop_size"]), model.Parameters["carrying_capacity"], model.Parameters["max_growth_rate"])
+		} else {
+			allowedNumInds = int(math.Ceil(float64(model.FreeParameters["last_pop_size"]) * model.Parameters["max_growth_rate"]))
+		}
 		if allowedNumInds > int(model.Parameters["max_pop_size"]) {
 			allowedNumInds = int(model.Parameters["max_pop_size"])
 		}

@@ -22,6 +22,7 @@ max_mating_distance,Max Mating Distance,Text,int,5,Population
 residence_style,Residence Style,Text,int,1,Population
 wander,Wander,Text,int,5,Population
 max_breeding_inds,Max Breeding Inds,Check,int,-1,Population
+carrying_capacity,Carrying Capacity (K),Text,float,0,Population
 track_DNA,Track DNA,Check,bool,0,DNA
 seed_year,Seed Year,Text,int,0,DNA
 seed_style,Seed Style,Text,int,2,DNA

@@ -182,9 +182,49 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` needs 
   mode ⇒ byte-identical (§6h unaffected); only non-neutral runs change (and the old viability
   direction was a bug). Unit tests in `pkg/simulation/selection_test.go`; verified e2e (modes
   diverge; viability raises mean fitness 0.99411→0.99438 by purging load). Landed 2026-07-07.
-- [ ] **Density dependence / carrying capacity.** Add a logistic carrying-capacity term (ideally
-  local to map density) so runs aren't pure exponential-growth-or-extinction. Enables realistic
-  post-bottleneck recovery curves.
+- [x] **Density dependence / carrying capacity.** A logistic carrying-capacity term so runs aren't
+  pure exponential-growth-or-extinction — post-bottleneck populations recover along an S-curve
+  toward K instead of exploding to the hard cap. **Landed 2026-07-24.**
+  - **Where it acts (chosen with Rob, over birth-rate / death-hazard).** death.go **Step 3** already
+    computes a per-year growth ceiling `ceil(last_pop_size · max_growth_rate)` and culls to it. The
+    logistic term generalizes exactly that ceiling into a density-dependent one
+    (`pkg/simulation/density.go`: `logisticGrowthCeiling`/`densityRegulated`): with r = max_growth_rate
+    − 1 the *intrinsic* per-year rate and N = last_pop_size, the realized growth factor is
+    **gEff = 1 + r·(1 − N/K)** and the ceiling becomes `ceil(N·gEff)`. So a sparse population grows at
+    ~max_growth_rate, one at K holds steady (gEff = 1), and an overshoot (N > K) declines gently back
+    toward K. `max_growth_rate` thereby gains its exact logistic meaning (the N→0 growth rate) at zero
+    semantic cost. Chosen over acting on birth (would scale an integer birth_prob / consume RNG and
+    can't correct N > K) or the actuarial hazard (can't be calibrated to a specific K; tangles with
+    viability selection); the population trajectory N(t) is identical whichever vital rate carries the
+    density signal, and DRIFT already regulates by culling, so this adds no new genetic bias.
+  - **Composition.** The **max_pop_size** hard cap stays as an absolute safety ceiling above K (set
+    K < max_pop_size so the logistic asymptote binds first). The **bottleneck** window needs no
+    special handling — Step 2's hard `bottleneck_size` wins during the window, then Step 3's logistic
+    ceiling governs the recovery (this *is* the recovery test case). An active **DemographyScheduler**
+    still wins: when `DemeCaps` is set, `cullByDeme` runs and the logistic term is a **no-op** (the
+    scheduler's published-Ne census targets already regulate). For the plain **island model**
+    (num_demes > 1, no scheduler) K applies **globally** to the whole metapopulation — matching today's
+    global cull (per-deme K and local-to-map-density K deferred as follow-ups; the latter belongs with
+    §3 habitat-suitability maps).
+  - **Guards.** The density factor (1 − N/K) is clamped at −1 so an overshoot can never shrink the
+    population faster than r per year (symmetric with the max growth rate — no annihilation crash if K
+    is set below the current size), and the ceiling is floored at 1 so the logistic term alone never
+    empties the population.
+  - **Compatibility.** New opt-in **`carrying_capacity`** param (K), default **0** = disabled → Step 3
+    takes the *exact* original constant-rate line (no new RNG, byte-identical). Strictly-neutral runs
+    unaffected: `drift -validate` still **PASS**, D = −0.8930, π/W = 0.740, Ne/N = 0.188, unchanged.
+    Param added to `parameter_defaults.csv` (Population group).
+  - **Tests** (`pkg/simulation/density_test.go`): `densityRegulated` on/off incl. the missing-key
+    zero-value no-op; `logisticGrowthCeiling` table (dyadic g = 1.5 so expectations are ceil-rounding
+    free) covering sparse growth, steady at K, decline above K, the overshoot clamp, the floor, and the
+    disabled fall-through; a byte-identity guard that disabled == `ceil(N·g)` for DRIFT's real default
+    rate; and a distinguishable-outcome guard that below K the ceiling never exceeds the constant one
+    and per-capita growth decelerates monotonically toward K. **Verified end-to-end** (local gitignored
+    fixture `users/smoke/models/LogisticTest`, fixed rng_seed=4242, start=40, max_pop_size=5000): with
+    **K disabled** the population explodes exponentially to the hard 5000 cap and re-explodes to 5000
+    after a bottleneck (the pathology); with **K=250** the *same engine/seed* grows along a logistic
+    S-curve, plateaus near K, crashes to 50 in the bottleneck window, and recovers smoothly 50→~240
+    back toward K — no explosion, no extinction. Two K=250 runs byte-identical (determinism intact).
 - [ ] **Scriptable environmental events.** Generalize the `events` package (currently just `Seed`)
   into a registry of scheduled events: famine, epidemic, migration pulse, etc.
 
