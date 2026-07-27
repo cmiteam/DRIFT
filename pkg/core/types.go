@@ -36,6 +36,19 @@ type Model struct {
 	// of applying the global max_pop_size / max_growth_rate limits. Nil/empty when
 	// no scenario is active (strict no-op: existing runs are byte-identical).
 	DemeCaps map[int]int
+
+	// Scriptable environmental events (roadmap §2). When a model sets the
+	// `environmental_events` param the loader parses it into a schedule and
+	// attaches it here; the run loop calls Apply once per year, after the
+	// demographic scheduler and before Seed/Birth, to fire famines, migration
+	// pulses, etc. Nil for runs with no scheduled events (strict no-op).
+	EventScheduler EventScheduler
+	// EventMortalityFactor is a transient per-year multiplier on actuarial death
+	// risk, rewritten by the event scheduler every year (a famine raises it above
+	// 1 during its window; it is reset to 1 when no mortality event is active).
+	// Read by Death only when EventScheduler is non-nil, so runs without events
+	// take the byte-identical original death path.
+	EventMortalityFactor float64
 }
 
 // DemographyScheduler advances a time-varying demographic scenario. Defined here
@@ -45,6 +58,20 @@ type Model struct {
 // Birth: it performs any split due this year, migrates individuals per the current
 // epoch's migration matrix, and writes the per-deme caps into model.DemeCaps.
 type DemographyScheduler interface {
+	Apply(model *Model, pop *Pop)
+}
+
+// EventScheduler advances scriptable environmental events (roadmap §2) — famine,
+// migration pulse, and so on. Defined here (like DemographyScheduler) so core.Model
+// can hold one without importing pkg/events (pkg/events imports core, not the
+// reverse). Apply is called once per simulated year, after
+// model.FreeParameters["year"] is set and after the demographic scheduler, before
+// Seed/Birth: it resets the per-year event modifiers, then fires any events due
+// this year (mortality windows, deme relabels). Implementations consume RNG only
+// in sorted-id order — and none at all in years no event acts — so a fixed
+// rng_seed stays byte-reproducible and years before the first event match a
+// no-event baseline exactly.
+type EventScheduler interface {
 	Apply(model *Model, pop *Pop)
 }
 

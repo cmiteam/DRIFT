@@ -4,6 +4,7 @@ package models
 import (
 	"drift/pkg/core"
 	"drift/pkg/demography"
+	"drift/pkg/events"
 	"drift/pkg/utils"
 	"encoding/csv"
 	"fmt"
@@ -121,6 +122,18 @@ func (m *ModelManager) LoadModel(username, modelName string) (*core.Model, error
 		model.DemographyScheduler = scenario
 		fmt.Printf("Loaded demographic scenario %q (%d epochs, %d simulated years) from %s\n",
 			scenario.Name, len(scenario.Epochs), scenario.TotalYears(), demogPath)
+	}
+
+	// Attach scriptable environmental events (roadmap §2) parsed from the
+	// `environmental_events` param. Empty (the default) => nil scheduler => strict
+	// no-op (byte-identical existing behavior). A malformed spec fails loudly here.
+	schedule, err := events.LoadSchedule(model)
+	if err != nil {
+		return nil, err
+	}
+	if schedule != nil {
+		model.EventScheduler = schedule
+		fmt.Printf("Loaded %d scheduled environmental event(s)\n", schedule.Len())
 	}
 
 	return model, nil

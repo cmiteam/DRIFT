@@ -225,8 +225,56 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` needs 
     after a bottleneck (the pathology); with **K=250** the *same engine/seed* grows along a logistic
     S-curve, plateaus near K, crashes to 50 in the bottleneck window, and recovers smoothly 50→~240
     back toward K — no explosion, no extinction. Two K=250 runs byte-identical (determinism intact).
-- [ ] **Scriptable environmental events.** Generalize the `events` package (currently just `Seed`)
-  into a registry of scheduled events: famine, epidemic, migration pulse, etc.
+- [x] **Scriptable environmental events.** Generalized the `events` package (was just the `Seed`
+  dispatcher) into a self-registering registry of scheduled events. **Landed 2026-07-26.**
+  - **Declaration = a single opt-in param string (chosen with Rob, over a JSON file).** New
+    **`environmental_events`** param (Population group), parsed exactly like `mutation_classes`/
+    `mutation_rate_map`: a `;`-separated list of `<type> key=value …` entries, whitespace-tokenized
+    with no commas (so no CSV quoting), e.g. `famine start=200 end=210 mortality=2;
+    migration_pulse year=300 from=0 to=1 fraction=0.1`. Empty default = no scheduler = strict no-op.
+    Chosen over an `events.json` because events are a list-of-typed-entries (the exact shape the
+    class-spectrum parser already nailed), it keeps the "one opt-in param" compatibility story every
+    §1/§2 feature uses, and the schedule is a **pure function of the param** (no serialized state →
+    no checkpoint schema bump; rebuilt on resume like the demography scheduler). The registry is
+    built so a future `events.json` loader could feed the same `Schedule`.
+  - **Registry (mirrors the §8a pkg/modules pattern).** `pkg/events/events.go`: an `Event` interface
+    (`Apply(model,pop,year)`), a `Factory` per type, `RegisterEvent`/`AvailableEvents`, and a
+    `Schedule` (parsed `[]Event`) implementing a new **`core.EventScheduler`** interface (parallel to
+    `DemographyScheduler`, defined in core so it can be held without importing pkg/events).
+    `LoadSchedule(model)` parses the param (unknown type / malformed field = hard error, fail-fast at
+    load); each event type self-registers in an `init()` (`famine.go`, `migration_pulse.go`).
+  - **Where it fires.** One line in the run loop ([drift.go](drift.go)) right after
+    `DemographyScheduler.Apply` and before Seed/Birth: `Schedule.Apply` resets the per-year event
+    modifiers to neutral, then applies each event in spec order.
+  - **Two event categories shipped (chosen with Rob: famine + migration_pulse).**
+    **`famine`** (`start`/`end`/`mortality`) is a vital-rate modifier: during its window it multiplies
+    a new transient `model.EventMortalityFactor`, which `deathStandard` Step 1 reads as one extra
+    `*factor` on the death threshold — **the same number of RNG draws in the same sorted-id order**,
+    only the cutoff moves. **`migration_pulse`** (`year`/`from`/`to`/`fraction`) is a direct-pop
+    mutation: a one-time relabel of a sorted-id partial-Fisher-Yates subset of one deme into another,
+    consuming RNG only in its firing year. The registry makes epidemic/boom/etc. a single `init()`.
+  - **Composition.** `famine` acts in death Step 1 (runs regardless of `DemeCaps`), so it stacks with
+    the bottleneck window (Step 2), the logistic `carrying_capacity` recovery (Step 3 regrows what a
+    famine thins), and the §6c per-deme cull. `migration_pulse` just touches `individual.Deme`, so it
+    composes with both the plain island model and a demographic scenario's migration.
+  - **Compatibility.** `environmental_events` unset ⇒ nil `EventScheduler`; the death multiply is
+    guarded behind `if model.EventScheduler != nil`, so it is the *literal original line* and consumes
+    zero RNG — strictly-neutral runs byte-identical (`drift -validate` still **PASS**, D=−0.8930,
+    π/W=0.740, Ne/N=0.188, unchanged). An idle year (event scheduled but not active) draws no RNG, so
+    the stream matches baseline up to the first firing event.
+  - **Tests.** `pkg/events/events_test.go` — parser (both types, `end`-defaults-to-`start` field
+    inheritance, empty/blank-spec no-op, unknown-type + missing/malformed/invalid-field errors);
+    famine window + overlapping-famine compounding + neutral reset; migration-pulse relabel counts,
+    determinism under a fixed seed, and an **idle-year zero-RNG guard** (RNG state byte-for-byte
+    unchanged across an inactive `Apply`). `pkg/simulation/events_test.go` — `eventMortalityFactor`
+    zero-value→1.0 no-op and the exact `risk*1.0==risk` byte-identity. Full suite green.
+  - **Verified end-to-end** through the real binary (local gitignored fixture
+    `users/smoke/models/EventTest`, fixed rng_seed=4242, pop pinned at 500): a no-event run is
+    byte-identical across two runs; adding `famine start=200 end=230 mortality=4` leaves years 0–190
+    byte-identical then crashes the population toward extinction, and a milder `mortality=2` famine is
+    identical through year 180 then **~doubles annual random deaths** in the window (year 210: 205→379)
+    while births refill the cap — the mortality mechanism and its composition with the growth ceiling
+    both visible.
 
 ## 3. Spatial & ecological depth
 

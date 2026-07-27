@@ -253,6 +253,12 @@ func main() {
 			if model.DemographyScheduler != nil {
 				model.DemographyScheduler.Apply(model, pop)
 			}
+			// Fire any scriptable environmental events (§2) for this year — resets
+			// the per-year event modifiers, then applies famines / migration pulses.
+			// No-op when no events are scheduled (nil scheduler).
+			if model.EventScheduler != nil {
+				model.EventScheduler.Apply(model, pop)
+			}
 			if year >= int(model.Parameters["seed_year"]) && model.FreeParameters["seed"] == -1 {
 				events.Seed(model, pop)
 				model.FreeParameters["seed"] = 1

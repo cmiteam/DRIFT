@@ -46,6 +46,14 @@ func deathStandard(model *core.Model, pop *core.Pop) int {
 			fitness = float64(pop.IndData[ind][individual.Fitness]) / model.Parameters["mu_scale_factor"]
 		}
 		adjustedDeathRisk := deathrisk * riskModification * viabilityHazardFactor(fitness)
+		// Scriptable environmental events (roadmap §2): a famine transiently raises
+		// the actuarial death risk during its window. Guarded on EventScheduler so
+		// runs with no scheduled events take the byte-identical original path (no
+		// extra multiply). The RNG stream is unchanged — one roll per individual, in
+		// the same sorted-id order — only the threshold moves.
+		if model.EventScheduler != nil {
+			adjustedDeathRisk *= eventMortalityFactor(model)
+		}
 		if die < adjustedDeathRisk {
 			if model.FreeParameters["seed"] == ind {
 				if age < pop.IndData[ind][individual.Lifespan] {
@@ -209,6 +217,19 @@ func cullByDeme(model *core.Model, pop *core.Pop, deadPeopleData *string) int {
 		}
 	}
 	return removed
+}
+
+// eventMortalityFactor returns the transient per-year actuarial-mortality
+// multiplier set by the event scheduler (roadmap §2), defaulting to 1.0 when no
+// mortality event is active (a famine writes a value > 1 during its window; the
+// scheduler resets it to 1.0 each year). Callers guard on model.EventScheduler !=
+// nil, so runs without scheduled events never reach this and keep the byte-
+// identical death path.
+func eventMortalityFactor(model *core.Model) float64 {
+	if model.EventMortalityFactor > 0 {
+		return model.EventMortalityFactor
+	}
+	return 1.0
 }
 
 // generateKeyList creates a slice of all individual IDs
