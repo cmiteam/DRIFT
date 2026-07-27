@@ -295,6 +295,21 @@ func main() {
 				simulation.Save(model, pop, animContainer)
 				writeProgress(model.ResultsDir, year, totalYears, len(pop.IndData), run, numRuns, "running")
 			}
+			// Capture an Ne-through-time window (§6d) at the ne_interval cadence.
+			// Temporal (Waples) Ne between successive windows, contrasted end-of-run
+			// with the §6h long-term coalescent Ne. Default off; a deterministic
+			// full-population scan (no RNG) so a track_Ne run stays byte-identical to
+			// a track_Ne-off run. ne_interval 0 falls back to save_interval; a
+			// smaller value resolves short bottleneck windows.
+			if model.Parameters["track_Ne"] == 1 {
+				neInterval := int(model.Parameters["ne_interval"])
+				if neInterval <= 0 {
+					neInterval = int(model.Parameters["save_interval"])
+				}
+				if neInterval > 0 && year%neInterval == 0 {
+					analysis.CaptureNe(model, pop)
+				}
+			}
 			// Checkpoint at the configured interval.
 			if commands.CheckpointInterval > 0 && year%commands.CheckpointInterval == 0 {
 				maybeCheckpoint(pop)
@@ -411,6 +426,17 @@ func main() {
 			hd := analysis.ComputeHetDistance(model, pop, ids)
 			if err := analysis.SaveHetDistance(model, hd); err != nil {
 				log.Printf("Error saving heterozygosity-distance results: %v", err)
+			}
+		}
+		if model.Parameters["track_Ne"] == 1 {
+			// Ne-through-time (§6d): write the per-window temporal (Waples) Ne series
+			// (plus the caveated LD recent-Ne column) and a summary contrasting the
+			// harmonic-mean temporal Ne with the census — the recent-history
+			// counterpart to the §6h long-term coalescent Ne. Requires track_DNA so
+			// the Chromosomes bitfield holds the standing variation the estimator
+			// reads. A no-op when fewer than two windows were captured.
+			if err := analysis.SaveNeTimeSeries(model, pop); err != nil {
+				log.Printf("Error saving Ne time series: %v", err)
 			}
 		}
 		if model.Parameters["track_validation"] == 1 {

@@ -88,6 +88,45 @@ type Pop struct {
 	SFSHistory    map[int][]int
 	MaleDB        map[int]Ancestor
 	FemaleDB      map[int]Ancestor
+
+	// Ne-through-time state (roadmap §6d). NeHistory holds one NeSnapshot per
+	// captured window, keyed by simulated year; SaveNeTimeSeries writes it at
+	// end-of-run. NePrevSnap is the previous window's allele-frequency sample,
+	// held transiently so the temporal (Waples) estimator can compare successive
+	// windows. Both are populated only when track_Ne is set (default off ⇒ nil ⇒
+	// no capture, no RNG, byte-identical). Exported so they survive gob
+	// checkpointing; nil is a valid zero value on resume.
+	NeHistory  map[int]*NeSnapshot
+	NePrevSnap *FreqSnapshot
+}
+
+// FreqSnapshot is one temporal sample of allele frequencies at segregating sites,
+// grouped by population unit (group key -1 = whole population pooled; key >= 0 = a
+// deme id). Held transiently on Pop to feed the temporal Ne estimator (§6d): each
+// window is compared against the previous snapshot. Frequencies are derived-allele
+// frequencies over the Chromosomes bitfield. Exported fields so it survives gob
+// checkpointing.
+type FreqSnapshot struct {
+	Year     int
+	Groups   map[int]map[int]float64 // group -> genome-bit site -> derived-allele frequency
+	HaploidN map[int]int             // group -> haploid sample size (2 * sampled diploids)
+}
+
+// NeSnapshot holds the effective-population-size estimates for one captured window
+// (§6d). TemporalNe is the pooled temporal (Waples 1989 plan-II) estimate over the
+// interval since the previous window; DemeNe carries the same per deme when the
+// island model is active. LDNe is the caveated LD-r² recent-Ne companion (0 when
+// disabled or unresolved; approximate pending a real recombination map, §6a). A
+// non-finite Ne means drift was below sampling noise (unresolved) that window.
+type NeSnapshot struct {
+	Year             int
+	CensusN          int             // living individuals at this window
+	IntervalGen      float64         // t: generations since the previous window
+	TemporalNe       float64         // pooled temporal Ne over the interval
+	TemporalNumSites int             // segregating sites used for the pooled estimate
+	LDNe             float64         // LD-based recent Ne (approx; 0 if disabled/unresolved)
+	LDNumPairs       int             // site pairs used for the LD estimate
+	DemeNe           map[int]float64 // per-deme temporal Ne (nil when single deme)
 }
 
 // StringParam returns a string-valued parameter, or def if unset/empty.

@@ -77,6 +77,10 @@ track_het_distance,Track Heterozygosity vs Distance,Check,bool,0,Analysis
 het_distance_sample_size,Het-Distance Sample Size,Text,int,0,Analysis
 track_validation,Neutral Validation Report,Check,bool,0,Analysis
 validation_sample_size,Validation Sample Size,Text,int,0,Analysis
+track_Ne,Track Ne Through Time,Check,bool,0,Analysis
+ne_interval,Ne Capture Interval (yrs),Text,int,0,Analysis
+ne_sample_size,Ne Sample Size,Text,int,0,Analysis
+ne_cM_per_bit,LD-Ne cM per Genome Bit,Text,float,0,Analysis
 deme_inheritance,Deme Inheritance,Text,string,paternal,Population
 generation_time,Generation Time (yrs),Text,float,25,Population
 track_map,Track on Map,Check,bool,1,Maps

@@ -134,6 +134,9 @@ func ensurePopMaps(p *core.Pop) {
 	if p.SFSHistory == nil {
 		p.SFSHistory = map[int][]int{}
 	}
+	if p.NeHistory == nil {
+		p.NeHistory = map[int]*core.NeSnapshot{}
+	}
 	if p.MaleDB == nil {
 		p.MaleDB = map[int]core.Ancestor{}
 	}

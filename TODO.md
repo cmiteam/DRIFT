@@ -495,9 +495,65 @@ out-of-Africa story, **(3)** countering critics.
 
 ### 6d. Effective population size & the bottleneck question — goals 1, 3
 
-- [ ] **LD-based recent-Ne estimation (GONE-style)** and an **Ne-through-time output.** Creationist
+- [x] **LD-based recent-Ne estimation (GONE-style)** and an **Ne-through-time output.** Creationist
   history posits recent severe bottlenecks (Flood, Babel); PSMC/MSMC/GONE inferences of these are
   actively debated. From known simulated truth, DRIFT can show what these methods get right/wrong.
+  **Landed 2026-07-27.**
+  - **Two estimators, chosen with Rob = "temporal core + caveated LD"** (over temporal-only or a
+    literal LD-only GONE that DRIFT can't yet calibrate). The **temporal (Waples 1989, plan-II)**
+    estimator is the rigorous core: it needs no recombination map (DRIFT has none — that's §6a) and
+    makes **no equilibrium assumption**, which matters because the `Chromosomes` bitfield it reads
+    holds only FOUNDER standing variation drifting to loss/fixation (§6h) — a non-equilibrium object.
+    Per locus with sample derived-allele freqs x (earlier) / y (later): `Fc = Σ(x-y)² / Σ[(x+y)/2 -
+    x·y]` (ratio-of-sums, as in fst.go), `Ne = t / (2·(Fc − 1/n0 − 1/nt))` with t generations and
+    haploid n0,nt; a sampling-corrected Fc ≤ 0 ⇒ **+Inf (unresolved)**. The **LD companion**
+    (GONE-style, explicitly approximate) uses `E[r²] ≈ 1/(4·Ne·c) + 1/S` (Sved/Waples) ⇒ `Ne ≈
+    1/(4·c̄·(r̄²−1/S))` over loosely-linked pairs (recent Ne); the bit-distance→recombination-fraction
+    map is a single knob **`ne_cM_per_bit`** (Haldane on-arm, cross-chromosome = 0.5), **off by
+    default** pending §6a. Reuses `CalculatePairwiseLD`/`getSegregatingSites`.
+  - **Files.** `pkg/analysis/ne_temporal.go` (`CaptureNe`, `snapshotFreqs`, `temporalNe`),
+    `ne_ld.go` (`ldRecentNe`, `recombFraction`), `ne_output.go` (`SaveNeTimeSeries`). `core.Pop`
+    gained `NeHistory map[int]*NeSnapshot` + a transient `NePrevSnap *FreqSnapshot` (new `NeSnapshot`
+    /`FreqSnapshot` types in core). Capture fires in the **run loop** ([drift.go](drift.go)) at the
+    **`ne_interval`** cadence (0 ⇒ save_interval) — a deterministic full-population bitfield scan, so
+    it runs independently of `save_interval` and can be tuned to resolve a bottleneck. End-of-run
+    `SaveNeTimeSeries` writes `<model>_ne_timeseries_run%d.csv` (per-window: CensusN, IntervalGen,
+    TemporalNe, Ne/N, LD_Ne, per-deme Ne) + `<model>_ne_summary_run%d.csv` (harmonic-mean temporal
+    Ne vs mean census — the recent-history counterpart to the §6h long-term coalescent Ne). Mirrors
+    `SaveSFSTimeSeries`.
+  - **Composition.** Per-deme temporal Ne when the island model is active (§6b, via `individual.Deme`
+    + fst.go grouping); the series spans a demographic scenario's split/bottleneck epochs (§6c), so
+    the headline product is inferred Ne-through-time vs the scheduler's programmed `DemeCaps` (does it
+    recover OoA N_B≈2100?). The bottleneck window is resolved by choosing `ne_interval`.
+  - **Compatibility.** **`track_Ne`** default **off** ⇒ no capture, no files, **zero RNG**
+    (`ne_sample_size` 0 = full-population scan, no draws; subsampling >0 is opt-in and does draw) ⇒
+    strictly-neutral runs byte-identical (`drift -validate` re-run **PASS**, D=−0.8930, π/W=0.740,
+    Ne/N=0.188, unchanged). `NeHistory` is a map (gob-tolerant, nil-init on checkpoint load like
+    `SFSHistory`) ⇒ **no SchemaVersion bump**. Params `track_Ne`/`ne_interval`/`ne_sample_size`/
+    `ne_cM_per_bit` in `parameter_defaults.csv` (Analysis group).
+  - **KEY FINDING (empirical, decided with Rob).** With a realistic **`generation_time`** bridging
+    DRIFT-years→generations, the estimator **independently recovers the §6h emergent Ne ≈ 0.19·N**:
+    the NeTest fixture (below) gives harmonic-mean temporal **Ne/N = 0.204**. Both legs **detect the
+    bottleneck** (temporal Ne dips to ~13, LD-Ne to ~26 in the post-crash window, recovering after).
+    BUT the temporal method is **confounded by DRIFT's overlapping generations**: consecutive census
+    samples share most living individuals (lifespan 24), so at short intervals or with
+    `generation_time=1` drift is under-measured and Ne wildly over-estimated (Ne/N ≈ 29 at
+    interval=10/gen_time=1) — it needs `ne_interval ≳ 2 generations` AND a correct `generation_time`.
+    It also reads a **within-interval cull-bottleneck as a random subsample, not drift** (the crash
+    window shows spuriously HIGH Ne; the bottleneck's genetic signal appears in the FOLLOWING window).
+    Characterized, not hidden — parallel to §6h's non-WF Tajima's D. The **LD leg is the cleaner
+    bottleneck detector**; the temporal leg is the calibrated long-term contrast.
+  - **Tests.** `pkg/analysis/ne_temporal_test.go` — hand-computed two-locus ratio-of-sums Fc→Ne, the
+    unresolved (+Inf) path, a distinguishable-outcome guard (bigger allele-freq change ⇒ smaller Ne),
+    `CaptureNe` two-window end-to-end + CSV emission, per-deme population, and an **`ne_sample_size=0`
+    zero-RNG guard** (RNGState byte-for-byte unchanged across two captures). `ne_ld_test.go` —
+    `recombFraction` regimes (cross-chrom 0.5, on-arm Haldane, monotone), disabled-leg no-op, and a
+    configured finite-Ne case. Full `go test ./...` green; §6h validation package still passes.
+  - **Verified end-to-end** via local gitignored fixture `users/smoke/models/NeTest` (seed 4242,
+    generation_time=25, ne_interval=60, ne_cM_per_bit=0.02; stable ~200, bottleneck to 30 over yrs
+    300–340, recover): both legs detect the bottleneck, harmonic-mean temporal **Ne/N=0.204** matches
+    §6h; two runs byte-identical; **track_Ne on vs off leaves the main `_results.csv` byte-identical**
+    (zero RNG perturbation). NOTE: like the other smoke fixtures, `users/` is gitignored (local-only).
 
 ### 6e. Molecular-clock / dating layer — goals 1, 3
 
