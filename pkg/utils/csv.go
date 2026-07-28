@@ -139,6 +139,7 @@ func LoadChromosomes(model *core.Model, configRoot string) error {
 func parseChromosomeRecords(model *core.Model, records [][]string) error {
 	records = StripHeader(records)
 	model.ChromosomeArms = make(map[int]map[int][]int)
+	model.ArmCM = make(map[int]map[int]float64)
 
 	for i, row := range records {
 		if len(row) < 4 {
@@ -166,6 +167,21 @@ func parseChromosomeRecords(model *core.Model, records [][]string) error {
 			model.ChromosomeArms[chromNum] = make(map[int][]int)
 		}
 		model.ChromosomeArms[chromNum][arm] = []int{start, length}
+
+		// Optional 5th column: the arm's genetic length in centiMorgans (roadmap
+		// §6a). Present only in map-enabled chromosome files; a blank/absent cell
+		// leaves this arm out of ArmCM so the map falls back to the uniform rate for
+		// it. A malformed value is a hard error (fail-fast at load, like other params).
+		if len(row) >= 5 && strings.TrimSpace(row[4]) != "" {
+			cm, err := strconv.ParseFloat(strings.TrimSpace(row[4]), 64)
+			if err != nil {
+				return fmt.Errorf("chromosome_data row %d col 5 (cM): %w", i+1, err)
+			}
+			if model.ArmCM[chromNum] == nil {
+				model.ArmCM[chromNum] = make(map[int]float64)
+			}
+			model.ArmCM[chromNum][arm] = cm
+		}
 	}
 
 	SetGenomeBits(model)

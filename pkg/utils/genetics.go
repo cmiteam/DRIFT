@@ -90,6 +90,33 @@ func PositionArm(model *core.Model, pos int) (int, int, bool) {
 	return 0, 0, false
 }
 
+// EnsureGeneticMap returns the model's recombination map (roadmap §6a), building and
+// caching it on first use. It builds only when a map is actually wanted — either the
+// chromosome file carried a cM column (len(ArmCM) > 0) or recombination_model="map"
+// requests one — and returns nil otherwise, which is the signal every caller uses to
+// take the legacy path (createMask) or the ne_cM_per_bit scalar (recombFraction).
+//
+// When ArmCM is empty but a map is requested, the whole map is derived from a uniform
+// recomb_cM_per_bit rate (default 1.0 cM/bit ≈ human average at ~1 bit per Mb); when
+// ArmCM is present, missing arms fall back to that same rate. Pure (no RNG), built at
+// most once, so it does not perturb the RNG stream and is safe to call in the sim loop.
+func EnsureGeneticMap(model *core.Model) *core.GeneticMap {
+	if model.GeneticMap != nil {
+		return model.GeneticMap
+	}
+	hasCM := len(model.ArmCM) > 0
+	mapMode := model.StringParam("recombination_model", "legacy") == "map"
+	if !hasCM && !mapMode {
+		return nil
+	}
+	rate, ok := model.Parameters["recomb_cM_per_bit"]
+	if !ok {
+		rate = 1.0
+	}
+	model.GeneticMap = core.BuildGeneticMap(model.ChromosomeArms, model.ArmCM, rate)
+	return model.GeneticMap
+}
+
 func BitwiseOR(a, b []uint64) []uint64 {
 	result := make([]uint64, len(a))
 	for i := range a {

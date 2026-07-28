@@ -330,8 +330,67 @@ out-of-Africa story, **(3)** countering critics.
     to loss) yields empty `pop.Chromosomes` and thus an empty VCF — genome tracking needs standing
     variation to export.
   - [ ] **Import** — parse real 1000G/HGDP VCF into DRIFT structures (larger, separate task).
-- [ ] **Read real recombination maps and real human chromosome structure** (builds on the existing
-  `ChromosomeArms` scaffold) so LD patterns are comparable to real data.
+- [x] **Read real recombination maps and real human chromosome structure** (builds on the existing
+  `ChromosomeArms` scaffold) so LD patterns are comparable to real data. **Landed 2026-07-28.**
+  - **KEY FINDINGS (probed empirically before building, 20k trials over the Default genome).** The
+    legacy `createMask` is worse than "quirky" — four measured defects: **(F1)** every chromosome
+    gets exactly **0 or 2 crossovers** (~50/50), never odd, never >2 (mean ~1/chromosome, 22.6/gamete);
+    **(F2)** when present, the two crossovers **always bracket the centromere** (spanC ≈ x=2 ≈ 49.5%
+    everywhere) — the mask is a single p-arm→q-arm interior segment; **(F3, roadmap didn't flag)** a
+    chromosome's telomeres inherit parent-copy-0 **0.0%** of the time, so copy-0 can never reach a
+    chromosome end and whole chromosomes **never independently assort** (startCopy0 ≈ 0%); **(F4)**
+    crossover rate is **decoupled from length** (chr1 p125/q126 and chr21 p13/q35 both get ~2) — no
+    cM/Mb, no hotspots, positions uniform within each arm. Unlike §1, the roadmap premise here was
+    RIGHT (the kernel needs a real map), plus F3 was an extra structural bug fixed in the same pass.
+  - **Design (chosen with Rob).** Fork 1 = **layered per-arm cM** (optional 5th column in
+    `chromosome_data.csv`: `Chromosome,Arm,Start,Length,cM`; absent ⇒ byte-identical), accessor
+    abstracted so a fine-grained hotspot map drops in later. Fork 2 = **obligate crossover + Poisson
+    extras** (1 guaranteed crossover/chromosome + `Poisson(max(0, totalCM − recomb_obligate_cM)/100)`).
+  - **Kernel (opt-in `recombination_model`, default `legacy`).** `legacy` = the verbatim original
+    `createMask` (same 3 RNG draws/chromosome in sorted order ⇒ byte-identical). `map` places
+    crossovers along a genetic map: count = obligate + Poisson extras; positions drawn uniformly in cM
+    space and inverted to bit positions via the map CDF (so they concentrate where cM/bit is high);
+    starting homolog 50/50 (**fixes F3 — real independent assortment**); mask alternates copy at each
+    crossover (**fixes F1/F2 — variable, non-centromere-locked segments**). RNG order per chromosome:
+    `Poisson(count) → count× position draws → start-copy`, documented + deterministic.
+  - **Genetic map = `core.GeneticMap`** (`pkg/core/recomb.go`, pure data + methods, no RNG/utils dep):
+    `BuildGeneticMap` from `ChromosomeArms` + a new `core.Model.ArmCM` (parsed by
+    `parseChromosomeRecords`), with `TotalCM`/`CumCM`/`BitAtCM`/`Span`. Built lazily and cached via
+    `utils.EnsureGeneticMap` (built only when a cM column exists OR `recombination_model=map`; nil
+    otherwise ⇒ legacy path + `ne_cM_per_bit` scalar). Missing arms fall back to a uniform
+    `recomb_cM_per_bit` (default 1.0 ≈ human at ~1 bit/Mb).
+  - **Composition.** `linkage_model=arm` (§1) is orthogonal — the new kernel changes how the mask is
+    BUILT, not how `meiosis`/`InheritMutations` consume it, so arm-polarity reconciliation is
+    preserved automatically. **§6d LD-Ne is now calibrated:** `recombFraction` reads real cumulative-cM
+    map distance when a map is present (removing the `ne_cM_per_bit`-placeholder caveat), and a present
+    map now ENABLES the LD leg on its own (was gated on `ne_cM_per_bit>0`). §6g EHH will read the same
+    accessor. Centromere handling unchanged in both modes. Sex-specific maps (female > male
+    recombination) noted as a follow-up (`createMask`'s `sex` arg is still ignored).
+  - **Compatibility.** `recombination_model` unset/`legacy` ⇒ createMask is byte-for-byte the original
+    (a `TestRecombLegacyByteIdentical` oracle asserts identical masks AND identical RNG state vs a
+    verbatim copy of the old loop). Strictly-neutral runs unaffected: `drift -validate` still **PASS**,
+    D=−0.8930, π/W=0.740, Ne/N=0.188, unchanged. `ArmCM`/`GeneticMap` are additive fields (nil for
+    legacy files) ⇒ no checkpoint schema bump. Params `recombination_model`/`recomb_cM_per_bit`/
+    `recomb_obligate_cM` in `parameter_defaults.csv` (Mutation group).
+  - **Tests.** `pkg/core/recomb_test.go` — hand-computed `CumCM`/`BitAtCM` round-trip, monotonicity,
+    q-arm crossover concentration, derived + partial-cM fallback. `pkg/simulation/recomb_map_test.go`
+    — the legacy byte-identity oracle; map-mode 50/50 assortment + odd/>2 crossover counts (impossible
+    in legacy); a distinguishable-outcome guard (same 10-bit gap: low cM/bit agreement >0.95 vs high
+    cM/bit lower — the map changes linkage). `pkg/analysis/ne_ld_test.go` — `recombFraction` uses
+    calibrated map distance when present vs the scalar fallback. `pkg/utils/chromosome_cm_test.go` —
+    5-col cM parse → ArmCM → map, 4-col backward-compat (ArmCM empty, map nil in legacy), malformed-cM
+    hard error. Full `go test ./...` green.
+  - **Verified end-to-end** via local gitignored fixture `users/smoke/models/RecombTest` (5-column cM
+    `chromosome_data.csv`, `recombination_model=map`, seed 4242): the map parses + builds + the full
+    run completes and emits results/ne output; two map-mode runs are **byte-identical** (determinism
+    intact) and map-mode **diverges from legacy** (kernel engaged). NOTE: the emitted LD columns don't
+    develop signal in a short seed-style-1 smoke run — the seeder assigns INDEPENDENT per-site alleles,
+    so there is no initial cross-site LD for recombination to erode (same class of smoke limitation as
+    the §6d note). The noise-free recombination PATTERN is therefore carried by the unit tests, which
+    drive the real `createMask`+`meiosis` kernel over file- and hand-configured maps.
+  - **Deferred follow-ups:** the fine-grained hotspot map file (behind the same accessor), sex-specific
+    maps, and crossover interference (gamma/Kosambi) — all noted for later; the accessor was designed
+    so they slot in without touching the kernel's callers.
 - [ ] **Tree-sequence (tskit) output** (NEAR-TERM — promoted from longer-term; see §7). Becoming the
   field lingua franca and a massive scaling/compression win (millions of individuals × whole
   genomes become tractable). Opens the `tskit`/`msprime`/`Relate`/`tsinfer` ecosystem. **Three of

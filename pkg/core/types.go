@@ -11,7 +11,18 @@ type Model struct {
 	FreeParameters  map[string]int
 	PlotFlags       map[string]bool
 	ChromosomeArms  map[int]map[int][]int
-	DeathRisk       map[int]float64
+	// ArmCM holds an optional per-arm genetic length in centiMorgans (roadmap §6a),
+	// parsed from a 5th column of chromosome_data.csv (Chromosome,Arm,Start,Length,cM).
+	// Empty when the file has no cM column (legacy 4-column files) — the map then
+	// falls back to a uniform recomb_cM_per_bit rate. Keyed [chrom][arm].
+	ArmCM map[int]map[int]float64
+	// GeneticMap is the lazily-built recombination map (roadmap §6a) derived from
+	// ChromosomeArms + ArmCM. Nil until first needed and only built when a map is
+	// actually used (a cM column is present, or recombination_model="map"); a nil map
+	// means the legacy single-interior-segment createMask is in effect and the §6d LD
+	// leg falls back to the ne_cM_per_bit scalar. Built once (no RNG), then cached.
+	GeneticMap *GeneticMap
+	DeathRisk  map[int]float64
 	CumulativeProb  map[int]float64
 	Map             [][]int
 	ModelName       string

@@ -42,7 +42,13 @@ const recentCBand = 0.2
 // CalculatePairwiseLD.
 func ldRecentNe(model *core.Model, pop *core.Pop, pooled []int) (float64, int) {
 	cMPerBit := model.Parameters["ne_cM_per_bit"]
-	if cMPerBit <= 0 || len(pooled) < 2 {
+	// When a real genetic map is available (roadmap §6a: a cM column or
+	// recombination_model="map"), the bit distance is turned into a CALIBRATED
+	// recombination fraction from the map itself, removing the ne_cM_per_bit caveat.
+	// A present map also ENABLES the LD leg on its own — the scalar knob is only the
+	// fallback conversion when no map exists. Nil map + cMPerBit<=0 => leg disabled.
+	gm := utils.EnsureGeneticMap(model)
+	if (gm == nil && cMPerBit <= 0) || len(pooled) < 2 {
 		return 0, 0 // LD leg disabled or nothing to work with
 	}
 
@@ -88,7 +94,7 @@ func ldRecentNe(model *core.Model, pop *core.Pop, pooled []int) (float64, int) {
 			if !take {
 				continue
 			}
-			c := recombFraction(model, sites[i], sites[j], cMPerBit)
+			c := recombFraction(model, gm, sites[i], sites[j], cMPerBit)
 			if c < recentCBand {
 				continue // too tightly linked to inform recent Ne
 			}
@@ -114,21 +120,32 @@ func ldRecentNe(model *core.Model, pop *core.Pop, pooled []int) (float64, int) {
 }
 
 // recombFraction maps a pair of genome-bit positions to a recombination fraction.
-// Different chromosomes are unlinked (c = 0.5); on the same chromosome the bit
-// distance is converted to centiMorgans via cMPerBit and then to a recombination
-// fraction with Haldane's map function c = 0.5*(1 - e^{-2M}). Positions off the arm
-// map are treated as unlinked.
-func recombFraction(model *core.Model, s1, s2 int, cMPerBit float64) float64 {
+// Different chromosomes are unlinked (c = 0.5); on the same chromosome the genetic
+// distance in Morgans is turned into a recombination fraction with Haldane's map
+// function c = 0.5*(1 - e^{-2M}). When a real genetic map (gm) is present the Morgans
+// come from the map's cumulative cM (calibrated, roadmap §6a); otherwise they come
+// from the single-scalar cMPerBit approximation on the bit distance. Positions off
+// the arm map are treated as unlinked.
+func recombFraction(model *core.Model, gm *core.GeneticMap, s1, s2 int, cMPerBit float64) float64 {
 	chrom1, _, ok1 := utils.PositionArm(model, s1)
 	chrom2, _, ok2 := utils.PositionArm(model, s2)
 	if !ok1 || !ok2 || chrom1 != chrom2 {
 		return 0.5
 	}
-	dist := s2 - s1
-	if dist < 0 {
-		dist = -dist
+	var morgans float64
+	if gm != nil && gm.Has(chrom1) {
+		cm := gm.CumCM(chrom1, s1) - gm.CumCM(chrom1, s2)
+		if cm < 0 {
+			cm = -cm
+		}
+		morgans = cm / 100.0
+	} else {
+		dist := s2 - s1
+		if dist < 0 {
+			dist = -dist
+		}
+		morgans = float64(dist) * cMPerBit / 100.0
 	}
-	morgans := float64(dist) * cMPerBit / 100.0
 	c := 0.5 * (1 - math.Exp(-2*morgans))
 	if c > 0.5 {
 		c = 0.5

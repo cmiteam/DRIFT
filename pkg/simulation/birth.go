@@ -5,6 +5,7 @@ import (
 	"drift/pkg/individual"
 	"drift/pkg/utils"
 	"fmt"
+	"math"
 	"sort"
 )
 
@@ -250,6 +251,19 @@ func createMask(model *core.Model, sex int) ([]uint64, []uint64) {
 		return []uint64{}, []uint64{0}
 	}
 
+	// Real-recombination-map meiosis (roadmap §6a), opt-in via recombination_model.
+	// The default "legacy" path below is the original single-interior-segment model
+	// and is left byte-for-byte untouched (same 3 RNG draws per chromosome in sorted
+	// order), so strictly-neutral runs stay byte-identical. Only "map" mode places
+	// crossovers per a genetic map; it consumes a DIFFERENT (documented, deterministic)
+	// RNG stream, which is fine because it is opt-in. Falls through to legacy if no map
+	// can be built (e.g. no arms). Centromere handling is unchanged in both modes.
+	if model.StringParam("recombination_model", "legacy") == "map" {
+		if gm := utils.EnsureGeneticMap(model); gm != nil {
+			return createMaskFromMap(model, gm), []uint64{0}
+		}
+	}
+
 	genomeArrSize := (model.FreeParameters["genome_bits"] + 63) / 64
 	genomemask := make([]uint64, genomeArrSize)
 	centromask := []uint64{0}
@@ -306,6 +320,79 @@ func createMask(model *core.Model, sex int) ([]uint64, []uint64) {
 	}
 
 	return genomemask, centromask
+}
+
+// createMaskFromMap builds a meiosis mask by placing crossovers along a real genetic
+// map (roadmap §6a), replacing the legacy single-interior-segment model. Per
+// chromosome (in sorted key order, so the run stays reproducible under a fixed seed):
+//
+//   - crossover COUNT = 1 obligate crossover (crossover assurance — every bivalent
+//     recombines, chosen with Rob) + Poisson(max(0, totalCM - recomb_obligate_cM)/100)
+//     extra crossovers, so the count scales with the chromosome's genetic length while
+//     small chromosomes still get their one guaranteed crossover;
+//   - crossover POSITIONS are drawn uniformly in genetic (cM) space and inverted to
+//     bit positions via the map's CDF, so they concentrate where cM/bit is high;
+//   - the STARTING homolog is chosen 50/50 (independent assortment — fixes the legacy
+//     model's defect where a chromosome's telomeres always came from copy 1).
+//
+// The mask alternates parental copy at each crossover: where the current copy is 0 the
+// bit is set (meiosis then takes copy 0 there), matching the legacy convention
+// (mask bit 1 => copy 0). RNG order per chromosome: Poisson(count) → count× position
+// draws → start-copy — a fixed order documented here so the stream is deterministic.
+func createMaskFromMap(model *core.Model, gm *core.GeneticMap) []uint64 {
+	genomeArrSize := (model.FreeParameters["genome_bits"] + 63) / 64
+	mask := make([]uint64, genomeArrSize)
+
+	baseline := 50.0 // obligate-crossover cM reservation (extras are Poisson beyond it)
+	if v, ok := model.Parameters["recomb_obligate_cM"]; ok {
+		baseline = v
+	}
+
+	chroms := make([]int, 0, len(model.ChromosomeArms))
+	for chrom := range model.ChromosomeArms {
+		chroms = append(chroms, chrom)
+	}
+	sort.Ints(chroms)
+
+	for _, chrom := range chroms {
+		if !gm.Has(chrom) {
+			continue
+		}
+		totalCM := gm.TotalCM(chrom)
+		start, end := gm.Span(chrom)
+
+		var xovers []int
+		if totalCM > 0 {
+			nExtra := utils.RandPoisson(math.Max(0, totalCM-baseline) / 100.0)
+			nX := 1 + nExtra // obligate crossover + Poisson extras
+			for k := 0; k < nX; k++ {
+				xovers = append(xovers, gm.BitAtCM(chrom, utils.RandFloat64()*totalCM))
+			}
+			sort.Ints(xovers)
+		}
+		// A chromosome with totalCM == 0 draws no crossovers but still assorts.
+		cur := utils.RandIntn(2) // starting homolog (independent assortment)
+
+		prev := start
+		for _, xb := range xovers {
+			if cur == 0 {
+				setMaskBits(mask, prev, xb)
+			}
+			cur ^= 1
+			prev = xb
+		}
+		if cur == 0 {
+			setMaskBits(mask, prev, end)
+		}
+	}
+	return mask
+}
+
+// setMaskBits sets bits [lo, hi) in the genome word array.
+func setMaskBits(mask []uint64, lo, hi int) {
+	for i := lo; i < hi; i++ {
+		mask[i/64] |= 1 << (uint(i) % 64)
+	}
 }
 
 // Meiosis simulates genetic recombination during gamete formation.
