@@ -439,6 +439,19 @@ func main() {
 				log.Printf("Error saving Ne time series: %v", err)
 			}
 		}
+		if model.Parameters["track_dating"] == 1 {
+			// Molecular-clock dating (§6e): date the autosomal coalescence (mutation-
+			// pool theta_pi) under a grid of assumed mutation-rate / generation-time
+			// values, and report the true genealogical Y-Adam/Mt-Eve dates alongside —
+			// making the ~200 kya dates' assumption-dependence quantitative. Requires
+			// track_mutations (the molecular signal). dating_sample_size 0 = all.
+			sampleSize := int(model.Parameters["dating_sample_size"])
+			ids := analysis.SampleLiving(pop, sampleSize)
+			dating := analysis.ComputeDating(model, pop, ids)
+			if err := analysis.SaveDating(model, dating); err != nil {
+				log.Printf("Error saving dating results: %v", err)
+			}
+		}
 		if model.Parameters["track_validation"] == 1 {
 			// Neutral-expectation validation (§6h), single-realization diagnostic:
 			// computes SFS/theta/Tajima's D/HWE from THIS run's mutation pool and

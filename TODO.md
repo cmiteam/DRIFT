@@ -557,10 +557,44 @@ out-of-Africa story, **(3)** countering critics.
 
 ### 6e. Molecular-clock / dating layer — goals 1, 3
 
-- [ ] **Coalescence → calendar dates under explicit, swappable mutation-rate / generation-time
+- [x] **Coalescence → calendar dates under explicit, swappable mutation-rate / generation-time
   assumptions**, with a **sensitivity analysis** showing how the famous dates (~200 kya) move as
   assumptions change. Builds on existing Y-Adam/Mt-Eve generations-back output. Makes the
-  timescale dependency quantitative rather than rhetorical.
+  timescale dependency quantitative rather than rhetorical. **Landed 2026-07-27.**
+  - **The clock, concrete for DRIFT.** `T_gen = D/(2μ)`, `T_years = T_gen·generation_time`, where D is
+    an observed divergence and both μ and generation_time are *assumed*. DRIFT knows all three a real
+    analyst must guess (the true μ it used, the true g, and — via the genealogy — the true dates), so
+    it dates the *same* divergence under a grid of assumptions and shows the swing, with the true
+    genealogical dates alongside for scale. Read-only analysis; no kernel change.
+  - **Signal (chosen with Rob = autosomal π + genealogical anchors,** over Y-locus-specific dating).
+    D = the **autosomal mean pairwise difference θ_π from the de-novo mutation pool** (reuses §6h
+    `ComputeNeutralStats` — the mutation pool is the equilibrium object; the founder bitfield is not).
+    Under neutrality `E[θ_π]=2μ·T_pair`, so the molecular pairwise-coalescence time is `θ_π/(2μ)`
+    generations. The true **Y-Adam / Mt-Eve years-back** (`FindYAdam`/`FindMtEve`) are reported as the
+    ground-truth dates DRIFT actually knows (they populate once a lineage has coalesced, else `n/a`).
+    Y-locus sequence dating deferred (needs new Y-region divergence extraction; mt has no sequence).
+  - **Files/wiring.** `pkg/analysis/dating.go` (`ComputeDating`/`SaveDating`/`parseFloatList`), behind
+    **`track_dating`** (default off) in the end-of-run block of [drift.go](drift.go); requires
+    `track_mutations`. Emits `<model>_dating_*` (observed θ_π, self-consistent point date at true μ/g,
+    true Y-Adam/Mt-Eve anchors, min/max date + swing factor) and `<model>_dating_sensitivity_*` (one
+    row per assumed-μ × generation-time cell). Grids come from `dating_mu_factors` / `dating_gen_times`
+    (`;`/`,`/space-separated, empty ⇒ defaults μ-factors {0.5,1,2} × g {20,25,29,35}); the default grid
+    has a fixed **7.0× swing** regardless of θ_π/μ — the mutation-rate-crisis point in one number.
+  - **Compatibility.** `track_dating` off ⇒ no-op; read-only, end-of-run, **no RNG** on the default
+    full-sample path (`dating_sample_size` 0; >0 subsamples via the deterministic `SampleLiving`) ⇒
+    strictly-neutral runs byte-identical (`drift -validate` re-run **PASS**, D=−0.8930, π/W=0.740,
+    Ne/N=0.188, unchanged). No new state, no checkpoint bump. Params in `parameter_defaults.csv`
+    (Analysis group).
+  - **Tests** (`dating_test.go`): hand-computed point estimate (θ_π=1.25, μ=0.5, g=25 ⇒ 1.25 gen /
+    31.25 y), the 12-cell default grid with exact **7.0× swing** + half-μ-doubles-date, custom
+    single-cell grid (swing 1.0), nil-on-no-divergence, CSV emission + nil no-op, and `parseFloatList`
+    (separators / malformed-skip / empty+all-invalid fallback). Full `go test ./...` green.
+  - **Verified end-to-end** via local gitignored fixture `users/smoke/models/DatingTest` (Neutral-based,
+    track_mutations+track_coalescence, seed 777, μ=1/g=25): θ_π=13.83 ⇒ **point date 173 y** (true μ/g),
+    grid spans **69–484 y (7.00× swing)**, and the true genealogical **Y-Adam = 488 y** anchor populated
+    — a clean illustration that the molecular point date diverges from the true date and that assumption
+    choice brackets it. Two runs byte-identical; **track_dating on vs off leaves `_results.csv`
+    byte-identical**.
 
 ### 6f. DFE & genetic load — goal 1
 
