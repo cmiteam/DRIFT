@@ -108,7 +108,17 @@ func GenerateNewMutations(model *core.Model, pop *core.Pop, ind int) {
 			mutationEffect := 0.0
 			isMutationNonNeutral := RandFloat64()
 			if isMutationNonNeutral >= class.FNeutral {
-				mutationEffect = WeibullRandom(class.Shape, class.Scale) / class.WeibullAdj
+				// Magnitude draw. "weibull" (default) is the byte-identical historical
+				// path (WeibullRandom / Weibull_adj). "gamma" (opt-in, roadmap §6f)
+				// draws from Gamma(shape, mean/shape) so the mean |effect| is GammaMean
+				// and the shape matches the human deleterious DFE (alpha ~ 0.2). Only
+				// this branch differs; the neutral coin above and the beneficial coin
+				// below are drawn identically, so a non-gamma class is unchanged.
+				if class.DFEModel == "gamma" {
+					mutationEffect = GammaRandom(class.GammaShape, class.GammaMean/class.GammaShape)
+				} else {
+					mutationEffect = WeibullRandom(class.Shape, class.Scale) / class.WeibullAdj
+				}
 				isMutationDeleterious := RandFloat64()
 				if isMutationDeleterious > class.FBeneficial {
 					mutationEffect = -mutationEffect

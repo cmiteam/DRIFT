@@ -29,12 +29,49 @@ type MutationClass struct {
 	WeibullAdj  float64 // divisor applied to the drawn magnitude
 	Dominance   int      // h*100 stamped on new mutations of this class
 	Size        int      // target size in genome bits recorded on each mutation
+	// DFE effect distribution for this class (roadmap §6f). "weibull" (default)
+	// uses the historical Shape/Scale/WeibullAdj machinery — the strict byte-
+	// identical no-op. "gamma" draws the |effect| magnitude from Gamma(GammaShape,
+	// GammaMean/GammaShape) instead, the literature-anchored human deleterious DFE
+	// (alpha ~ 0.2). The neutral (FNeutral) and beneficial (FBeneficial) coins are
+	// unchanged, so the two distributions differ only in the magnitude draw.
+	DFEModel   string  // "weibull" (default) | "gamma"
+	GammaShape float64 // gamma shape alpha (only used when DFEModel=="gamma")
+	GammaMean  float64 // gamma mean |effect| (only used when DFEModel=="gamma")
 	// RateMap makes this class's mutation POSITIONS non-uniform along the genome
 	// (roadmap §1). Nil = uniform (the strict no-op: RandIntn(genome_bits)); non-nil
 	// draws positions weighted by regional rate multipliers. A class inherits the
 	// global `mutation_rate_map` by default and can override it per-class via a
 	// `ratemap=` token (or opt out to uniform with `ratemap=none`).
 	RateMap *RateMap
+}
+
+// dfeModel returns the model-global effect distribution (dfe_model param),
+// normalized to "weibull" (default) or "gamma". An unset/unrecognized value is
+// "weibull" — the byte-identical path — so a typo can never silently switch the
+// DFE.
+func dfeModel(model *core.Model) string {
+	if strings.ToLower(model.StringParam("dfe_model", "weibull")) == "gamma" {
+		return "gamma"
+	}
+	return "weibull"
+}
+
+// gammaShapeDefault / gammaMeanDefault read the global gamma-DFE params with
+// literature-anchored fallbacks (human deleterious DFE: alpha ~ 0.2, mean |s| ~
+// 0.01) so dfe_model=gamma is usable even when the two knobs are left unset.
+func gammaShapeDefault(model *core.Model) float64 {
+	if v, ok := model.Parameters["dfe_gamma_shape"]; ok && v > 0 {
+		return v
+	}
+	return 0.2
+}
+
+func gammaMeanDefault(model *core.Model) float64 {
+	if v, ok := model.Parameters["dfe_gamma_mean"]; ok && v > 0 {
+		return v
+	}
+	return 0.01
 }
 
 // dominancePct reads the global dominance coefficient h (fitness_dominance) as an
@@ -65,6 +102,9 @@ func defaultMutationClass(model *core.Model) MutationClass {
 		WeibullAdj:  model.Parameters["Weibull_adj"],
 		Dominance:   dominancePct(model),
 		Size:        1,
+		DFEModel:    dfeModel(model),
+		GammaShape:  gammaShapeDefault(model),
+		GammaMean:   gammaMeanDefault(model),
 	}
 }
 
@@ -148,6 +188,20 @@ func parseMutationClass(entry string, base MutationClass, genomeBits int) Mutati
 			c.Dominance = int(math.Round(h * 100))
 		case "size":
 			c.Size = int(math.Round(parseFloatDefault(val, float64(c.Size))))
+		case "dfe", "dfe_model":
+			// Per-class override of the effect distribution (roadmap §6f). Only
+			// "gamma"/"weibull" are recognized; anything else leaves the inherited
+			// value untouched.
+			switch strings.ToLower(val) {
+			case "gamma":
+				c.DFEModel = "gamma"
+			case "weibull":
+				c.DFEModel = "weibull"
+			}
+		case "gshape", "gamma_shape":
+			c.GammaShape = parseFloatDefault(val, c.GammaShape)
+		case "gmean", "gamma_mean":
+			c.GammaMean = parseFloatDefault(val, c.GammaMean)
 		case "ratemap", "rate_map":
 			// Per-class override of the regional rate map. Regions use ',' here
 			// (the class spec already consumes ';'). A value that parses to no

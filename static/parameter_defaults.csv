@@ -50,6 +50,9 @@ epistasis_coefficient,Epistasis Coefficient,Text,float,1,Mutation
 mutation_classes,Mutation Classes,Text,string,,Mutation
 mutation_rate_map,Mutation Rate Map,Text,string,,Mutation
 linkage_model,Linkage Model,Text,string,legacy,Mutation
+dfe_model,DFE Model,Text,string,weibull,Mutation
+dfe_gamma_shape,DFE Gamma Shape,Text,float,0.2,Mutation
+dfe_gamma_mean,DFE Gamma Mean |s|,Text,float,0.01,Mutation
 recombination_model,Recombination Model,Text,string,legacy,Mutation
 recomb_cM_per_bit,Recomb cM per Genome Bit,Text,float,1,Mutation
 recomb_obligate_cM,Recomb Obligate Crossover cM,Text,float,50,Mutation
@@ -84,6 +87,8 @@ track_Ne,Track Ne Through Time,Check,bool,0,Analysis
 ne_interval,Ne Capture Interval (yrs),Text,int,0,Analysis
 ne_sample_size,Ne Sample Size,Text,int,0,Analysis
 ne_cM_per_bit,LD-Ne cM per Genome Bit,Text,float,0,Analysis
+track_load,Track Genetic Load,Check,bool,0,Analysis
+load_interval,Load Capture Interval (yrs),Text,int,0,Analysis
 track_dating,Molecular-Clock Dating,Check,bool,0,Analysis
 dating_sample_size,Dating Sample Size,Text,int,0,Analysis
 dating_mu_factors,Dating Mu Factors,Text,string,,Analysis

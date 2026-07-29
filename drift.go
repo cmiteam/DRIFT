@@ -310,6 +310,20 @@ func main() {
 					analysis.CaptureNe(model, pop)
 				}
 			}
+			// Capture a genetic-load window (§6f) at the load_interval cadence.
+			// Read-only full-population scan of the de-novo mutation pool (no RNG),
+			// so a track_load run stays byte-identical to a track_load-off run.
+			// load_interval 0 falls back to save_interval; a smaller value resolves
+			// how load accumulates through a bottleneck / demographic epoch.
+			if model.Parameters["track_load"] == 1 {
+				loadInterval := int(model.Parameters["load_interval"])
+				if loadInterval <= 0 {
+					loadInterval = int(model.Parameters["save_interval"])
+				}
+				if loadInterval > 0 && year%loadInterval == 0 {
+					analysis.CaptureLoad(model, pop)
+				}
+			}
 			// Checkpoint at the configured interval.
 			if commands.CheckpointInterval > 0 && year%commands.CheckpointInterval == 0 {
 				maybeCheckpoint(pop)
@@ -460,6 +474,16 @@ func main() {
 			// (pkg/validation) instead; a single run's Tajima's D is noisy (SD ~ 1).
 			if err := analysis.SaveNeutralValidation(model, pop); err != nil {
 				log.Printf("Error writing neutral validation report: %v", err)
+			}
+		}
+		if model.Parameters["track_load"] == 1 {
+			// Genetic load / DFE / meltdown characterization (§6f): write the per-
+			// window load time series, the input-vs-realized (segregating vs fixed)
+			// DFE, and a summary reporting the drift barrier and whether load is
+			// rising (meltdown) or stationary (mutation-selection-drift balance).
+			// Read-only over the de-novo mutation pool; requires track_mutations.
+			if err := analysis.SaveLoadTimeSeries(model, pop); err != nil {
+				log.Printf("Error saving genetic-load results: %v", err)
 			}
 		}
 

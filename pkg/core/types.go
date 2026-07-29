@@ -109,6 +109,43 @@ type Pop struct {
 	// checkpointing; nil is a valid zero value on resume.
 	NeHistory  map[int]*NeSnapshot
 	NePrevSnap *FreqSnapshot
+
+	// Genetic-load-through-time state (roadmap §6f). One LoadSnapshot per captured
+	// window, keyed by simulated year; SaveLoadTimeSeries writes it at end-of-run.
+	// Populated only when track_load is set (default off ⇒ nil ⇒ no capture, no
+	// RNG, byte-identical). A map so gob checkpointing tolerates it; nil is a valid
+	// zero value on resume.
+	LoadHistory map[int]*LoadSnapshot
+}
+
+// LoadSnapshot holds the genetic-load statistics for the living population in one
+// captured window (roadmap §6f: DFE & genetic load / mutational-meltdown). It is a
+// READ-ONLY characterization of the de-novo mutation pool — a deterministic full-
+// population scan that consumes no RNG, so a track_load run is byte-identical to a
+// track_load-off run. Exported fields so it survives gob checkpointing.
+//
+// Load decomposition: TotalLoad = 1 - MeanFitness is the realized load under the
+// active fitness_model (so it reflects dominance + epistasis exactly). FixedLoad
+// is the load an individual carrying ONLY the fixed (frequency-1) derived variants
+// would bear (identical for everyone, since fixed lineages are homozygous in all);
+// SegLoad = TotalLoad - FixedLoad is the residual from segregating variation
+// (exact under additive fitness; an approximation under multiplicative/synergistic,
+// where loci interact). NumFixedDel is the Muller's-ratchet counter.
+type LoadSnapshot struct {
+	Year          int
+	CensusN       int
+	MeanFitness   float64         // mean relative fitness over living (per fitness_model)
+	TotalLoad     float64         // 1 - MeanFitness
+	SegLoad       float64         // load attributable to segregating (0<f<1) lineages
+	FixedLoad     float64         // load from fixed (f==1) derived lineages
+	NumSeg        int             // distinct segregating lineages among living
+	NumFixed      int             // distinct fixed lineages among living
+	NumFixedDel   int             // fixed deleterious lineages (Muller's-ratchet counter)
+	NumFixedBen   int             // fixed beneficial lineages
+	MeanMutPerInd float64         // mean mutation copies carried per individual
+	MeanDelPerInd float64         // mean deleterious mutation copies per individual
+	DemeLoad      map[int]float64 // per-deme total load (nil when a single deme)
+	ClassLoad     map[int]float64 // per mutation-class additive load (nil when only class 0)
 }
 
 // FreqSnapshot is one temporal sample of allele frequencies at segregating sites,

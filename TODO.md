@@ -657,9 +657,99 @@ out-of-Africa story, **(3)** countering critics.
 
 ### 6f. DFE & genetic load — goal 1
 
-- [ ] **Literature-anchored distribution of fitness effects** (gamma/Weibull mixtures — already
+- [x] **Literature-anchored distribution of fitness effects** (gamma/Weibull mixtures — already
   using Weibull), with genetic-load and mutational-meltdown tracking across timescales. Connects
-  to the dominance/epistasis items in §1.
+  to the dominance/epistasis items in §1. **Landed 2026-07-28.**
+  - **KEY FINDINGS (probed the real engine empirically before designing, as for §1/§6a).**
+    - **(P1) The shipped DFE is genetically inert by ~5 orders of magnitude.** Each non-neutral
+      mutation gets `|effect| = WeibullRandom(shape=1,scale=0.05)/Weibull_adj=1e6 ≈ 5e-8`, and
+      fitness is stored as `int(fitness·1e6)`, so any load below ~1e-6 is truncated away *before
+      selection sees it*. Runs with `selection_mode=fecundity`, `none`, and any effect scaling are
+      byte-identical genotype-for-genotype at shipped scale.
+    - **(P2) There is a hard DRIFT BARRIER at |s| ≈ 1/(2·Ne).** With the §6h emergent `Ne≈0.19·N`,
+      a matched-seed `fecundity`-vs-`none` sweep at N=150 (Ne~28, barrier ~0.018) showed
+      s=1e-3 **byte-identical** to pure drift (selection totally inert), diverging only at s≈1e-2
+      and clearly at s≥3e-2. The entire shipped Weibull DFE and even "moderate" s~1e-3 sit *below*
+      the barrier — the nearly-neutral regime the genetic-entropy argument lives in. Emitted in the
+      summary as `DriftBarrier_s` + `DelBelowBarrierFrac` (smoke run: **0.97** of realized
+      deleterious variants below the barrier).
+    - **(P3) DRIFT does not spontaneously melt down to extinction, and the reason is
+      architectural.** Even at N=30 (Ne~6), 70% deleterious, s=0.1, 2000y, the population persisted
+      at a *quasi-stationary* load ~13–16% — never crashed. DRIFT's **birth-then-cull-to-K**
+      demography regenerates the census each year regardless of *absolute* mean fitness (soft/
+      relative selection), so there is no small-N→more-drift→more-load feedback. Mean fitness
+      declines; census N does not. Characterized (like §6h non-WF D / §6d overlapping-gen), not
+      faked — the summary emits a `MeltdownVerdict` (rising / stationary / declining), not an
+      assumption of meltdown.
+    - **(P4, discovered while building) THE MUTATION POOL GARBAGE-COLLECTS AWAY MOST LOAD.** DRIFT
+      reference-counts `pop.MutationPool` (death.go does `Mutation.Count--` per dead copy and
+      **deletes at Count≤0**), but `InheritMutations` increments `Count` only on **strand-1**
+      inheritance (strand-0 bumps the *global* `pop.MutationCount` instead). So `Count` systemat-
+      ically under-counts, and the COMMON/FIXED lineages — the ones with the most inheritance/death
+      events — are GC'd FIRST, *while still carried*. Consequences: (a) the engine's **own realized
+      fitness under-counts load**, because `CountFitnessAndMutations` skips ids missing from the
+      pool (a GC'd deleterious mutation just stops being expressed); (b) **fixed load / the Muller's
+      ratchet are structurally invisible** in the pool. In the §6f smoke run **~98% of carried
+      mutation ids were already GC'd** (MeanMutPerInd 235→5.2 once restricted to pool-resident) and
+      `NumFixed` among pool-resident lineages was **0**. This is a further, deeper reason DRIFT
+      resists meltdown: accumulated load is silently discarded. The §6f layer reports **pool-
+      resident** load only (exactly what selection acts on — self-consistent with the engine);
+      making fixed load observable needs a kernel fix (correct the `Count` accounting, or retain the
+      pool under an opt-in) and is the natural **follow-up**.
+  - **Design (read-only characterization + opt-in gamma DFE — chosen with Rob).** Rob's call was
+    (1) keep §6f a **read-only** analysis layer that *characterizes* DRIFT's load behavior (matching
+    the §6h/§6d "characterize, don't fake" philosophy) over adding a meltdown-coupling mechanism;
+    (2) **include** the literature-anchored gamma DFE this pass.
+  - **Read-only load/DFE tracking (`pkg/analysis/load.go`, opt-in `track_load`).** A deterministic
+    full-population scan of the de-novo mutation pool at the **`load_interval`** cadence (0 ⇒
+    save_interval) captures a `core.LoadSnapshot` into `pop.LoadHistory`; end-of-run it writes three
+    CSVs: **`_load_timeseries`** (per window: mean fitness, total/seg/fixed load, #fixed-deleterious,
+    mean mutations & deleterious per individual), **`_dfe`** (the realized segregating-vs-fixed DFE
+    binned by class × sign × log10|effect| — the seg-vs-fixed contrast is selection's fingerprint),
+    and **`_load_summary`** (drift barrier, below-barrier fraction, meltdown verdict, provenance).
+    **Composition:** the trajectory *is* `mean(CombineFitness)`, so it reflects `fitness_model`
+    (additive/multiplicative/synergistic) + `epistasis_coefficient` + per-locus `dominance` exactly;
+    `selection_mode` is observational (named in the summary); everything partitions by mutation
+    `Class` (§1 spectrum) and `Deme` (§6b/§6c). Also fixes an artifact: `CountFitnessAndMutations`
+    returns 0.0 (not 1.0) for a mutation-free individual, so the load layer treats a zero-copy
+    individual as fitness 1.0 (else year-0 founders read load=1).
+  - **Literature-anchored gamma DFE (opt-in `dfe_model=gamma`).** A new `GammaRandom` (Marsaglia–
+    Tsang with the shape<1 boost) + `NormalRandom` in `pkg/utils/math.go` draw the deleterious
+    |effect| from `Gamma(shape, mean/shape)` — the human DFE standard (α≈0.2; Eyre-Walker 2007,
+    Kim/Huber/Lohmueller 2017), which a single Weibull can't match. `MutationClass` gained
+    `DFEModel`/`GammaShape`/`GammaMean` (per-class overridable via `dfe=`/`gshape=`/`gmean=` tokens);
+    the `f_neutral` point-mass and `f_beneficial` tail are unchanged, giving the full three-part
+    mixture. **This is the ONLY RNG-consuming code §6f touches**, reached only when a class selects
+    gamma, so the Weibull path is byte-for-byte the original.
+  - **Compatibility (byte-safe).** `track_load` off ⇒ no capture, no files, **zero RNG** (read-only
+    full-pop scan) ⇒ neutral runs byte-identical, and **track_load on-vs-off leaves the main
+    `_results.csv` byte-identical** (verified e2e). `dfe_model` unset/`weibull` ⇒ the identical
+    magnitude draw (the neutral/beneficial coins around it are unchanged) ⇒ `drift -validate` still
+    **PASS**, D=−0.8930, π/W=0.740, Ne/N=0.188, unchanged. `LoadHistory` is a gob-tolerant map
+    (nil-init on checkpoint load like `NeHistory`) ⇒ **no SchemaVersion bump**. Params
+    `track_load`/`load_interval` (Analysis) and `dfe_model`/`dfe_gamma_shape`/`dfe_gamma_mean`
+    (Mutation) added to `parameter_defaults.csv`.
+  - **Tests.** `pkg/utils/math_test.go` — gamma moments (mean=shape·scale, var=shape·scale²) for
+    both shape>1 and the shape<1 boost, guards, reproducibility, normal moments. `pkg/utils/
+    mutation_gamma_test.go` — realized gamma mean/CV through the real kernel, gamma-vs-Weibull
+    distinguishable heavier tail, per-class `dfe=gamma` parse. `pkg/analysis/load_test.go` — a hand-
+    computed 3-individual fixture (seg/fixed/deleterious classification, exact additive
+    MeanFitness/FixedLoad/SegLoad, MeanDelPerInd), a synergistic-≠-additive guard, the DFE
+    fingerprint, the meltdown verdict, CSV emission, and the track_mutations-off no-op. The existing
+    `TestDefaultSpectrumByteIdentical` still guards the Weibull byte-identity. Full `go test ./...`
+    green.
+  - **Verified end-to-end** via local gitignored `users/smoke/models/LoadTest` (non-neutral,
+    f_neutral=0.7, s~0.01 Weibull, fecundity, N=80, 2000y, seed 4242): the population survives to
+    end-year at a **quasi-stationary load ~0.003** (mean fitness ~0.997), `DelBelowBarrierFrac=0.97`,
+    `NumFixed`(pool-resident)=0 — the P2–P4 findings visible in one run; two runs byte-identical;
+    track_load on-vs-off `_results.csv` byte-identical. A `dfe_model=gamma` variant runs e2e and its
+    `_dfe` shows the characteristic heavy tail (deleterious spanning ~9 magnitude decades vs
+    Weibull's 3). NOTE a smaller/harder config (N=40, f_neutral=0.5, s~0.02, fecundity) *does* melt
+    down to extinction — the one regime where DRIFT's soft-selection birth failure outruns the cull.
+  - **Deferred follow-ups:** the pool-GC / `Count`-accounting fix that would make fixed load and the
+    Muller's ratchet observable (P4); the optional meltdown-coupling mode (absolute fitness → growth)
+    Rob deferred this pass; a true historical input-DFE (needs recording effects outside the GC'd
+    pool).
 
 ### 6g. Haplotype & selection statistics — goal 2
 
