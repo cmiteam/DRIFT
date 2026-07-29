@@ -767,11 +767,32 @@ out-of-Africa story, **(3)** countering critics.
     `_dfe` shows the characteristic heavy tail (deleterious spanning ~9 magnitude decades vs
     Weibull's 3). NOTE a smaller/harder config (N=40, f_neutral=0.5, s~0.02, fecundity) *does* melt
     down to extinction — the one regime where DRIFT's soft-selection birth failure outruns the cull.
-  - **Deferred follow-ups:** the optional meltdown-coupling mode (absolute fitness → growth) Rob
-    deferred this pass; a true historical input-DFE (needs recording effects outside the GC'd pool);
-    consider making `mutation_count_model=refcount` the default once its effect on the §6h neutral
-    baseline (θ/D from the now-larger pool) is characterized. (The P4 pool-GC / `Count`-accounting
-    fix itself is **done** — see the refcount item above.)
+  - **refcount vs the §6h neutral baseline (characterized).** Ran the real neutral harness
+    (DefaultNeutralConfig, R=12, N=120, mu=1, 1500y) under both models at the same seeds. The legacy
+    pool-GC + position-0 misinheritance was **significantly distorting the neutral population
+    genetics**, not just the load machinery — refcount gives a cleaner, more theory-consistent, far
+    more reproducible baseline:
+    | stat | legacy (shipped §6h) | refcount |
+    |---|---|---|
+    | θ_W | 45.19 | 75.02 |
+    | θ_π/θ_W | 0.740 | 0.809 |
+    | Tajima's D | −0.893 | **−0.661** (SEM 0.198 → **0.034**) |
+    | Ne/N | 0.188 | **0.313** |
+    | SFS χ²/dof vs 1/i | 18.88 | **4.77** |
+    (meanFinalN identical at 120 — demography/RNG unchanged.) So the legacy bug **deflated θ/Ne**
+    (Ne/N 0.19 was an artifact; true ≈0.31), **exaggerated the rare-variant skew** (D −0.89 → a
+    milder, still-non-WF −0.66), and **badly worsened the 1/i SFS fit** (χ²/dof 18.9 → 4.8, a 4×
+    improvement) — refcount's proper positional segregation removes the artificial position-0 linkage.
+    The genuine DRIFT non-WF signal (high-reproductive-variance rare-variant excess) is REAL but
+    milder than legacy suggested. refcount still passes the existing characterized bands (D −0.66 ∈
+    [−1.25,−0.15]; π/W 0.81 ∈ [0.62,0.98]). **This strengthens the case for making refcount the
+    default**, which would re-characterize the shipped §6h numbers (D −0.89→−0.66, Ne/N 0.19→0.31,
+    π/W 0.74→0.81) and require updating the -validate CharacterizedTolerances centers/notes — a
+    change to the credibility backbone, so left for Rob's explicit call.
+  - **Deferred follow-ups:** promote `mutation_count_model=refcount` to default + re-baseline §6h
+    (above); the optional meltdown-coupling mode (absolute fitness → growth) Rob deferred this pass;
+    a true historical input-DFE (needs recording effects outside the GC'd pool). (The P4 pool-GC /
+    `Count`-accounting fix itself is **done** — see the refcount item above.)
 
 ### 6g. Haplotype & selection statistics — goal 2
 
