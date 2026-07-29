@@ -24,6 +24,33 @@ import (
 // The default linkage_model="legacy" preserves the original (inverted) polarity
 // exactly — InheritMutations consumes no RNG, so both paths leave the RNG stream
 // untouched and the default run stays byte-identical (the §6h -validate gate).
+//
+// MUTATION-POOL REFERENCE COUNTING (opt-in; default "legacy" is byte-identical;
+// roadmap §6f follow-up). Mutation.Count is the reference count death.go uses to
+// garbage-collect a lineage (Count-- per dead copy; delete at Count<=0).
+// Historically this increment was ASYMMETRIC: only the strand-1 branch below bumped
+// Mutation.Count (the strand-0 branch bumped the vestigial global pop.MutationCount
+// instead), so Count under-counted true copies and the COMMON/FIXED lineages —
+// those with the most inheritance/death events — were GC'd first, WHILE STILL
+// CARRIED. That has two downstream effects: (1) the engine's own fitness under-
+// counts load, because CountFitnessAndMutations skips ids missing from the pool, so
+// fixed load / the Muller's ratchet are invisible (§6f finding P4); and (2) a
+// still-carried but GC'd mutation, when inherited here, resolves pop.MutationPool
+// [id] to the zero Mutation (Position 0) and is therefore placed by the mask bit at
+// position 0 rather than its true locus.
+//
+// With mutation_count_model="refcount" BOTH branches increment Mutation.Count, so
+// Count equals the living-copy count (creation=1, +1 per inherited copy, -1 per
+// dead copy) and a lineage is deleted only when genuinely lost — fixed load becomes
+// observable and inherited positions stay correct.
+//
+// COMPATIBILITY. InheritMutations consumes NO RNG under either model, and the
+// demography (births/deaths/N) is unchanged, so a fixed seed stays reproducible.
+// The DEFAULT "legacy" reproduces the original asymmetry exactly and is byte-
+// identical (the §6h -validate gate runs legacy). "refcount" DELIBERATELY changes
+// the realized mutation pool — that is the fix — so it is NOT byte-identical even
+// under neutrality (it changes the reported pool size / mutation content, and it
+// changes non-neutral fitness by design); it is strictly opt-in and off by default.
 func InheritMutations(model *core.Model, pop *core.Pop, genomemask []uint64, parent int, child int, copy int) {
 	if _, exists := pop.IndMutations[child]; !exists {
 		pop.IndMutations[child] = map[int][]int{0: {}, 1: {}}
@@ -37,6 +64,10 @@ func InheritMutations(model *core.Model, pop *core.Pop, genomemask []uint64, par
 	if model.StringParam("linkage_model", "legacy") == "arm" {
 		keep0, keep1 = 1, 0
 	}
+	// Under "refcount" the strand-0 branch also increments Mutation.Count so the
+	// reference count is symmetric (see the doc comment above); "legacy" keeps the
+	// original asymmetry.
+	refcount := model.StringParam("mutation_count_model", "legacy") == "refcount"
 
 	for _, mutationID := range pop.IndMutations[parent][0] {
 		mutation := pop.MutationPool[mutationID]
@@ -49,6 +80,9 @@ func InheritMutations(model *core.Model, pop *core.Pop, genomemask []uint64, par
 		if inheritedStrand == keep0 {
 			pop.IndMutations[child][copy] = append(pop.IndMutations[child][copy], mutationID)
 			pop.MutationCount++
+			if refcount {
+				mutation.Count++
+			}
 			pop.MutationPool[mutationID] = mutation
 		}
 	}

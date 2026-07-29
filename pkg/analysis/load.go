@@ -52,9 +52,14 @@ package analysis
 //      resident lineages was 0). This layer therefore reports pool-RESIDENT load
 //      only, exactly what selection acts on — the numbers are self-consistent with
 //      the engine, and the GC is itself a (further) reason DRIFT does not melt down:
-//      accumulated load is silently discarded. Making fixed load observable needs a
-//      kernel fix (correct the Count accounting, or retain the pool under an opt-in);
-//      that is deferred as the natural §6f follow-up, outside this read-only pass.
+//      accumulated load is silently discarded. The opt-in
+//      mutation_count_model="refcount" (utils.InheritMutations) corrects the Count
+//      accounting so common/fixed lineages persist: with it on, THIS SAME layer
+//      reports the true accumulating load and the fixed-deleterious ratchet
+//      (NumFixedDel) that legacy hides (in the §6f smoke run mean fitness falls
+//      1.0 -> 0.69 with 10 fixed deleterious by year 2000 under refcount, vs a
+//      spurious flat 0.997 under legacy). Default "legacy" stays byte-identical;
+//      refcount is opt-in (it changes the realized pool).
 //
 // Composition. The trajectory IS mean(CombineFitness), so it reflects
 // fitness_model (additive / multiplicative / synergistic), epistasis_coefficient,

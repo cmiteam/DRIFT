@@ -694,8 +694,29 @@ out-of-Africa story, **(3)** countering critics.
       `NumFixed` among pool-resident lineages was **0**. This is a further, deeper reason DRIFT
       resists meltdown: accumulated load is silently discarded. The §6f layer reports **pool-
       resident** load only (exactly what selection acts on — self-consistent with the engine);
-      making fixed load observable needs a kernel fix (correct the `Count` accounting, or retain the
-      pool under an opt-in) and is the natural **follow-up**.
+      making fixed load observable needs a kernel fix — see the refcount item below.
+  - **Kernel fix (opt-in `mutation_count_model=refcount`) — makes fixed load & the Muller's ratchet
+    observable.** The P4 root cause is fixed at the source: `InheritMutations`
+    (`pkg/utils/mutation.go`) now, under `mutation_count_model="refcount"`, increments
+    `Mutation.Count` on **both** strand branches (was strand-1 only), so `Count` equals the true
+    living-copy count and a lineage is GC'd only when genuinely lost. This also fixes a *second*
+    manifestation of the same bug: under legacy a still-carried-but-GC'd mutation resolves
+    `pop.MutationPool[id]` to the zero `Mutation` (Position 0) and is inherited by the mask bit at
+    position 0 rather than its true locus; refcount keeps it resident and correctly placed.
+    **Compatibility:** `InheritMutations` consumes no RNG and the demography (births/deaths/N) is
+    unchanged, so runs stay reproducible (two refcount runs byte-identical); the **default `legacy`
+    is byte-identical** (the -validate gate runs legacy — re-run **PASS**, Ne/N=0.188). refcount
+    *deliberately* changes the realized mutation pool (that is the fix), so it is **not** byte-
+    identical even under neutrality (there only the reported `nMuts` / pool content changes; under
+    non-neutral it changes fitness, the intended effect) — strictly opt-in, off by default. Same
+    idiom as `linkage_model=arm` / `recombination_model=map`. Param `mutation_count_model` (Mutation,
+    default `legacy`). Tests: `pkg/utils/mutation_count_test.go` (legacy asymmetry, refcount
+    symmetry, and a survives-GC payoff test where a child-carried lineage is GC'd under legacy but
+    retained under refcount); the existing `TestInheritMutationsLegacyByteIdentical` oracle still
+    guards the default. **Verified e2e** on the LoadTest fixture: same engine/seed/params, only
+    `mutation_count_model=refcount`, and mean fitness declines **1.0 → 0.688** with **10 fixed
+    deleterious** by year 2000 (FixedLoad 0.129, MeanDelPerInd 62) — the genetic-entropy signal that
+    legacy hid behind a spurious flat load ~0.003.
   - **Design (read-only characterization + opt-in gamma DFE — chosen with Rob).** Rob's call was
     (1) keep §6f a **read-only** analysis layer that *characterizes* DRIFT's load behavior (matching
     the §6h/§6d "characterize, don't fake" philosophy) over adding a meltdown-coupling mechanism;
@@ -727,8 +748,8 @@ out-of-Africa story, **(3)** countering critics.
     magnitude draw (the neutral/beneficial coins around it are unchanged) ⇒ `drift -validate` still
     **PASS**, D=−0.8930, π/W=0.740, Ne/N=0.188, unchanged. `LoadHistory` is a gob-tolerant map
     (nil-init on checkpoint load like `NeHistory`) ⇒ **no SchemaVersion bump**. Params
-    `track_load`/`load_interval` (Analysis) and `dfe_model`/`dfe_gamma_shape`/`dfe_gamma_mean`
-    (Mutation) added to `parameter_defaults.csv`.
+    `track_load`/`load_interval` (Analysis), `dfe_model`/`dfe_gamma_shape`/`dfe_gamma_mean` and
+    `mutation_count_model` (Mutation) added to `parameter_defaults.csv`.
   - **Tests.** `pkg/utils/math_test.go` — gamma moments (mean=shape·scale, var=shape·scale²) for
     both shape>1 and the shape<1 boost, guards, reproducibility, normal moments. `pkg/utils/
     mutation_gamma_test.go` — realized gamma mean/CV through the real kernel, gamma-vs-Weibull
@@ -746,10 +767,11 @@ out-of-Africa story, **(3)** countering critics.
     `_dfe` shows the characteristic heavy tail (deleterious spanning ~9 magnitude decades vs
     Weibull's 3). NOTE a smaller/harder config (N=40, f_neutral=0.5, s~0.02, fecundity) *does* melt
     down to extinction — the one regime where DRIFT's soft-selection birth failure outruns the cull.
-  - **Deferred follow-ups:** the pool-GC / `Count`-accounting fix that would make fixed load and the
-    Muller's ratchet observable (P4); the optional meltdown-coupling mode (absolute fitness → growth)
-    Rob deferred this pass; a true historical input-DFE (needs recording effects outside the GC'd
-    pool).
+  - **Deferred follow-ups:** the optional meltdown-coupling mode (absolute fitness → growth) Rob
+    deferred this pass; a true historical input-DFE (needs recording effects outside the GC'd pool);
+    consider making `mutation_count_model=refcount` the default once its effect on the §6h neutral
+    baseline (θ/D from the now-larger pool) is characterized. (The P4 pool-GC / `Count`-accounting
+    fix itself is **done** — see the refcount item above.)
 
 ### 6g. Haplotype & selection statistics — goal 2
 
