@@ -287,7 +287,7 @@ type ValidationCheck struct {
 // NeutralTolerances holds the pass/fail bands for a SINGLE-REALIZATION validation
 // report (the per-run diagnostic wired into drift.go). Tajima's D and the theta
 // ratio are scored against DRIFT's CHARACTERIZED neutral baseline (a rare-variant
-// excess: D ~ -0.7, theta_pi/theta_W ~ 0.75), NOT the Wright-Fisher values (0 and
+// excess: D ~ -0.66, theta_pi/theta_W ~ 0.81), NOT the Wright-Fisher values (0 and
 // 1) — see pkg/validation for why DRIFT's high-reproductive-variance demography
 // produces that skew. HWE (F_IS ~ 0) is a true textbook expectation DRIFT meets.
 // Bands are wide because a single sample of Tajima's D has a standard deviation
@@ -306,10 +306,10 @@ type NeutralTolerances struct {
 // characterized neutral baseline. Wide because one sample's Tajima's D has SD ~ 1.
 func DefaultTolerances() NeutralTolerances {
 	return NeutralTolerances{
-		TajimasDCenter:   -0.7,
-		TajimasD:         1.3, // pass for a single-run D in [-2.0, 0.6]
-		ThetaRatioCenter: 0.75,
-		ThetaRatio:       0.40, // [0.35, 1.15]
+		TajimasDCenter:   -0.66, // refcount pool accounting (§6f); legacy was -0.89
+		TajimasD:         1.3,   // pass for a single-run D in [-1.96, 0.64]
+		ThetaRatioCenter: 0.81,
+		ThetaRatio:       0.40, // [0.41, 1.21]
 		SFSShape:         6.0,  // descriptive; correlated (linked) sites inflate chi2
 		FIS:              0.20,
 		FuLiD:            1.6,
@@ -368,19 +368,19 @@ func BuildReport(s *NeutralStats, mu, censusN float64, tol NeutralTolerances) *V
 		})
 	}
 
-	// 1. Tajima's D: scored against DRIFT's characterized neutral baseline (~ -0.7),
+	// 1. Tajima's D: scored against DRIFT's characterized neutral baseline (~ -0.66),
 	// NOT the Wright-Fisher 0 (see NeutralTolerances / pkg/validation).
 	add("TajimasD", s.TajimasD, tol.TajimasDCenter, tol.TajimasD,
-		"characterized baseline ~ -0.7 (rare-variant excess, not WF 0); single-sample SD ~ 1")
+		"characterized baseline ~ -0.66 (rare-variant excess, not WF 0); single-sample SD ~ 1")
 
-	// 2. theta_pi / theta_W: characterized ~ 0.75 (both estimate the same theta, but
+	// 2. theta_pi / theta_W: characterized ~ 0.81 (both estimate the same theta, but
 	// the neutral SFS skew pulls the ratio below the WF value of 1).
 	ratio := 0.0
 	if s.ThetaW > 0 {
 		ratio = s.ThetaPi / s.ThetaW
 	}
 	add("ThetaPi/ThetaW", ratio, tol.ThetaRatioCenter, tol.ThetaRatio,
-		"both estimate theta = 2*Ne*mu; characterized ~0.75 (WF=1)")
+		"both estimate theta = 2*Ne*mu; characterized ~0.81 (WF=1)")
 
 	// 3. SFS shape ~ 1/i (chi2/dof).
 	chi2, dof := SFSShapeChiSquare(s.UnfoldedSFS, s.SegSites, s.NumChrom)

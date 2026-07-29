@@ -50,7 +50,7 @@ epistasis_coefficient,Epistasis Coefficient,Text,float,1,Mutation
 mutation_classes,Mutation Classes,Text,string,,Mutation
 mutation_rate_map,Mutation Rate Map,Text,string,,Mutation
 linkage_model,Linkage Model,Text,string,legacy,Mutation
-mutation_count_model,Mutation Pool Count Model,Text,string,legacy,Mutation
+mutation_count_model,Mutation Pool Count Model,Text,string,refcount,Mutation
 dfe_model,DFE Model,Text,string,weibull,Mutation
 dfe_gamma_shape,DFE Gamma Shape,Text,float,0.2,Mutation
 dfe_gamma_mean,DFE Gamma Mean |s|,Text,float,0.01,Mutation

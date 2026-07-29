@@ -115,9 +115,14 @@ func TestInheritMutationsLegacyByteIdentical(t *testing.T) {
 		want := inheritPop(strand0, strand1)
 		inheritOracleLegacy(want, mask, 1, 2, 0)
 
+		// Explicit mutation_count_model=legacy so the Count field matches the
+		// pre-§6f oracle (refcount is now the default and increments strand-0 Count).
+		mLegacy := tiledArmsModel("legacy")
+		mLegacy.StringParams["mutation_count_model"] = "legacy"
 		got := inheritPop(strand0, strand1)
-		InheritMutations(tiledArmsModel("legacy"), got, mask, 1, 2, 0)
-		// also verify the unset default (no linkage_model key) behaves as legacy
+		InheritMutations(mLegacy, got, mask, 1, 2, 0)
+		// The unset default (no linkage_model key) keeps the legacy MASK POLARITY, so
+		// the inherited-id SET is identical (mutation_count_model only affects Count).
 		gotDefault := inheritPop(strand0, strand1)
 		InheritMutations(tiledArmsModel(""), gotDefault, mask, 1, 2, 0)
 

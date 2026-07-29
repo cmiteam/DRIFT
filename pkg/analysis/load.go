@@ -81,11 +81,13 @@ import (
 )
 
 // emergentNeOverN is DRIFT's characterized neutral Ne/N ratio (§6h): the coalescent
-// effective size is an emergent ~0.19 of the census size because the engine is
+// effective size is an emergent ~0.31 of the census size because the engine is
 // overlapping-generations, monogamous, and high-reproductive-variance (NOT Wright-
-// Fisher). Used only to report the operative selection (drift) barrier 1/(2*Ne);
-// it is a documented reference value, not a live measurement.
-const emergentNeOverN = 0.19
+// Fisher). Value is under the default mutation_count_model="refcount" (§6f); the
+// earlier legacy accounting reported an artifact-deflated ~0.19. Used only to
+// report the operative selection (drift) barrier 1/(2*Ne); a documented reference
+// value, not a live measurement.
+const emergentNeOverN = 0.31
 
 // CaptureLoad snapshots the living population's genetic load for the current year
 // into pop.LoadHistory (roadmap §6f). Called from the run loop at the load_interval

@@ -27,10 +27,11 @@
 //     so the implied coalescent Ne = theta_W/(2*mu) is consistent across replicate
 //     seeds. Because DRIFT is overlapping-generations, monogamous, and age-
 //     structured (NOT Wright-Fisher), that Ne is an EMERGENT fraction of census N
-//     (~0.15-0.20 N here), reported rather than assumed equal to N.
+//     (~0.31 N under the default refcount pool accounting; roadmap §6f), reported
+//     rather than assumed equal to N.
 //
 // But DRIFT does NOT reproduce the Wright-Fisher Tajima's D ~ 0. Under strict
-// neutrality it robustly yields Tajima's D ~ -0.7 and theta_pi/theta_W ~ 0.75 — a
+// neutrality it robustly yields Tajima's D ~ -0.66 and theta_pi/theta_W ~ 0.81 — a
 // systematic EXCESS OF RARE VARIANTS — across every sustainable life history tested.
 // This is a real property of the engine, not a defect: DRIFT's monogamous, high-
 // fecundity, birth-then-cull reproduction has far higher offspring-number variance
@@ -110,16 +111,22 @@ func DefaultNeutralConfig() NeutralConfig {
 // neutral expectations that DRIFT DOES meet: HWE (F_IS ~ 0) and theta_pi/theta_W
 // consistency. The Tajima's-D and SFS-shape bands are CHARACTERIZED to DRIFT's own
 // reproducible neutral baseline rather than the Wright-Fisher value: under strict
-// neutrality DRIFT yields Tajima's D ~ -0.55 and theta_pi/theta_W ~ 0.80 (a
+// neutrality DRIFT yields Tajima's D ~ -0.66 and theta_pi/theta_W ~ 0.81 (a
 // systematic excess of rare variants) because its monogamous, high-fecundity,
 // overlapping-generations, birth-then-cull reproduction has much higher offspring-
 // number variance than Wright-Fisher — a real property of the engine, not a defect.
 // The bands are wide enough to pass reliably yet catch a regression that shifts the
 // neutral dynamics (e.g. back to WF-like D ~ 0, or to a pathological D < -1.1).
+//
+// This baseline is measured under the default mutation_count_model="refcount" (the
+// corrected pool reference counting; roadmap §6f). The earlier legacy accounting
+// distorted it (D -0.89 / Ne/N 0.19 / SFS chi2/dof 18.9) via artificial position-0
+// linkage; refcount's proper positional segregation gives this cleaner baseline
+// (Ne/N ~ 0.31, SFS chi2/dof ~ 4.8, and D far more reproducible: SEM ~ 0.03).
 func CharacterizedTolerances() NeutralTolerancesE2E {
 	return NeutralTolerancesE2E{
-		TajimasDCenter: -0.70, TajimasDBand: 0.55, // pass for D in [-1.25, -0.15]; excludes WF D~0
-		ThetaRatioLo: 0.62, ThetaRatioHi: 0.98, // characterized ~0.75 (rare-variant excess)
+		TajimasDCenter: -0.66, TajimasDBand: 0.55, // pass for D in [-1.21, -0.11]; excludes WF D~0
+		ThetaRatioLo: 0.62, ThetaRatioHi: 0.98, // characterized ~0.81 (rare-variant excess)
 		FIS:         0.12, // HWE: textbook ~0
 		ImpliedNeCV: 0.35, // implied Ne must be stable across replicate seeds
 	}

@@ -784,15 +784,23 @@ out-of-Africa story, **(3)** countering critics.
     milder, still-non-WF −0.66), and **badly worsened the 1/i SFS fit** (χ²/dof 18.9 → 4.8, a 4×
     improvement) — refcount's proper positional segregation removes the artificial position-0 linkage.
     The genuine DRIFT non-WF signal (high-reproductive-variance rare-variant excess) is REAL but
-    milder than legacy suggested. refcount still passes the existing characterized bands (D −0.66 ∈
-    [−1.25,−0.15]; π/W 0.81 ∈ [0.62,0.98]). **This strengthens the case for making refcount the
-    default**, which would re-characterize the shipped §6h numbers (D −0.89→−0.66, Ne/N 0.19→0.31,
-    π/W 0.74→0.81) and require updating the -validate CharacterizedTolerances centers/notes — a
-    change to the credibility backbone, so left for Rob's explicit call.
-  - **Deferred follow-ups:** promote `mutation_count_model=refcount` to default + re-baseline §6h
-    (above); the optional meltdown-coupling mode (absolute fitness → growth) Rob deferred this pass;
-    a true historical input-DFE (needs recording effects outside the GC'd pool). (The P4 pool-GC /
-    `Count`-accounting fix itself is **done** — see the refcount item above.)
+    milder than legacy suggested. refcount still passes the existing characterized bands.
+  - **refcount PROMOTED TO DEFAULT + §6h re-baselined (done, per Rob's call).** `mutation_count_model`
+    default flipped `legacy`->**`refcount`** (parameter_defaults.csv + the InheritMutations code
+    fallback, which now opts out only on an explicit `legacy`), so every default run uses the corrected
+    pool accounting and **`drift -validate` now characterizes the refcount baseline**: re-run **PASS**
+    with **D=-0.6611** (SEM 0.034), **theta_pi/theta_W=0.809**, **F_IS=-0.040**, **Ne/N=0.313**, **SFS
+    chi2/dof=4.77** — the shipped credibility numbers, superseding the earlier legacy
+    D=-0.8930/pi-W=0.740/Ne-N=0.188 the per-item byte-identity notes above cite (those stay accurate as
+    of each feature's landing under the then-legacy default). Re-centered `CharacterizedTolerances`
+    (D -0.70->-0.66; note ~0.75->~0.81), `DefaultTolerances` (-0.7->-0.66, 0.75->0.81), `load.go`
+    `emergentNeOverN` 0.19->0.31 (the live drift-barrier constant), and the validation.go/neutral.go
+    package-doc baseline citations; `TestInheritMutationsLegacyByteIdentical` now sets
+    `mutation_count_model=legacy` explicitly to compare against the pre-§6f oracle. **Deliberate
+    default-behavior change:** runs stay deterministic (fixed seed reproducible) but are NO LONGER
+    byte-identical to pre-§6f legacy runs; opt back with `mutation_count_model=legacy`.
+  - **Deferred follow-ups:** the optional meltdown-coupling mode (absolute fitness -> growth) Rob
+    deferred this pass; a true historical input-DFE (needs recording effects outside the GC'd pool).
 
 ### 6g. Haplotype & selection statistics — goal 2
 
