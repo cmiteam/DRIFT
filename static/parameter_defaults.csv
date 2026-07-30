@@ -94,6 +94,12 @@ track_dating,Molecular-Clock Dating,Check,bool,0,Analysis
 dating_sample_size,Dating Sample Size,Text,int,0,Analysis
 dating_mu_factors,Dating Mu Factors,Text,string,,Analysis
 dating_gen_times,Dating Generation Times,Text,string,,Analysis
+track_haplostats,Track Haplotype/Selection Stats,Check,bool,0,Analysis
+haplostats_sample_size,HaploStats Sample Size,Text,int,0,Analysis
+haplostats_min_maf,HaploStats Min Minor-Allele Freq,Text,float,0.05,Analysis
+haplostats_ehh_cutoff,HaploStats EHH Cutoff,Text,float,0.05,Analysis
+haplostats_demes,HaploStats XP-EHH Demes,Text,string,,Analysis
+haplostats_export_hap,HaploStats Export selscan hap/map,Check,bool,0,Analysis
 deme_inheritance,Deme Inheritance,Text,string,paternal,Population
 generation_time,Generation Time (yrs),Text,float,25,Population
 track_map,Track on Map,Check,bool,1,Maps

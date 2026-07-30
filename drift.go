@@ -486,6 +486,32 @@ func main() {
 				log.Printf("Error saving genetic-load results: %v", err)
 			}
 		}
+		if model.Parameters["track_haplostats"] == 1 {
+			// Haplotype & selection statistics (§6g): EHH / iHS / XP-EHH / cM-binned
+			// LD-decay over the de-novo mutation POOL (the LD-bearing, selection-
+			// active substrate; the founder bitfield carries no sweep). Read-only;
+			// requires track_mutations. haplostats_sample_size 0 = full-population
+			// scan (no RNG); >0 subsamples via SampleLiving (opt-in, draws RNG).
+			sampleSize := int(model.Parameters["haplostats_sample_size"])
+			ids := analysis.SampleLiving(pop, sampleSize)
+			cfg := analysis.DefaultHaploConfig()
+			if v, ok := model.Parameters["haplostats_min_maf"]; ok && v > 0 {
+				cfg.MinMAF = v
+			}
+			if v, ok := model.Parameters["haplostats_ehh_cutoff"]; ok && v > 0 {
+				cfg.EHHCutoff = v
+			}
+			cfg.DemeA, cfg.DemeB = analysis.ParseDemePair(model.StringParam("haplostats_demes", ""))
+			res := analysis.ComputeHaploStats(model, pop, ids, cfg)
+			if err := analysis.SaveHaploStats(model, res); err != nil {
+				log.Printf("Error saving haplotype-stats results: %v", err)
+			}
+			if model.Parameters["haplostats_export_hap"] == 1 {
+				if err := analysis.ExportHapMap(model, pop, ids); err != nil {
+					log.Printf("Error exporting hap/map: %v", err)
+				}
+			}
+		}
 
 		// Final checkpoint at the end of the run.
 		maybeCheckpoint(pop)

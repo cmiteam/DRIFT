@@ -804,9 +804,62 @@ out-of-Africa story, **(3)** countering critics.
 
 ### 6g. Haplotype & selection statistics — goal 2
 
-- [ ] **EHH, iHS, XP-EHH, and LD-decay curves.** Standard selection-scan / haplotype-structure
-  stats; XP-EHH is cross-population. Useful for realism and for testing selection claims tied to
-  the OoA expansion.
+- [x] **EHH, iHS, XP-EHH, and LD-decay curves.** Standard selection-scan / haplotype-structure
+  stats; XP-EHH is cross-population. **Landed 2026-07-29.**
+  - **KEY FINDINGS (probed the real engine first, à la §1/§6a/§6f).** A throwaway in-process probe
+    (Birth→Mating→Death, `recombination_model=map`) measured both candidate substrates: **(1)** the
+    de-novo **mutation pool** carries ~**1000 segregating sites/chromosome** vs the founder
+    **bitfield**'s ~**5–10** even with `init_heterozygosity=0.25` — the bitfield drifts to
+    loss/fixation (§6h) and, because the seeder assigns INDEPENDENT per-site alleles, has ~**no**
+    initial haplotype LD for EHH to measure; **(2)** the pool has genuine coalescent haplotype blocks
+    (each mutation arises on one strand, inherited with neighbours until recombination separates them),
+    so pool-EHH decays cleanly and is cM-scaled through the §6a `GeneticMap` accessor (hotspot arms
+    widen the per-cM window as designed); **(3)** a beneficial de-novo mutation enters ONLY the pool —
+    a sweep is **structurally invisible** to the bitfield/VCF; **(4)** with selection cranked above the
+    §6f drift barrier (mean |s|≈0.1, `f_beneficial=0.15`, `f_neutral=0.5`, fecundity) a beneficial
+    reached freq 0.98 with iHH_derived≈10.8 vs a frequency-matched neutral core's ≈2.8 (~4× extension);
+    at **shipped params there is NO sweep** (§6f: shipped Weibull s≈5e-8 is inert) — selection must be
+    explicitly configured strong.
+  - **Design (chosen with Rob): read the POOL only, internal stats + selscan hap/map export.** The
+    pool is the dense, LD-bearing, selection-active substrate (matches the §6h/§6e/§6f precedent); the
+    bitfield mode was declined (sparse, decaying, cannot show a de-novo sweep). A pool "site" is one
+    infinite-sites mutation lineage (derived = strand carries the id); EHH is computed WITHIN a
+    chromosome in real cM.
+  - **Module** (`pkg/analysis/haplostats.go` + `haplostats_output.go`, behind **`track_haplostats`**).
+    Per sampled strand (`IndMutations[id][0/1]`) a haplotype = the carried mutation-id set with
+    positions from `MutationPool`. **EHH** via the standard incremental haplotype-partition split
+    (O(sites·strands) per core), integrated to **iHH** in cM (both flanks, `haplostats_ehh_cutoff`
+    default 0.05) via `EnsureGeneticMap` (uniform `recomb_cM_per_bit` fallback when no map).
+    **iHS** = ln(iHH_A/iHH_D), **standardized within derived-allele-frequency bins** (selscan/rehh
+    normalization — this also fixes the near-fixation noise the probe hit). **XP-EHH** across two demes
+    (§6b `individual.Deme` grouping; `haplostats_demes="A,B"`, empty ⇒ first two demes), iES ln-ratio
+    standardized genome-wide. **LD-decay** = mean r² over same-chromosome pool-site pairs binned in cM.
+    `ExportHapMap` writes selscan-format `.hap`/`.map` so a critic can reproduce the numbers with their
+    own tools. Cores filtered by `haplostats_min_maf` (default 0.05); full EHH decay curves emitted for
+    the top-|iHS| cores. Outputs: `<model>_{ihs,ehh,xpehh,lddecay}_run%d_year%d.csv` + `.hap`/`.map`.
+  - **Compatibility (byte-safe).** `track_haplostats` off ⇒ no capture, no files, and on the default
+    full-sample path **zero RNG** (`haplostats_sample_size` 0 = full-population scan; >0 subsamples via
+    `SampleLiving`, opt-in, draws) ⇒ strictly-neutral runs byte-identical (`drift -validate` re-run
+    **PASS**, D=−0.6611, π/W=0.809, Ne/N=0.313, SFS χ²/dof=4.77, unchanged). Read-only end-of-run over
+    the pool; requires `track_mutations`; no new `core` state ⇒ no checkpoint schema bump. Params
+    `track_haplostats`/`haplostats_sample_size`/`haplostats_min_maf`/`haplostats_ehh_cutoff`/
+    `haplostats_demes`/`haplostats_export_hap` in `parameter_defaults.csv` (Analysis group).
+  - **Tests** (`haplostats_test.go`): a hand-computed EHH fixture (iHH_D=1.667, iHH_A=2.0,
+    iHS=0.182 exactly, from a designed 8-strand geometry over the cM map); a distinguishable
+    sweep-vs-neutral case (shared long block ⇒ iHH_D 2.5 ≫ 0.52 and a more-negative iHS); hand r²
+    (perfect/opposite/independent), iHS standardization (mean 0 in-bin), XP-EHH sign (extended deme ⇒
+    XP-EHH>0), `ParseDemePair`, and the <2-sample guard. Full `go test ./...` green.
+  - **Verified end-to-end** via local gitignored `users/smoke/models/HaploTest` (2 demes, strong
+    beneficial DFE + fecundity selection, real 23-chromosome cM map from RecombTest, seed 4242): the
+    population sustains at N=300 through 1500 yr, and §6g emits **1046 iHS cores (45 with |iHS|>2)**,
+    XP-EHH over 5029 sites, an **LD-decay curve that decays monotonically in cM** (r² 0.015→~0 by 4 cM),
+    and a 600-haplotype × 5029-site selscan `.hap`/`.map`. The strongest iHS outliers (StdIHS down to
+    −2.75) sit at low derived frequency — candidate partial sweeps. Two runs byte-identical;
+    `track_haplostats` on-vs-off leaves `_results.csv` byte-identical.
+  - **Deferred follow-ups:** a bitfield/VCF-consistent EHH mode (only meaningful once de-novo variation
+    feeds the bitfield); an iHS time-series (sweeps decay post-fixation); GUI exposure; and iES/nSL
+    variants. NOTE: the compute is O(cores·EHH-walks) end-of-run — the smoke's 5029-site XP-EHH pass
+    is ~2 min; fine for an opt-in analysis but a candidate for a neighbour-window cap if scaled up.
 
 ### 6h. Credibility backbone (do regardless) — goal 3
 
