@@ -200,11 +200,14 @@ func Wander(model *core.Model, lat, lon int) (int, int) {
 	newLat := lat + offsetLat
 	newLon := lon + offsetLon
 
-	// Accept the move only if the target cell is habitable. With no habitat table
-	// this is exactly IsLand (byte-identical: the two RNG draws above are unchanged,
-	// only the accept/reject predicate is generalized); with a table it also admits
-	// harsh-but-livable terrains.
-	if model.IsHabitable(newLat, newLon) {
+	// Accept the move only if the target cell is habitable AND the path to it is not
+	// blocked by a movement barrier (roadmap §3). With no habitat table IsHabitable is
+	// exactly IsLand, and with no movement_barriers table CanTraverse is always true —
+	// so an unset config leaves this byte-identical: the two RNG draws above are
+	// unchanged and only the accept/reject predicate is generalized. A habitat table
+	// admits harsh-but-livable terrains; a barrier table rejects a move whose straight
+	// line crosses impassable terrain (so a thin strait/ridge becomes a real wall).
+	if model.IsHabitable(newLat, newLon) && model.CanTraverse(lat, lon, newLat, newLon) {
 		return newLat, newLon
 	}
 	return lat, lon

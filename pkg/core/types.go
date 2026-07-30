@@ -5,12 +5,12 @@ import (
 )
 
 type Model struct {
-	Parameters      map[string]float64
-	StringParams    map[string]string // non-numeric params, e.g. birth_style=standard
-	Scenario        string
-	FreeParameters  map[string]int
-	PlotFlags       map[string]bool
-	ChromosomeArms  map[int]map[int][]int
+	Parameters     map[string]float64
+	StringParams   map[string]string // non-numeric params, e.g. birth_style=standard
+	Scenario       string
+	FreeParameters map[string]int
+	PlotFlags      map[string]bool
+	ChromosomeArms map[int]map[int][]int
 	// ArmCM holds an optional per-arm genetic length in centiMorgans (roadmap §6a),
 	// parsed from a 5th column of chromosome_data.csv (Chromosome,Arm,Start,Length,cM).
 	// Empty when the file has no cM column (legacy 4-column files) — the map then
@@ -21,8 +21,8 @@ type Model struct {
 	// actually used (a cM column is present, or recombination_model="map"); a nil map
 	// means the legacy single-interior-segment createMask is in effect and the §6d LD
 	// leg falls back to the ne_cM_per_bit scalar. Built once (no RNG), then cached.
-	GeneticMap *GeneticMap
-	DeathRisk  map[int]float64
+	GeneticMap      *GeneticMap
+	DeathRisk       map[int]float64
 	CumulativeProb  map[int]float64
 	Map             [][]int
 	ModelName       string
@@ -69,6 +69,14 @@ type Model struct {
 	// existing path byte-identical. Rebuilt from the param, not serialized (like the
 	// schedulers) — no checkpoint schema bump.
 	Habitat *HabitatTable
+
+	// Movement barriers table (roadmap §3). Lazily built (see ensureBarriers) from
+	// the `movement_barriers` param, which lists terrain codes that block *crossing*
+	// (as opposed to habitat_suitability, which governs where an individual may live).
+	// Nil until first consulted; when inactive (unset param) CanTraverse returns true
+	// unconditionally, so Wander's move-accept predicate is byte-identical. Rebuilt
+	// from the param, not serialized (like the schedulers) — no checkpoint schema bump.
+	Barriers *BarrierTable
 }
 
 // DemographyScheduler advances a time-varying demographic scenario. Defined here

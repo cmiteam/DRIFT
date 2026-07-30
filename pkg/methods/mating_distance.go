@@ -27,8 +27,9 @@ func MatingDistance(model *core.Model, pop *core.Pop, availableMen, availableWom
 		manLat := pop.IndData[manID][individual.Lat]
 		manLon := pop.IndData[manID][individual.Lon]
 
-		// Get all available women in this man's cell
-		availableInCell := influenceGrid[manLat][manLon]
+		// Get all available women in this man's cell, minus any a movement barrier
+		// separates from him (no-op when no barrier table is active).
+		availableInCell := filterTraversableWomen(model, pop, manLat, manLon, influenceGrid[manLat][manLon])
 
 		// Filter out already matched women
 		var eligibleWomen []int

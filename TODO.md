@@ -349,7 +349,97 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` needs 
     accessor); a hard per-cell K; per-deme / local-to-map-density K in `cullByDeme` (extending soft-K
     into §6c scenarios); a map-load path decoupled from `track_map`/animation; suitability biasing
     `Wander` toward good cells; separate K-vs-mortality gradients.
-- [ ] **Barriers and corridors** affecting movement.
+- [x] **Barriers and corridors** affecting movement. Builds on the same model.Map /
+  Wander / IsHabitable machinery as habitat suitability. **Landed 2026-07-30.**
+  - **KEY FINDINGS (probed the real movement code first, à la §1/§6a/§3-habitat).** (1)
+    DRIFT's only movement primitive is `utils.Wander` ([pkg/utils/maps.go](pkg/utils/maps.go)):
+    it draws a random destination inside a `(2·wander+1)²` Chebyshev box and accepts iff the
+    destination `IsHabitable` — a **teleport**, tested at the destination only, no path/cells
+    between. Called every birth for offspring dispersal ([birth.go](pkg/simulation/birth.go))
+    and for unmatched-man relocation in age_distance mating. (2) **"Impassable-but-adjacent"
+    barely existed and was *leaky*:** because movement is a box-teleport, an individual **jumps
+    clean over any water/impassable strip narrower than `wander`** — a 1–4-cell strait or ridge
+    did not actually block crossing. There was no way to make a barrier that blocks crossing
+    without also making the far side an invalid destination. (3) **No directional movement / no
+    corridors** — offsets are symmetric `[−w,+w]`. (4) The three mating-move gates (woman → man's
+    cell) were `IsHabitable`-only (settle checks; the man already lives there), and the two
+    distance-mating modules pair by **pure Manhattan proximity through an influence grid that
+    ignores terrain** — so gene flow crosses a strait narrower than `max_mating_distance`
+    regardless of any destination-based barrier. (5) Habitat suitability **conflated** "can I
+    live here" (settle/mortality) with "can I cross here" — a real barrier (mountain range,
+    strait) is uncrossable even where you also wouldn't settle; a corridor (land bridge) is a
+    crossable channel through otherwise-impassable terrain. Neither notion existed.
+  - **Design (chosen with Rob = line-of-sight raycast + terrain-code table, over
+    destination-only / reachability-BFS and over explicit geometry / a passability-grid file).**
+    A crossing test on the origin→destination transition, expressed as **line-of-sight**: a move
+    is allowed only if the straight cell-line (integer Bresenham, ≤~2·wander cells) between the
+    endpoints passes through no *barrier* cell. This makes a thin strait a **real wall** (LOS
+    blocked), lets you go **around the tip** if it's in range, and gives **corridors** meaning
+    with *no new geometry* — a corridor is just a passable (non-barrier) strip the map author
+    already draws through a barrier (e.g. `BridgeLand`), which restores LOS through it. Barriers
+    are authored as a new opt-in **`movement_barriers`** string param (Maps group): terrain codes
+    that block crossing, e.g. `3:block 4` (a bare code or `:block`; a `:pass` token opts a code
+    out); tokens space/`;`/`,`-separated so it survives a CSV param file. This gives the dead
+    enum classes a *crossing* meaning distinct from habitat_suitability's *settle* meaning, keeps
+    params-file provenance, and the accessor (`CanTraverse`) is abstracted so a per-cell
+    passability grid or explicit barrier geometry can slot in behind it later (mirrors the §6a cM
+    accessor and the §3-habitat suitability accessor).
+  - **Where it acts — the crossing test gates *both* places an individual moves across space.**
+    (a) **Dispersal** ([Wander](pkg/utils/maps.go)): the move-accept predicate becomes
+    `IsHabitable(dest) && CanTraverse(origin,dest)`. (b) **Spatial mating relocation** (the
+    empirical gap that made a Wander-only cut insufficient): the distance / age_distance modules
+    now filter the influence-grid candidates through **`filterTraversableWomen`**
+    ([pkg/methods/mating_age_distance.go](pkg/methods/mating_age_distance.go)) — a woman a
+    barrier separates from the man is dropped, so no cross-barrier couple forms. Without this a
+    strait narrower than `max_mating_distance` still leaked gene flow, defeating the roadmap's
+    stated payoff (population structure / Fst). Random (aspatial) mating is left untouched.
+    Founder placement and `partitionLandByDeme` use habitability (unchanged) — barriers only
+    constrain post-setup movement.
+  - **Composition.** Barriers act purely on Lat/Lon in movement, so they are orthogonal to the
+    `num_demes` island model and `migration_pulse`/`deme_migration_rate` (which relabel `Deme`
+    and never touch Lat/Lon) — a barrier can *reinforce* deme separation geographically but the
+    two mechanisms don't interfere. Movement runs regardless of `DemeCaps`, so (unlike the §3
+    habitat soft-cull, which yields under a §6c scenario) barriers compose with everything. They
+    layer cleanly with habitat_suitability: suitability governs *where you can live* (settle +
+    mortality), barriers govern *what you can cross* — a wide ocean is both uninhabitable and a
+    barrier; an open plain can be uninhabitable-but-passable; a mountain pass habitable-and-open.
+  - **Compatibility.** The crossing test is a pure accept/reject on the already-drawn
+    destination, so **Wander draws its exact two offsets in the same order — zero extra RNG** — and
+    the mating filter returns the candidate slice unchanged when inactive. `movement_barriers`
+    unset ⇒ `CanTraverse` returns true unconditionally / the mating filter is a no-op ⇒ the
+    move-accept predicate (and the whole run) is byte-identical. Strictly-neutral runs unaffected
+    (`-validate` uses random mating and no map): `drift -validate` still **PASS**, D=−0.6611,
+    π/W=0.809, Ne/N=0.313, SFS χ²/dof=4.77 (refcount baseline unchanged). Param added to
+    `parameter_defaults.csv` (Maps group, empty default). `core.Model.Barriers` is rebuilt from
+    the param, not serialized (like the schedulers / habitat) ⇒ no checkpoint schema bump.
+  - **Tests.** `pkg/core/barriers_test.go` — table parse (bare code / `:block` / `:pass` opt-out
+    / separators / malformed-skip / empty-and-all-passable inactive), `IsBarrier` (inactive-never
+    / active-per-code / OOB), `CanTraverse` **line-of-sight** hand-computed fixtures on a 5×5
+    strait-with-corridor map (horizontal/vertical/diagonal crossings blocked, corridor row +
+    clear diagonals pass, adjacency + no-move pass), and direction symmetry.
+    `pkg/utils/maps_test.go` — a **legacy byte-identity oracle** (unset ⇒ Wander == the original
+    IsHabitable-only predicate over a seeded 300-call sequence, identical positions AND RNG
+    state) and a **distinguishable blocked-strait** case (same seed, barrier ON pins the
+    individual behind the strait while OFF crosses it, with **identical ending RNG state** — the
+    barrier changes only accept/reject, never draws). `pkg/methods/mating_barrier_test.go` — the
+    mating gate through the **real MatingDistance module** over a strait-split population:
+    cross-strait marriages OFF=15 vs **ON=0** (all 30 men marry same-shore), the reproductive
+    isolation a barrier is *for*. Full `go test ./...` green.
+  - **Verified end-to-end** via local gitignored `users/smoke/models/BarrierTest` (20×20 map
+    split by a 3-cell OpenWater strait, distance mating, seed 4242): through the **real binary**
+    the run loads the map, completes, and two runs are **byte-identical** (determinism intact),
+    and a direct accessor probe confirms the barrier engages (cross-strait `CanTraverse`=false,
+    within-land=true, OFF=true). NOTE: the aggregate `_results.csv` is byte-identical barrier
+    on-vs-off because total N is governed by the global `carrying_capacity` cap and this smoke
+    tracks no genetic columns — a barrier redistributes *where* individuals live and constrains
+    *gene flow*, not total N (the same smoke limitation the §6a RecombTest note calls out for LD).
+    The structural/isolation effect is therefore carried by the mechanism-level tests driving the
+    real Wander and MatingDistance code paths.
+  - **Deferred follow-ups:** a per-cell passability grid file or explicit barrier geometry (both
+    behind the same `CanTraverse` accessor); reachability/BFS crossing (can't "see" through a
+    diagonal corner — a refinement over LOS); directional / attractive corridors that *bias*
+    Wander toward channels (a bigger change — alters the RNG-stream shape); and applying the
+    crossing test to the random-mating relocation (currently aspatial, left untouched).
 - [ ] **Deme / island models** with migration matrices — enables real population structure and Fst.
 
 ## 4. Analysis, validation & reproducibility

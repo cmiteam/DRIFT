@@ -25,8 +25,9 @@ func MatingAgeDistance(model *core.Model, pop *core.Pop, availableMen, available
 		manLon := pop.IndData[manID][individual.Lon]
 		manAge := currentYear - pop.IndData[manID][individual.BirthYear]
 
-		// Get all available women in this man's cell
-		availableInCell := influenceGrid[manLat][manLon]
+		// Get all available women in this man's cell, minus any a movement barrier
+		// separates from him (no-op when no barrier table is active).
+		availableInCell := filterTraversableWomen(model, pop, manLat, manLon, influenceGrid[manLat][manLon])
 
 		// Find eligible candidates from women in this cell
 		type candidate struct {
@@ -108,6 +109,29 @@ func MatingAgeDistance(model *core.Model, pop *core.Pop, availableMen, available
 			pop.IndData[manID][individual.Lon] = newLon
 		}
 	}
+}
+
+// filterTraversableWomen keeps only the women who can reach the man's cell across the
+// movement-barrier layer (roadmap §3). The distance-based influence grid pairs by pure
+// Manhattan proximity, ignoring terrain, so without this a barrier narrower than
+// max_mating_distance would still let couples form (and gene flow cross) straight
+// through it. A spatial mate can only form if the woman can traverse to the man — so a
+// barrier between them blocks the pairing, the mating analogue of the dispersal block
+// in utils.Wander. When no barrier table is active it returns `women` unchanged (same
+// slice, no allocation), keeping spatial mating byte-identical on the default path.
+func filterTraversableWomen(model *core.Model, pop *core.Pop, manLat, manLon int, women []int) []int {
+	if !model.MovementBarriersActive() {
+		return women
+	}
+	filtered := make([]int, 0, len(women))
+	for _, w := range women {
+		wl := pop.IndData[w][individual.Lat]
+		wo := pop.IndData[w][individual.Lon]
+		if model.CanTraverse(wl, wo, manLat, manLon) {
+			filtered = append(filtered, w)
+		}
+	}
+	return filtered
 }
 
 // createInfluenceGrid creates a grid where each cell contains IDs of women who can mate there
