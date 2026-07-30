@@ -47,8 +47,15 @@ func Mating(model *core.Model, pop *core.Pop) {
 
 	// Island model (roadmap §6b): individuals may migrate between demes, then mate
 	// only within their (possibly new) deme. This gives the discrete population
-	// structure the differentiation statistics (Fst / f-stats) measure.
-	migrateDemes(model, pop, numDemes)
+	// structure the differentiation statistics (Fst / f-stats) measure. When a
+	// migration_matrix is configured (roadmap §3) it supersedes the scalar
+	// deme_migration_rate with an asymmetric per-pair matrix; otherwise the original
+	// scalar uniform-island migration runs unchanged.
+	if mm := model.MigrationMatrix(); mm.Active {
+		migrateDemesMatrix(pop, mm)
+	} else {
+		migrateDemes(model, pop, numDemes)
+	}
 
 	// Mate within each deme independently by dispatching the selected module once
 	// per deme. Reuses every existing mating module unchanged (they simply operate
@@ -124,6 +131,52 @@ func migrateDemes(model *core.Model, pop *core.Pop, numDemes int) {
 			dst++
 		}
 		pop.IndData[id][individual.Deme] = dst
+	}
+}
+
+// migrateDemesMatrix moves each individual between demes according to an asymmetric
+// per-pair migration matrix (roadmap §3), the general-matrix counterpart to migrateDemes'
+// scalar uniform island model. For a resident of deme d it walks that deme's outgoing
+// edges in Dest-sorted order accumulating their per-year rates; a single RandFloat64 draw
+// u selects the destination whose cumulative interval u falls into, and if u exceeds the
+// total outgoing rate the individual stays put (the residual is the stay probability).
+// Individuals are visited in sorted id order and destinations applied afterward, so the
+// RNG stream — and the whole run — stays reproducible under a fixed rng_seed. Exactly one
+// RandFloat64 is drawn per individual regardless of the matrix, matching the
+// per-individual draw the scalar path makes for its migrate/stay decision.
+func migrateDemesMatrix(pop *core.Pop, mm *core.MigrationMatrix) {
+	ids := make([]int, 0, len(pop.IndData))
+	for id := range pop.IndData {
+		ids = append(ids, id)
+	}
+	sort.Ints(ids)
+
+	moves := make(map[int]int)
+	for _, id := range ids {
+		cur := pop.IndData[id][individual.Deme]
+		edges := mm.Out[cur]
+		// One draw per individual keeps the stream aligned whether or not this deme has
+		// outgoing edges (a deme with none simply never moves, but still would draw here
+		// if it had any — the draw is unconditional so the stream is edge-count-agnostic).
+		u := utils.RandFloat64()
+		cum := 0.0
+		for _, e := range edges {
+			cum += e.Rate
+			if u < cum {
+				moves[id] = e.Dest
+				break
+			}
+		}
+	}
+	// Apply after snapshotting so within-year order can't cascade (mirrors the scenario
+	// migrate). The map itself is order-independent; sorting keeps it deterministic.
+	dests := make([]int, 0, len(moves))
+	for id := range moves {
+		dests = append(dests, id)
+	}
+	sort.Ints(dests)
+	for _, id := range dests {
+		pop.IndData[id][individual.Deme] = moves[id]
 	}
 }
 

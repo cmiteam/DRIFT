@@ -463,6 +463,16 @@ func main() {
 				log.Printf("Error saving Fst results: %v", err)
 			}
 		}
+		if model.Parameters["track_geographic_fst"] == 1 {
+			// Geographic Fst (§3): the same estimators as track_Fst but partitioning by
+			// MAP REGION (geographic_fst_grid) instead of the aspatial Deme label, so
+			// barriers / habitat / spatial mating register as measurable structure.
+			// Requires track_DNA and track_map (a loaded map). Reuses fst_sample_size.
+			ids := analysis.SampleIDs(pop, int(model.Parameters["fst_sample_size"]))
+			if err := analysis.SaveGeographicFst(model, analysis.ComputeGeographicFst(model, pop, ids)); err != nil {
+				log.Printf("Error saving geographic Fst results: %v", err)
+			}
+		}
 		if model.Parameters["track_fstats"] == 1 {
 			// f-statistics (§6b): f2, f3(admixture), f4/D (ABBA-BABA). Requires
 			// track_DNA and num_demes >= 2. Which demes fill the f3/f4 slots is set
@@ -639,6 +649,12 @@ func runImportedAnalyses(model *core.Model, pop *core.Pop) {
 		ids := analysis.SampleIDs(pop, int(model.Parameters["fst_sample_size"]))
 		if err := analysis.SaveFst(model, analysis.ComputeFst(model, pop, ids)); err != nil {
 			log.Printf("Error saving Fst results: %v", err)
+		}
+	}
+	if model.Parameters["track_geographic_fst"] == 1 {
+		ids := analysis.SampleIDs(pop, int(model.Parameters["fst_sample_size"]))
+		if err := analysis.SaveGeographicFst(model, analysis.ComputeGeographicFst(model, pop, ids)); err != nil {
+			log.Printf("Error saving geographic Fst results: %v", err)
 		}
 	}
 	if model.Parameters["track_fstats"] == 1 {

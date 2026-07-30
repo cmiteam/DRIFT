@@ -77,6 +77,15 @@ type Model struct {
 	// unconditionally, so Wander's move-accept predicate is byte-identical. Rebuilt
 	// from the param, not serialized (like the schedulers) — no checkpoint schema bump.
 	Barriers *BarrierTable
+
+	// Deme migration matrix (roadmap §3). Lazily built (see ensureMigration) from the
+	// `migration_matrix` param, which lists directional per-pair per-year migration
+	// rates between demes (an asymmetric generalization of the scalar deme_migration_rate
+	// island model). Nil until first consulted; when inactive (unset param) the island
+	// mating path uses the scalar deme_migration_rate unchanged, so an unset param leaves
+	// every existing path byte-identical. Rebuilt from the param, not serialized (like the
+	// schedulers / habitat / barriers) — no checkpoint schema bump.
+	Migration *MigrationMatrix
 }
 
 // DemographyScheduler advances a time-varying demographic scenario. Defined here

@@ -72,8 +72,11 @@ vcf_sample_size,VCF Sample Size,Text,int,0,Analysis
 vcf_include_fixed,VCF Include Fixed Sites,Check,bool,0,Analysis
 num_demes,Number of Demes,Text,int,1,Population
 deme_migration_rate,Deme Migration Rate,Text,float,0,Population
+migration_matrix,Migration Matrix,Text,string,,Population
 track_Fst,Track Fst,Check,bool,0,Analysis
 fst_sample_size,Fst Sample Size,Text,int,0,Analysis
+track_geographic_fst,Track Geographic Fst,Check,bool,0,Analysis
+geographic_fst_grid,Geographic Fst Grid,Text,string,,Analysis
 track_fstats,Track f-statistics,Check,bool,0,Analysis
 fstats_sample_size,f-stats Sample Size,Text,int,0,Analysis
 fstats_demes,f-stats Deme Slots,Text,string,,Analysis

@@ -440,7 +440,98 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` needs 
     diagonal corner — a refinement over LOS); directional / attractive corridors that *bias*
     Wander toward channels (a bigger change — alters the RNG-stream shape); and applying the
     crossing test to the random-mating relocation (currently aspatial, left untouched).
-- [ ] **Deme / island models** with migration matrices — enables real population structure and Fst.
+- [x] **Deme / island models** with migration matrices — enables real population structure and Fst.
+  Builds directly on the barriers work (Rob's note: a geographic-Fst readout would finally let
+  barriers show structure end-to-end). **Landed 2026-07-30.**
+  - **KEY FINDINGS (probed the real deme/migration/Fst code first, à la every prior feature).**
+    (1) The roadmap line bundles **two orthogonal axes**: (A) an aspatial migration *matrix* (drives
+    the `individual.Deme` label), and (B) a *geographic-Fst readout* (Rob's stated payoff). They are
+    genuinely separate — (A) does nothing for barriers, (B) does nothing for the aspatial deme model
+    — so both were built. (2) Two migration channels already existed:
+    [migrateDemes](pkg/simulation/mating.go) (scalar `deme_migration_rate`, always-on but
+    **symmetric + uniform** — a Wright island model with one knob, migrants go to a uniformly-random
+    *other* deme) and the §6c [demography.go](pkg/demography/demography.go) `migrate` (per-pair but
+    **symmetric** `migSpec{A,B,Rate}` AND scenario-gated — only runs when a `DemographyScheduler` is
+    attached). Confirmed: **no standalone, always-on, asymmetric N-deme matrix existed** — the real
+    gap. (3) **All** structure stats (Fst/f-stats/joint-SFS/hetdistance) key on the `Deme` label via
+    one primitive [demeMembers](pkg/analysis/fst.go); **nothing keys on geography** (Lat/Lon). So a
+    movement barrier (which splits the map into diverging patches while everyone keeps `Deme=0`)
+    produces **zero Fst signal today** — deme-Fst lumps all one deme. That is exactly the end-to-end
+    gap Rob flagged. (4) ⚠️ **Surfaced a real latent §3-barriers bug while smoke-testing:** the
+    user-model loader [SetParameter](pkg/utils/parameters.go) routes params by `ParseFloat` success,
+    so a **bare-numeric** `movement_barriers=3` lands in numeric `Parameters`, not `StringParams` ⇒
+    `StringParam("movement_barriers")` returns "" ⇒ the barrier table is silently **inert**. The
+    documented `3:block` form (non-numeric) survives and engages correctly. (Noted as a follow-up.)
+  - **Design (chosen with Rob = BOTH axes; matrix in per-year directional-sparse units).**
+    **(A) Migration matrix.** A new opt-in **`migration_matrix`** param (Population group): directional
+    sparse edges `<from>><to>:<rate>` (space/`;`/`,`-separated), rate = the **per-year per-individual**
+    probability of that from→to move — matching the units of the scalar `deme_migration_rate` it
+    generalizes (the island model with rate m over N demes ≡ the matrix with every off-diagonal
+    `= m/(N-1)`). Asymmetric, per-pair, always-on, **no scenario required** — so stepping-stone,
+    source→sink, and post-Babel radiation are all expressible. Parsed into
+    [core.MigrationMatrix](pkg/core/migration.go) (lazily built + cached on `core.Model`, mirroring
+    the habitat/barriers/§6a-cM accessors — a future dense-matrix / distance-kernel source slots in
+    behind `MigrationMatrix()`). Applied by [migrateDemesMatrix](pkg/simulation/mating.go): for a
+    resident of deme d it walks that deme's Dest-sorted outgoing edges accumulating rates, draws
+    **exactly one `RandFloat64`** and picks the destination whose cumulative interval it falls in
+    (residual = stay probability). Supersedes the scalar `migrateDemes` in the island path when
+    active; when inactive the scalar path runs unchanged. Existing Fst/f-stats/joint-SFS read the
+    resulting deme structure with no changes.
+    **(B) Geographic Fst.** [ComputeFst](pkg/analysis/fst.go) was refactored to a partition-driven
+    core `computeFstFromPartition` (deme-Fst = `demeMembers` + core; byte-identical output — existing
+    tests unchanged). New [geographic_fst.go](pkg/analysis/geographic_fst.go): `geographicMembers`
+    dices the map into a `<rows>x<cols>` grid of regions (parsed from **`geographic_fst_grid`**, bare
+    `<n>`=n×n, default 2x2) and bins each individual by `Lat`/`Lon`, then feeds the *same* Hudson/W&C
+    estimators keyed on region. `ComputeGeographicFst`/`SaveGeographicFst` behind a new opt-in
+    **`track_geographic_fst`** (requires `track_map` + `track_DNA`, reuses `fst_sample_size`), writing
+    `<model>_geographic_fst_*`. This is what lets a barrier / habitat gradient / isolation-by-distance
+    register as measurable Fst without any deme labels — structure end-to-end.
+  - **Composition.** The matrix acts only in the non-scenario island path (a `DemographyScheduler`
+    still owns migration and takes `mateByDeme` before the matrix is consulted), so the two never
+    fight. Geographic Fst is a read-only end-of-run pass orthogonal to the deme label — it works on a
+    single-deme spatially-structured population (`num_demes=1` ⇒ deme-Fst empty, geographic-Fst still
+    measures the map structure), which is precisely the barriers/habitat case. Both mechanisms are
+    independent of each other and of `migration_pulse`/`deme_migration_rate`.
+  - **Compatibility.** `migration_matrix` unset ⇒ inactive matrix ⇒ island path takes the exact
+    scalar `migrateDemes` (byte-identical); `track_geographic_fst` off ⇒ the pass never runs (read-only,
+    zero RNG). Both are additionally gated behind `num_demes>1` / `track_map` which the neutral baseline
+    never sets, so strictly-neutral runs are byte-identical: `drift -validate` still **PASS**,
+    D=−0.6611, π/W=0.809, Ne/N=0.313, SFS χ²/dof=4.77 (refcount baseline unchanged). Params added to
+    `parameter_defaults.csv` (Population + Analysis groups). `core.Model.Migration` rebuilt from the
+    param, not serialized (like the schedulers / habitat / barriers) ⇒ no checkpoint schema bump.
+  - **Tests.** `pkg/core/migration_test.go` — matrix parse (directional/asymmetric, separators, malformed
+    /self-edge/zero/negative dropped, Dest-sorted, duplicate-last-wins, empty-inactive) + lazy accessor.
+    `pkg/simulation/migration_matrix_test.go` — `migrateDemesMatrix` distinguishable outcomes (all-move
+    directional, stepping-stone one-step shift, asymmetric one-way sink), partial-rate determinism, and a
+    **one-draw-per-individual RNG-alignment guard** (post-migration RNG state == a reference stream
+    advanced by len(pop) draws). `pkg/analysis/geographic_fst_test.go` — grid parse, `regionOf` hand
+    fixtures (incl. clamping), `geographicMembers` binning, the **core payoff case**
+    `TestComputeGeographicFst_SplitByGeographyNotDeme` (a single-deme population split across two map
+    regions with fully-differentiated genotypes ⇒ deme-Fst empty but geographic-Fst=1), homogeneous⇒0,
+    no-map guard. Full `go test ./...` green.
+  - **Verified end-to-end** via local gitignored fixtures (seed 4242). **MigMatrixSmoke** (3 aspatial
+    demes, asymmetric bidirectional stepping-stone `0>1:0.012 1>0:0.004 1>2:0.012 2>1:0.004`,
+    `track_Fst`): all 3 demes persist and the matrix drives a deme-Fst **isolation-by-distance gradient**
+    (Hudson 0↔2 two-step 0.021 > 0↔1 one-step 0.018 > 1↔2 0.008, 19 sites); two runs byte-identical; the
+    same-seed **symmetric scalar island** control gives a *different* Fst regime (26 sites, θ 0.050 vs
+    0.011) — asymmetry matters. **GeoFstSmoke** (single deme, 20×20 BarrierSmoke map with a water gap,
+    distance mating, `track_geographic_fst` grid 1x2): **deme-Fst is empty (one deme)** while
+    **geographic-Fst = θ 0.024 across 2 map regions (34 sites)** — the map structure deme-Fst is
+    structurally blind to; two runs byte-identical. NOTE (smoke limitation, à la the §3-barriers
+    _results note): a *hard-wall* barrier (`3:block`) under DRIFT's single **global** carrying cap drives
+    **competitive exclusion** — one patch monopolizes the cap and the other empties, collapsing to 1
+    region — so a clean barrier-on > barrier-off Fst contrast is seed/dynamics-dependent on this tiny map
+    (per-cell / per-patch K is a deferred §3 follow-up). The barrier-engages-vs-inert difference is real
+    (with `3:block` the ON run's population diverges byte-wise from OFF; with the inert bare `3` they were
+    byte-identical — how the loader bug was found), and the estimator correctness is carried by the unit
+    tests driving the real partition + estimators.
+  - **Deferred follow-ups:** fix the `SetParameter` bare-numeric-string routing (affects `movement_barriers=3`
+    and any string param with an all-numeric value — route by the declared param type, not `ParseFloat`);
+    a full dense-matrix / distance-decay migration source behind `MigrationMatrix()`; per-cell / per-patch
+    carrying capacity so a hard geographic barrier keeps both patches alive (would give the clean
+    barrier-on>off geographic-Fst contrast); a continuous isolation-by-distance / Fst-by-distance curve
+    (over the coarse rectangular region grid); geographic partition by connected habitable component
+    rather than a lat/lon grid.
 
 ## 4. Analysis, validation & reproducibility
 

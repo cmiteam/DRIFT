@@ -112,16 +112,25 @@ func countSite(pop *core.Pop, members []int, bit int) siteCounts {
 // (see SampleIDs), grouping them into demes by their Deme label. Returns an empty
 // result (NumSites 0, no pairs) when there are fewer than two eligible demes.
 func ComputeFst(model *core.Model, pop *core.Pop, ids []int) *FstResult {
-	byDeme := demeMembers(pop, ids)
+	return computeFstFromPartition(model, pop, demeMembers(pop, ids), "deme")
+}
 
-	// Eligible demes have at least 2 sampled diploids (both estimators are
+// computeFstFromPartition is the estimator core shared by the deme-label Fst
+// (ComputeFst) and the geographic-region Fst (ComputeGeographicFst, geographic_fst.go).
+// It takes an already-built partition of sampled ids into groups (deme labels or
+// geographic-region ids) and computes Hudson's and Weir & Cockerham's estimators over
+// them. groupLabel is only used in the informational log lines ("deme"/"region"). The
+// FstResult's Demes/Pairs carry whatever integer keys the partition used. Returns an
+// empty result (NumSites 0, no pairs) when there are fewer than two eligible groups.
+func computeFstFromPartition(model *core.Model, pop *core.Pop, byDeme map[int][]int, groupLabel string) *FstResult {
+	// Eligible groups have at least 2 sampled diploids (both estimators are
 	// undefined below that). Keep them sorted for deterministic output.
 	demes := make([]int, 0, len(byDeme))
 	for d, members := range byDeme {
 		if len(members) >= 2 {
 			demes = append(demes, d)
 		} else if len(members) > 0 {
-			fmt.Printf("Fst: deme %d has only %d sampled diploid(s); excluded (need >= 2)\n", d, len(members))
+			fmt.Printf("Fst: %s %d has only %d sampled diploid(s); excluded (need >= 2)\n", groupLabel, d, len(members))
 		}
 	}
 	sort.Ints(demes)
@@ -131,7 +140,7 @@ func ComputeFst(model *core.Model, pop *core.Pop, ids []int) *FstResult {
 		res.DemeSizes[d] = len(byDeme[d])
 	}
 	if len(demes) < 2 {
-		fmt.Printf("Fst: %d eligible deme(s); need >= 2 (set num_demes and run long enough for each deme to persist)\n", len(demes))
+		fmt.Printf("Fst: %d eligible %s(s); need >= 2 (run long enough for each to persist)\n", len(demes), groupLabel)
 		return res
 	}
 
