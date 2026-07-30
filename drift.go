@@ -185,6 +185,61 @@ func main() {
 		os.Exit(1)
 	}
 
+	// VCF import (roadmap §6a): parse a real (or DRIFT-exported) phased VCF into
+	// DRIFT structures and run the model's enabled analyses STATICALLY — no run loop
+	// — so the same pipeline (Fst / f-stats / joint-SFS / §6g EHH-iHS-XP-EHH / §6h
+	// validation / §6e dating) scores real 1000G/HGDP panels and simulated data
+	// identically. The panel is loaded into BOTH the founder bitfield and the de-novo
+	// pool consistently (see analysis.ImportVCF), so bitfield-reading and pool-reading
+	// analyses both see it. Which analyses run is controlled by the model's existing
+	// track_* params, exactly as for a live run. Runs before animation/profiling
+	// setup, which a static import does not need.
+	if commands.ImportVCF != "" {
+		pol := analysis.DefaultImportPolicy()
+		if commands.ImportPolarize != "" {
+			pol.Polarize = commands.ImportPolarize
+		}
+		if commands.ImportPanel != "" {
+			popMap, popNames, err := analysis.LoadPanelFile(commands.ImportPanel, 1)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error loading panel file: %v\n", err)
+				os.Exit(1)
+			}
+			pol.PopMap = popMap
+			fmt.Printf("Loaded panel %s: %d samples across %d populations %v\n",
+				commands.ImportPanel, len(popMap), len(popNames), popNames)
+		}
+		pop := &core.Pop{
+			IndData:      make(map[int][]int),
+			Chromosomes:  make(map[int][][]uint64),
+			Centromeres:  make(map[int][2][]uint64),
+			IndMutations: make(map[int]map[int][]int),
+			MutationPool: make(map[int]core.Mutation),
+			MutationHist: make(map[int]int),
+			Tracking:     make(map[string]int),
+			AlleleFreqs:  make(map[int][]int16),
+			MaleDB:       make(map[int]core.Ancestor),
+			FemaleDB:     make(map[int]core.Ancestor),
+		}
+		stats, err := analysis.ImportVCF(commands.ImportVCF, model, pop, pol)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error importing VCF: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("\nImported %s\n  %d samples × %d biallelic-SNP sites (genome_bits=%d) across %d contig(s), %d deme(s)\n",
+			stats.Path, stats.NumSamples, stats.NumSites, stats.GenomeBits, stats.NumContigs, stats.NumDemes)
+		fmt.Printf("  polarization: %d AA-derived (%d flipped to REF) + %d REF-fallback | skipped %d multiallelic, %d indel, %d high-missing, %d monomorphic\n",
+			stats.PolarizedAA, stats.PolarizedFlip, stats.PolarizedFall,
+			stats.SkipMulti, stats.SkipIndel, stats.SkipMissing, stats.SkipMonomorph)
+		if stats.UnphasedCalls > 0 {
+			fmt.Printf("  NOTE: %d unphased genotype call(s) read in column order (DRIFT's strand model assumes phasing)\n", stats.UnphasedCalls)
+		}
+		model.FreeParameters["run"] = 0
+		model.FreeParameters["year"] = 0
+		runImportedAnalyses(model, pop)
+		return
+	}
+
 	// Initialize animations if enabled
 	animContainer, err := visualization.InitializeIfEnabled(model, commands.MapRoot)
 	if err != nil {
@@ -561,4 +616,78 @@ func main() {
 	elapsed := time.Since(starttime)
 	fmt.Printf("Execution time: %s\n", elapsed)
 	fmt.Print("\a")
+}
+
+// runImportedAnalyses runs the snapshot (single-generation) analyses on an imported
+// VCF panel (roadmap §6a), gated on the same track_* params as a live run's
+// end-of-run block. It deliberately omits the time-series analyses (§6d Ne, §6f
+// load) — those need multiple captured windows and are meaningless for a static
+// panel — and the genealogy analyses (coalescence/IBD, which need a tracked family
+// tree the panel has none of). Bitfield-reading (Fst/f-stats/joint-SFS/het-distance)
+// and pool-reading (§6h/§6e/§6g) analyses both apply because ImportVCF populated both.
+func runImportedAnalyses(model *core.Model, pop *core.Pop) {
+	if model.Parameters["export_VCF"] == 1 {
+		// Round-trip re-export: read the imported panel back out as a normalized VCF.
+		sampleSize := int(model.Parameters["vcf_sample_size"])
+		includeFixed := model.Parameters["vcf_include_fixed"] == 1
+		ids := analysis.SampleIDs(pop, sampleSize)
+		if _, err := analysis.ExportVCF(model, pop, ids, includeFixed); err != nil {
+			log.Printf("Error exporting VCF: %v", err)
+		}
+	}
+	if model.Parameters["track_Fst"] == 1 {
+		ids := analysis.SampleIDs(pop, int(model.Parameters["fst_sample_size"]))
+		if err := analysis.SaveFst(model, analysis.ComputeFst(model, pop, ids)); err != nil {
+			log.Printf("Error saving Fst results: %v", err)
+		}
+	}
+	if model.Parameters["track_fstats"] == 1 {
+		ids := analysis.SampleIDs(pop, int(model.Parameters["fstats_sample_size"]))
+		if err := analysis.SaveFStats(model, analysis.ComputeFStats(model, pop, ids)); err != nil {
+			log.Printf("Error saving f-statistics: %v", err)
+		}
+	}
+	if model.Parameters["track_joint_sfs"] == 1 {
+		ids := analysis.SampleIDs(pop, int(model.Parameters["joint_sfs_sample_size"]))
+		if err := analysis.SaveJointSFS(model, analysis.ComputeJointSFS(model, pop, ids)); err != nil {
+			log.Printf("Error saving joint SFS: %v", err)
+		}
+	}
+	if model.Parameters["track_het_distance"] == 1 {
+		ids := analysis.SampleIDs(pop, int(model.Parameters["het_distance_sample_size"]))
+		if err := analysis.SaveHetDistance(model, analysis.ComputeHetDistance(model, pop, ids)); err != nil {
+			log.Printf("Error saving heterozygosity-distance results: %v", err)
+		}
+	}
+	if model.Parameters["track_dating"] == 1 {
+		ids := analysis.SampleLiving(pop, int(model.Parameters["dating_sample_size"]))
+		if err := analysis.SaveDating(model, analysis.ComputeDating(model, pop, ids)); err != nil {
+			log.Printf("Error saving dating results: %v", err)
+		}
+	}
+	if model.Parameters["track_validation"] == 1 {
+		if err := analysis.SaveNeutralValidation(model, pop); err != nil {
+			log.Printf("Error writing neutral validation report: %v", err)
+		}
+	}
+	if model.Parameters["track_haplostats"] == 1 {
+		ids := analysis.SampleLiving(pop, int(model.Parameters["haplostats_sample_size"]))
+		cfg := analysis.DefaultHaploConfig()
+		if v, ok := model.Parameters["haplostats_min_maf"]; ok && v > 0 {
+			cfg.MinMAF = v
+		}
+		if v, ok := model.Parameters["haplostats_ehh_cutoff"]; ok && v > 0 {
+			cfg.EHHCutoff = v
+		}
+		cfg.DemeA, cfg.DemeB = analysis.ParseDemePair(model.StringParam("haplostats_demes", ""))
+		res := analysis.ComputeHaploStats(model, pop, ids, cfg)
+		if err := analysis.SaveHaploStats(model, res); err != nil {
+			log.Printf("Error saving haplotype-stats results: %v", err)
+		}
+		if model.Parameters["haplostats_export_hap"] == 1 {
+			if err := analysis.ExportHapMap(model, pop, ids); err != nil {
+				log.Printf("Error exporting hap/map: %v", err)
+			}
+		}
+	}
 }

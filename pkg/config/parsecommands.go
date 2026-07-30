@@ -26,6 +26,16 @@ type Config struct {
 	ListSaves bool   // list named saves for the model and exit
 
 	Validate bool // run the §6h neutral-expectation validation harness and exit
+
+	// VCF import (roadmap §6a). ImportVCF is the path to a phased VCF (.vcf or
+	// .vcf.gz) to parse into DRIFT structures and analyze statically (no run loop),
+	// so the same pipeline runs on real 1000G/HGDP and simulated data. ImportPanel
+	// is an optional sample→population panel file for deme assignment (Fst/f-stats).
+	// ImportPolarize is the ancestral/derived policy ("aa" = AA INFO with REF
+	// fallback, default; "ref" = always REF-ancestral). Empty ImportVCF = no import.
+	ImportVCF      string
+	ImportPanel    string
+	ImportPolarize string
 }
 
 // Default values for command-line parameters
@@ -90,6 +100,15 @@ func ParseCommandLine() *Config {
 	validateArg := flag.Bool("validate",
 		false,
 		"run the neutral-expectation validation harness (roadmap §6h) and exit")
+	importVCFArg := flag.String("import-vcf",
+		"",
+		"import a phased VCF (.vcf/.vcf.gz) into DRIFT structures, run the model's enabled analyses statically, and exit (roadmap §6a)")
+	importPanelArg := flag.String("import-panel",
+		"",
+		"optional sample→population panel file (e.g. the 1000G .panel) for deme assignment on -import-vcf")
+	importPolarizeArg := flag.String("import-polarize",
+		"aa",
+		"ancestral/derived polarization for -import-vcf: aa (AA INFO, REF fallback) or ref (always REF-ancestral)")
 
 	// Parse the command-line arguments
 	flag.Parse()
@@ -122,5 +141,9 @@ func ParseCommandLine() *Config {
 		ListSaves: *listSavesArg,
 
 		Validate: *validateArg,
+
+		ImportVCF:      *importVCFArg,
+		ImportPanel:    *importPanelArg,
+		ImportPolarize: *importPolarizeArg,
 	}
 }

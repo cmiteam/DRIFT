@@ -314,9 +314,10 @@ out-of-Africa story, **(3)** countering critics.
 
 ### 6a. Real-data interoperability (credibility multiplier) — goals 2, 3
 
-- [~] **VCF import/export.** Lets the *same* pipeline (PLINK, vcftools, ADMIXTURE, EIGENSOFT) run
+- [x] **VCF import/export.** Lets the *same* pipeline (PLINK, vcftools, ADMIXTURE, EIGENSOFT) run
   on simulated and on real 1000 Genomes / HGDP data — critics can't dismiss results produced with
-  their own tools. **Highest-leverage single feature.**
+  their own tools. **Highest-leverage single feature.** **Both directions landed** (export
+  2026-07-06, import 2026-07-30).
   - [x] **Export** (`pkg/analysis/vcf.go`: `ExportVCF`), wired into `drift.go` behind the
     `export_VCF` flag (default off; requires `track_DNA`). Emits VCF v4.2: each genome bit becomes
     one biallelic SNP with a fixed REF=A (ancestral, bit 0) / ALT=T (derived, bit 1) convention;
@@ -329,7 +330,69 @@ out-of-Africa story, **(3)** countering critics.
     NOTE: population seeding with `init_heterozygosity=0` (or a lone single-founder seed that drifts
     to loss) yields empty `pop.Chromosomes` and thus an empty VCF — genome tracking needs standing
     variation to export.
-  - [ ] **Import** — parse real 1000G/HGDP VCF into DRIFT structures (larger, separate task).
+  - [x] **Import** (`pkg/analysis/vcf_import.go`: `ImportVCF`/`LoadPanelFile`) — parse a real (or
+    DRIFT-exported) phased VCF into DRIFT structures so the same pipeline scores real panels and
+    simulated data identically. **Landed 2026-07-30.**
+    - **KEY FINDING (probed the real engine first, à la §1/§6a/§6f/§6g).** A throwaway probe drove
+      the actual analysis functions on hand-built panels loaded into each substrate and confirmed
+      the pipelines **split across DRIFT's two variant structures** — and the four Rob named
+      straddle the split: the founder **BITFIELD** (`pop.Chromosomes`, via `demeMembers`/`countSite`/
+      `bitAt`) feeds Fst / f-stats / joint-SFS / single-pop SFS / temporal-Ne / LD / het-distance,
+      while the de-novo **POOL** (`IndMutations`+`MutationPool`) feeds §6g EHH/iHS/XP-EHH / §6h
+      neutral / §6e dating / §6f load. A panel in only one is **invisible** to the readers of the
+      other (probe: bitfield-loaded → Fst works, `ComputeNeutralStats` SegSites=0; pool-loaded →
+      §6g+§6h work, Fst 0 sites). So **no single target serves all four**. Also confirmed the engine
+      analyzes a hand-built (non-simulated) pop directly, and `runOne` accepts any pop (the §8b
+      resume path), so both static analysis and run-feeding are mechanically available.
+    - **Coordinate reality.** Real bp coordinates cannot survive: the Default genome is **3046 bits**
+      across 23 chroms (chr1 = 251 bits; exported POS 1..arm-span), a real 1000G panel has ~84M
+      variants (~6.4M on chr1) at POS up to ~249,000,000. Import **remaps each retained biallelic-SNP
+      site → one genome bit** (file order, grouped by contig), synthesizes a `ChromosomeArms` layout
+      (one arm/contig `[runningOffset, siteCount]`) + `genome_bits` = total sites, and sets
+      `num_demes` from the panel. Physical distance is intentionally discarded (a cM-from-bp map is a
+      documented follow-up); a subsequent `ExportVCF` POS is the per-contig site index.
+    - **Design (chosen with Rob): BOTH structures, consistent + STATIC-only + AA→REF polarization.**
+      Fork 1 = **both, in lockstep** (over bitfield-only / pool-only): each site becomes one bitfield
+      bit AND one pool `Mutation` at that same `Position` (`Effect`=0 — a genotype panel carries no
+      selection coefficient), with the carrying strands recorded in both — the same bitfield↔pool
+      reconciliation `linkage_model=arm` reaches for (§1), imposed directly at load, so every named
+      pipeline runs on the panel. Fork 2 = **static analysis only** (a new `-import-vcf` CLI mode
+      like `-validate`, no run loop) — feeding a real panel as founders would force `genome_bits`
+      into the millions and O(genome_bits)/birth meiosis (a perf cliff) for a bitfield that only
+      decays anyway; deferred. Fork 3 = **polarize by `AA` INFO with REF fallback** — DRIFT bit 0 =
+      ancestral but VCF REF/ALT is not; the `AA` path flips derived→REF when AA==ALT, else assumes
+      REF-ancestral (policy `ref` skips AA). Mis-polarization folds the SFS / flips iHS, so it matters.
+    - **Filtering / robustness.** Strict biallelic SNPs (multiallelic + indel/MNP skipped);
+      monomorphic sites dropped (no info, would inflate `genome_bits`); missing genotypes read as
+      ancestral with a `MaxMissingFrac` drop threshold; phased input assumed (unphased `/` accepted in
+      column order and counted); `.gz` transparently decompressed; optional `-import-panel` (1000G
+      `.panel`) assigns demes for Fst/f-stats/joint-SFS/XP-EHH. Mode is a CLI flag (`-import-vcf`/
+      `-import-panel`/`-import-polarize`), consuming no new per-run params — the *which-analyses*
+      choice reuses the existing `track_*` params, exactly as a live run's end-of-run block.
+    - **Compatibility.** `-import-vcf` unset ⇒ the mode never runs (an early `return` before the run
+      dispatch), so it is a strict no-op on every existing path — `drift -validate` still **PASS**,
+      D=−0.6611, π/W=0.809, Ne/N=0.313, SFS χ²/dof=4.77 (unchanged refcount baseline). Read-only over
+      a freshly built pop; no engine/RNG/checkpoint changes.
+    - **Tests.** `pkg/analysis/vcf_import_test.go` — a hand-computed fixture (exact per-site
+      polarization incl. an AA==ALT flip + a REF fallback, multiallelic/indel/monomorphic skips, the
+      contig→arm layout, and the **bitfield⟺pool consistency invariant** bit-for-bit); a
+      polarization-knob distinguishable case (`ref` vs `aa` give different bitfields); a 2-deme
+      fully-differentiated panel → `ComputeFst` Hudson≈1 AND pool `SegSites`=all (the both-structures
+      payoff); an import→`ExportVCF`→re-import round-trip (identical bitfield); gzip; `LoadPanelFile`;
+      an AlleleCount guard. Full `go test ./...` green.
+    - **Verified end-to-end** via local gitignored `users/smoke/models/ImportTest` (a synthetic
+      2-population, LD-blocked 30-sample × 300-site VCF + `.panel`): `-import-vcf` parses 295
+      biallelic SNPs (5 monomorphic dropped, 245 AA-polarized incl. 40 flips, 55 REF-fallback) into
+      2 demes and runs the whole suite statically — **Fst θ=0.70** (strong differentiation recovered
+      from the bitfield), 1 f2, a 2D joint SFS (30×30, 130 non-empty cells), §6e dating (θ_π=137 →
+      428 y point, 4.64× μ×g swing), **§6g 295 iHS cores + XP-EHH across the two populations + a
+      600-hap selscan `.hap`/`.map`** (real-data LD flowing into EHH via the pool), and a VCF
+      round-trip re-export. Two import runs are byte-identical. The §6h validation deliberately reads
+      **[FAIL]** (D=+4.1, F_IS=+0.55 Wahlund) — the correct verdict that a structured real-shaped
+      panel is *not* DRIFT's neutral baseline; the stat ran on real-shaped data, which is the point.
+    - **Deferred follow-ups:** a cM-from-bp map so imported panels carry physical/genetic distance
+      (feeds §6a `GeneticMap` + §6g cM-scaling); run-feeding an imported panel as founders (needs the
+      genome_bits-resize + meiosis-perf work); GUI exposure; a bcftools-style site/sample pre-filter.
 - [x] **Read real recombination maps and real human chromosome structure** (builds on the existing
   `ChromosomeArms` scaffold) so LD patterns are comparable to real data. **Landed 2026-07-28.**
   - **KEY FINDINGS (probed empirically before building, 20k trials over the Default genome).** The
