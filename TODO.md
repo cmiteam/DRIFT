@@ -32,11 +32,18 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` needs 
   one parser (`parseChromosomeRecords` in `pkg/utils/csv.go`) plus a `SetGenomeBits` helper called
   by every load path. Also initialized `FreeParameters["seed"] = -1` (+ indID/mutID/last_pop_size)
   in `manager.go` `LoadModel`, without which the founder genome was never even seeded on this path.
-- [ ] **Fix or retire the `-base-model` CLI path.** `InitializeModelWithBaseModel` loads base params
-  then calls `utils.LoadParameters` (`pkg/utils/csv.go`), which *resets* `model.Parameters` to
-  `parameter_defaults.csv`, discarding the base model's overrides. Symptoms: wrong model name
-  (writes `Default_results.csv`), wrong flags (`track_map` re-enabled → empty-map load → panic).
-  Only the user-model path (`-username/-model`) is currently usable. Found 2026-07-02.
+- [x] **Fix or retire the `-base-model` CLI path.** (Fixed, chosen with Rob over retiring — retiring
+  entangles the shared legacy `InitializeModel("")` path.) `InitializeModelWithBaseModel` loaded base
+  params then called `utils.LoadParameters` (`pkg/utils/csv.go`), which *re-`make()`d*
+  `model.Parameters`/`StringParams`/`PlotFlags` and reloaded only `parameter_defaults.csv`, discarding
+  every base-model override just applied. Symptoms: wrong model name (wrote `Default_results.csv`),
+  wrong flags (`track_map` re-enabled → nil-`Map` panic). **Fix (`pkg/config/initializemodel.go`):
+  reorder to load `parameter_defaults.csv` FIRST (baseline + map init), THEN apply the base-model
+  overrides on top via `LoadParameterFile` — mirroring the user-model path
+  (`LoadParameterDefaults`→`LoadParameterOverrides`) — and set `model.ModelName = baseModelID` (base
+  `parameters.csv` carries no `model_name` row). **Verified e2e:** `drift -base-model=Default` now
+  runs to completion (no panic) and writes `Default_results.csv` (correct name). Found 2026-07-02,
+  fixed 2026-07-30 alongside the §5 param-routing hardening.
 - [x] **Activate mutation dominance.** `Mutation.Dominance` was hardcoded to `0` and ignored, and
   the old `CountFitnessAndMutations` was **broken** — it ranged over `pop.IndMutations[child]` whose
   keys are strand indices (0/1), not mutation ids, so it summed the Effect of mutation ids 0/1 only
@@ -545,8 +552,43 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` needs 
 
 ## 5. Software hardening
 
-- [ ] **Unified, validated config schema** with clear errors. Currently three loading paths
+- [~] **Unified, validated config schema** with clear errors. Currently three loading paths
   (base-model / user-model / legacy) in `drift.go:66-92`.
+  - [x] **Type-authoritative param routing (config-loader hardening).** **Landed 2026-07-30.** All
+    three load paths routed params by `strconv.ParseFloat` success, not by the declared type in
+    `static/parameter_defaults.csv`'s `format` column — so any genuinely-string param whose value
+    happened to be all-numeric landed in numeric `model.Parameters` instead of `StringParams`, and
+    `StringParam()` returned "" ⇒ the feature was silently inert. Concretely `movement_barriers=3` (a
+    bare terrain code the §3 barriers doc supports) was dead on the user-model path (`3:block` worked);
+    a real hole under every string param shipped across §1–§3 (`mutation_classes`, `mutation_rate_map`,
+    `migration_matrix`, `habitat_suitability`, the `*_demes` slots, `linkage_model`, …). **Probed all
+    three paths first:** user-model (`models.LoadModel`→`LoadParameterDefaults`+`LoadParameterOverrides`,
+    both →`SetParameter`), base-model + legacy (`InitializeModelWithBaseModel`→`LoadParameters`); the
+    `format` column was authoritative *nowhere* (only `group==Plot`→`ParseBool`); base-model
+    `parameters.csv` files are 2-column (no inline type), so the routing policy had to live in code.
+    **Blast radius (confirmed byte-identical):** the ONLY `format=string` params with numeric defaults
+    are the two legacy dropdowns `mating_style=1` (→`Parameters`→`resolveStyle` maps 1→"distance", the
+    default mating!) and `selection=0` (fully dead); every other string param defaults to empty/word and
+    already lands in `StringParams`. And no Go code reads any genuinely-string param out of `Parameters`
+    numerically (all via `StringParam()`). So the fix changes routing ONLY for runs that *set* a
+    genuinely-string param to an all-numeric value (previously silently broken). **Design (chosen with
+    Rob = string-param allowlist over blanket type-authoritative-with-carve-out):** a `stringParams`
+    allowlist in `pkg/utils/parameters.go` — the `format=string` rows MINUS `mating_style`/`selection` —
+    consulted by `SetParameter` and `LoadParameters` *before* `ParseFloat`, routing those names to
+    `StringParams` regardless of value. `mating_style`/`selection` stay numeric ⇒ default run
+    byte-identical. **Compatibility:** `drift -validate` still **PASS** D=−0.6611/π-W=0.809/Ne-N=0.313/
+    SFS-χ²4.77 (refcount baseline unchanged); zero RNG change on any path. **Tests**
+    (`pkg/utils/parameters_test.go`): string-param routing incl. all-numeric values; numeric params +
+    the two legacy dropdowns still route to `Parameters`; a **guard test that derives the expected
+    allowlist from `parameter_defaults.csv` `format=string`** so a future string param can't be silently
+    forgotten; `LoadParameters` (csv.go path) routing; and a distinguishable-outcome case —
+    `movement_barriers=3` via `SetParameter` now flips `MovementBarriersActive()` true. **Verified e2e**
+    through the *real* user-model loader (`config.LoadUserModel("smoke","BarrierTest")`, whose fixture
+    sets bare `movement_barriers=3`): `StringParam`="3", not in numeric `Parameters`,
+    `MovementBarriersActive()`=true — the barrier engages where it was inert before.
+  - Still open: collapse the three load paths into one, and full declared-type validation with clear
+    errors (a non-numeric value for a numeric param currently still falls through to `StringParams`
+    silently rather than erroring — a deferred §5 follow-up).
 - [ ] **Checkpoint / resume** for long runs (serialize `Pop` to disk).
 - [ ] **Test suite** for genetics kernels (meiosis, mutation inheritance, SFS) so refactors are safe.
 - [ ] **Structured run manifests.** Write the full resolved parameter set + seed + git SHA

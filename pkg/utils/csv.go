@@ -113,8 +113,16 @@ func LoadParameters(model *core.Model, configRoot string) error {
 			continue
 		}
 
-		// Numeric parameters go in Parameters; non-numeric values (e.g. a module
-		// selector like birth_style=standard) are stored as string parameters.
+		// Genuinely-string parameters (see stringParams in parameters.go) are routed
+		// by declared type, not by ParseFloat success, so an all-numeric spec value is
+		// stored where StringParam() can read it rather than dropped into Parameters.
+		if stringParams[paramName] {
+			model.StringParams[paramName] = paramValue
+			continue
+		}
+
+		// Remaining parameters are numeric; a non-numeric value that slips through is
+		// stored as a string parameter.
 		value, err := strconv.ParseFloat(paramValue, 64)
 		if err != nil {
 			model.StringParams[paramName] = paramValue

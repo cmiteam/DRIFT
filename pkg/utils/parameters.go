@@ -11,6 +11,60 @@ import (
 	"strings"
 )
 
+// stringParams is the set of parameters whose VALUE is genuinely a string — a
+// spec, table, list, or module-selector name — even when that value happens to be
+// all-numeric (e.g. movement_barriers=3, a bare terrain code the §3 barriers doc
+// explicitly supports). These are ALWAYS stored in model.StringParams and read
+// back via Model.StringParam().
+//
+// The bug this fixes: routing by strconv.ParseFloat success (the old behavior)
+// silently dropped an all-numeric value into the numeric Parameters map, where
+// StringParam() could never see it — so the feature was inert (movement_barriers=3
+// disabled, while movement_barriers=3:block worked). This holds for every string
+// param shipped across §1–§3 (mutation_classes, mutation_rate_map, migration_matrix,
+// habitat_suitability, the *_demes slots, …).
+//
+// This set is exactly the format=string rows of parameter_defaults.csv EXCEPT the
+// two legacy numeric-coded dropdowns — mating_style and selection — which store an
+// integer code in Parameters and resolve through the legacy-int mapping in
+// pkg/modules (moving them would break the default distance-mating run). username /
+// model_name / scenario / map_name are handled specially in SetParameter/LoadParameters
+// before routing and are not listed here. setup_style is a module selector consumed
+// via StringParam but not present in parameter_defaults.csv; it is included defensively.
+//
+// TestStringParamAllowlist derives the expected set from parameter_defaults.csv and
+// asserts this map stays in sync, so a future string param cannot be silently forgotten.
+var stringParams = map[string]bool{
+	"environmental_events": true,
+	"selection_mode":       true,
+	"fitness_model":        true,
+	"mutation_classes":     true,
+	"mutation_rate_map":    true,
+	"linkage_model":        true,
+	"mutation_count_model": true,
+	"dfe_model":            true,
+	"recombination_model":  true,
+	"migration_matrix":     true,
+	"geographic_fst_grid":  true,
+	"fstats_demes":         true,
+	"joint_sfs_demes":      true,
+	"dating_mu_factors":    true,
+	"dating_gen_times":     true,
+	"haplostats_demes":     true,
+	"deme_inheritance":     true,
+	"habitat_suitability":  true,
+	"movement_barriers":    true,
+	"birth_style":          true,
+	"death_style":          true,
+	"setup_style":          true,
+}
+
+// IsStringParam reports whether paramName is a genuinely-string parameter that must
+// be routed to model.StringParams regardless of whether its value parses as a number.
+func IsStringParam(paramName string) bool {
+	return stringParams[paramName]
+}
+
 // ParameterRecord holds the full metadata for a parameter from parameter_defaults.csv
 type ParameterRecord struct {
 	Name   string
@@ -152,8 +206,20 @@ func SetParameter(model *core.Model, paramName, paramValue string) error {
 		return nil
 	}
 
-	// Numeric parameters go in Parameters; anything non-numeric (e.g. a module
-	// selector like birth_style=standard) is stored as a string parameter.
+	// Genuinely-string parameters are routed by declared type, not by ParseFloat
+	// success, so an all-numeric spec value (movement_barriers=3, migration_matrix
+	// edges, etc.) is stored where StringParam() can read it instead of being
+	// silently dropped into the numeric Parameters map.
+	if stringParams[paramName] {
+		if model.StringParams == nil {
+			model.StringParams = make(map[string]string)
+		}
+		model.StringParams[paramName] = paramValue
+		return nil
+	}
+
+	// Remaining parameters are numeric; anything non-numeric that slips through
+	// (e.g. an ad-hoc module selector not in the string set) is stored as a string.
 	value, err := strconv.ParseFloat(paramValue, 64)
 	if err != nil {
 		if model.StringParams == nil {

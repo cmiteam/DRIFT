@@ -120,29 +120,37 @@ func InitializeModelWithBaseModel(configRoot string, baseModelID string) (*core.
 		BaseModelID:     baseModelID,
 	}
 
-	// If a base model was specified, load it using ModelManager
+	// Load parameter_defaults.csv FIRST to establish the baseline parameter set and
+	// initialize model.Parameters / StringParams / PlotFlags. (This previously ran
+	// AFTER the base-model load below and re-make()d those maps, silently discarding
+	// every base-model override — wrong model name, track_map re-enabled → empty-map
+	// panic. Only the -username/-model path was usable. Roadmap §0. Fixed 2026-07-30.)
+	err := utils.LoadParameters(model, configRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	// If a base model was specified, apply its overrides ON TOP of the defaults,
+	// mirroring the user-model path (LoadParameterDefaults → LoadParameterOverrides).
 	if baseModelID != "" {
-		// This is legacy support - new code should use LoadUserModel instead
-		// For now, we'll just load parameters directly from base model
+		// Legacy support — new code should use LoadUserModel instead.
 		manager := GetModelManager()
 		baseParamsPath := filepath.Join(manager.BaseModelsPath, baseModelID, "parameters.csv")
-		err := manager.LoadParameterFile(model, baseParamsPath, true)
-		if err != nil {
+		if err := manager.LoadParameterFile(model, baseParamsPath, true); err != nil {
 			return nil, fmt.Errorf("failed to load base model '%s': %w", baseModelID, err)
 		}
 
-		// Get scenario from base model
+		// Get scenario from base model.
 		baseInfo, err := manager.GetBaseModelInfo(baseModelID)
 		if err != nil {
 			return nil, err
 		}
 		model.Scenario = baseInfo.Scenario
-	}
 
-	// Load user parameters (these will override base model defaults)
-	err := utils.LoadParameters(model, configRoot)
-	if err != nil {
-		return nil, err
+		// Canonical model name comes from the base-model id the caller asked for, not
+		// the "Default" row in parameter_defaults.csv (base parameters.csv carries no
+		// model_name row) — otherwise results are written as Default_results.csv.
+		model.ModelName = baseModelID
 	}
 
 	// Validate parameters before proceeding
