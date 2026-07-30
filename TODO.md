@@ -278,8 +278,77 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` needs 
 
 ## 3. Spatial & ecological depth
 
-- [ ] **Habitat suitability maps.** Let map cells carry carrying-capacity / mortality multipliers
-  (builds on existing `Lat`/`Lon` + `Wander`).
+- [x] **Habitat suitability maps.** Let map cells carry carrying-capacity / mortality multipliers
+  (builds on existing `Lat`/`Lon` + `Wander`). **Landed 2026-07-30.**
+  - **KEY FINDINGS (probed empirically before building, à la §1/§6a/§6f/§6g).** (1) `model.Map` is a
+    bare `[][]int` of *terrain codes only* (Land=1, CoastalWater=2, OpenWater=3, HighMountain=4,
+    Desert=5, Ice=6) — cells carry **no** per-cell data, so the roadmap premise (cells should carry
+    multipliers) was a real gap. (2) **Only `Land` (code 1) is habitable today** — `IsLand`/
+    `FindLandCells`/`Wander` treat every other code as impassable water, and every shipped map
+    (`sandbox`/`partition`/`BridgeLand`/`earth_0.5d`) uses only codes 1 and 3, so the Desert/Mountain/
+    Ice enum values are defined-but-dead and "suitability" was strictly binary. (3) The map loads
+    (`utils.LoadMap`) **only under `track_map==1`**, via `InitializeIfEnabled` before setup; the
+    `-validate`/Neutral baseline runs `track_map=0` (nil `model.Map`), so a map-gated feature is
+    trivially absent there. (4) Density regulation ([death.go](pkg/simulation/death.go) Step 3 logistic
+    ceiling) is **global-only** (operates on `len(pop.IndData)`/`last_pop_size`); per-deme / local-to-
+    map K was explicitly deferred to this item by §2. (5) ⚠️ **RNG landmine:** with the default
+    `wander=5`, `Wander` draws **2 `RandIntn` per birth even when `track_map=0`** (target fails
+    `IsLand`, position unchanged, but the draws already happened) — baked into the `-validate` stream, so
+    any change had to preserve Wander's draw count/order on the default path.
+  - **Design (chosen with Rob): terrain→multiplier table + soft weighted cull.** Fork 1 (data source) =
+    a **terrain-code→suitability table** (over a separate float-grid map file): one opt-in
+    **`habitat_suitability`** string param mapping codes to a suitability multiplier, e.g.
+    `1:1.0 5:0.3 6:0.05` (tokens space/`;`/`,`-separated so it survives a CSV param file). Gives the
+    dead enum classes meaning, keeps params-file provenance, and the accessor (`CellSuitability`) is
+    abstracted so a fine-grained float grid can slot in later (mirrors the §6a cM accessor). Fork 2
+    (K lever) = a **soft, suitability-weighted cull** (over emergent-only / hard per-cell K): the global
+    logistic/`max_pop_size` machinery still decides *how many* die each year (so the total-N trajectory
+    and every global-cap / num_demes / DemeCaps interaction is unchanged); habitat only decides *who*,
+    driving equilibrium per-cell occupancy toward a multiple of suitability — the "carrying-capacity
+    multiplier" as a redistribution of survivors, not a hard per-cell ceiling.
+  - **Two levers, both gated on `HabitatActive()`** (so a run with no table takes the byte-identical
+    original path). (a) **Mortality multiplier** ([death.go](pkg/simulation/death.go) Step 1): the
+    actuarial death risk is scaled by `1/suitability` (a Desert cell at 0.5 doubles the local hazard) —
+    exactly the shape of the §2 famine factor, same RNG roll per individual in the same sorted-id order,
+    only the threshold moves. (b) **Soft spatial K** ([habitat.go](pkg/simulation/habitat.go) Step 3):
+    the growth-ceiling cull removes the same `diff` individuals but picks them **weighted by
+    `crowding/suitability`** via Efraimidis-Spirakis (`key=u^(1/w)`, one `RandFloat64` per candidate in
+    sorted order → deterministic), so packed/harsh cells are hit first.
+  - **Habitability generalized.** A cell is habitable iff `CellSuitability > 0`. `Wander`,
+    `FindHabitableCells` (founder placement, all 3 setups), and the two mating-move gates now use
+    `model.IsHabitable`, which **collapses to `IsLand` exactly when no table is set** (Land→1, else→0) —
+    so unset is byte-identical, and a table with e.g. `5:0.3` makes Desert habitable-but-harsh. Accessor
+    + parser live in [pkg/core/habitat.go](pkg/core/habitat.go) (lazily built + cached on `core.Model`,
+    no utils import cycle, works on every load path).
+  - **Composition.** Mortality acts in Step 1 (always runs) so it stacks with viability selection,
+    famine, and the bottleneck. The weighted cull lives in Step 3, which is skipped under an active
+    demographic scenario (`DemeCaps` → `cullByDeme`), so habitat is a **no-op under a §6c scenario** —
+    consistent with how the global logistic `carrying_capacity` already yields there. Under the plain
+    island model (num_demes>1) the cull is global across all cells (habitat is geographic, orthogonal to
+    deme labels). Requires `track_map=1` (a loaded map); a map-load path decoupled from animation is a
+    noted follow-up.
+  - **Compatibility.** `habitat_suitability` unset ⇒ inactive table ⇒ `IsHabitable≡IsLand`, both death
+    levers skipped, zero RNG change ⇒ strictly-neutral runs byte-identical: `drift -validate` still
+    **PASS**, D=−0.6611, π/W=0.809, Ne/N=0.313, SFS χ²/dof=4.77 (refcount baseline unchanged). Param
+    added to `parameter_defaults.csv` (Maps group, empty default). `core.Model.Habitat` is rebuilt from
+    the param, not serialized (like the schedulers) ⇒ no checkpoint schema bump.
+  - **Tests.** `pkg/core/habitat_test.go` — table parse (separators / malformed-skip / negative-clamp /
+    empty-inactive), `CellSuitability` inactive-is-binary (== IsLand incl. OOB) and active (configured /
+    unlisted-Land-default / Land-downgrade), `IsHabitable`. `pkg/simulation/habitat_test.go` —
+    `habitatMortalityFactor` hand values + guards; `buildCellCounts`; a distinguishable-outcome
+    `pickVictimsHabitat` (equal-crowding good vs poor cells → poor cell takes the majority of victims,
+    5:1 weight) driving the real weighted picker with real RNG; determinism; cull-all. Full `go test
+    ./...` green.
+  - **Verified end-to-end** via local gitignored `users/smoke/models/HabitatTest` (20×20 map, left half
+    Land / right half Desert at suitability 0.6, `track_map=1`, seed 4243): through the **real binary**
+    the population persists near K=600 and two runs are **byte-identical**; through the real
+    Birth/Mating/Death engine, habitat **OFF** confines all 385 living to Land (Desert uninhabitable),
+    while **ON** holds 402 with only **14 in Desert vs 388 on Land** despite Desert being half the map —
+    the mortality + soft-K levers suppress the harsh region as designed; two ON runs identical.
+  - **Deferred follow-ups:** a per-cell float suitability-map file (behind the same `CellSuitability`
+    accessor); a hard per-cell K; per-deme / local-to-map-density K in `cullByDeme` (extending soft-K
+    into §6c scenarios); a map-load path decoupled from `track_map`/animation; suitability biasing
+    `Wander` toward good cells; separate K-vs-mortality gradients.
 - [ ] **Barriers and corridors** affecting movement.
 - [ ] **Deme / island models** with migration matrices — enables real population structure and Fst.
 

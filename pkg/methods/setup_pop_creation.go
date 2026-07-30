@@ -10,7 +10,7 @@ import (
 // SetupPopCreation creates 2 founding individuals (Adam and Eve)
 // Both start at age 20 with extended lifespans
 func SetupPopCreation(model *core.Model, pop *core.Pop) error {
-	landCoordinates := utils.FindLandCells(model)
+	landCoordinates := utils.FindHabitableCells(model) // habitat-aware (roadmap §3); == land cells with no habitat table
 	print("Found", len(landCoordinates), "land coordinates\n")
 
 	// If no map tracking, use default location [0,0]

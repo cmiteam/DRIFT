@@ -47,8 +47,10 @@ func MatingDistance(model *core.Model, pop *core.Pop, availableMen, availableWom
 			pop.IndData[manID][individual.MarriageState] = bestWoman
 			pop.IndData[bestWoman][individual.MarriageState] = manID
 
-			// Woman moves to man's location (with terrain validation)
-			if utils.IsLand(model, manLat, manLon) {
+			// Woman moves to man's location (with terrain validation). Habitat-aware
+			// (roadmap §3): == IsLand with no habitat table, but also admits harsh
+			// habitable terrains when a suitability table is configured.
+			if model.IsHabitable(manLat, manLon) {
 				pop.IndData[bestWoman][individual.Lat] = manLat
 				pop.IndData[bestWoman][individual.Lon] = manLon
 			}

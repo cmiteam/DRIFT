@@ -13,8 +13,10 @@ import (
 // individuals distributed across different ages according to the cumulative
 // probability distribution defined in the model.
 func SetupPopDefault(model *core.Model, pop *core.Pop) error {
-	// Get land coordinates (empty if track_map == 0)
-	landCoordinates := utils.FindLandCells(model)
+	// Get habitable coordinates (empty if track_map == 0). With no habitat_suitability
+	// table this is exactly the land cells; with one it also includes harsh terrains
+	// given a positive suitability (roadmap §3).
+	landCoordinates := utils.FindHabitableCells(model)
 
 	// If no map tracking, use default location [0,0]
 	if len(landCoordinates) == 0 {

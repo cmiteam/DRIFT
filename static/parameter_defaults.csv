@@ -103,6 +103,7 @@ haplostats_export_hap,HaploStats Export selscan hap/map,Check,bool,0,Analysis
 deme_inheritance,Deme Inheritance,Text,string,paternal,Population
 generation_time,Generation Time (yrs),Text,float,25,Population
 track_map,Track on Map,Check,bool,1,Maps
+habitat_suitability,Habitat Suitability,Text,string,,Maps
 animation_save_interval,Animation Save Interval,Text,int,10,Maps
 map_width,Map Width,Text,int,3840,Maps
 map_height,Map Height,Text,int,2160,Maps

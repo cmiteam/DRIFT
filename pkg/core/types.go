@@ -60,6 +60,15 @@ type Model struct {
 	// Read by Death only when EventScheduler is non-nil, so runs without events
 	// take the byte-identical original death path.
 	EventMortalityFactor float64
+
+	// Habitat suitability table (roadmap §3). Lazily built (see ensureHabitat) from
+	// the `habitat_suitability` param, which maps terrain codes to a per-cell
+	// suitability multiplier. Nil until first consulted; once built, Active reports
+	// whether any multiplier was configured. When inactive the cell accessors fall
+	// back to today's binary land/water semantics, so an unset param leaves every
+	// existing path byte-identical. Rebuilt from the param, not serialized (like the
+	// schedulers) — no checkpoint schema bump.
+	Habitat *HabitatTable
 }
 
 // DemographyScheduler advances a time-varying demographic scenario. Defined here

@@ -145,6 +145,22 @@ func FindLandCells(model *core.Model) [][2]int {
 	return landCells
 }
 
+// FindHabitableCells returns every cell an individual may occupy (roadmap §3). With
+// no habitat_suitability table this is exactly FindLandCells (Land only); with a
+// table it also includes harsh terrains given a positive suitability. Used for
+// founder placement so a suitability map can spread founders beyond bare Land.
+func FindHabitableCells(model *core.Model) [][2]int {
+	var cells [][2]int
+	for lat := 0; lat < len(model.Map); lat++ {
+		for lon := 0; lon < len(model.Map[lat]); lon++ {
+			if model.IsHabitable(lat, lon) {
+				cells = append(cells, [2]int{lat, lon})
+			}
+		}
+	}
+	return cells
+}
+
 // GetPixelCoordinates converts map coordinates to pixel coordinates for image saving
 func GetPixelCoordinates(model *core.Model, mapLat, mapLon int) (int, int) {
 	pixelLat := int(float64(mapLat) * model.Parameters["save_lat_scale"])
@@ -184,7 +200,11 @@ func Wander(model *core.Model, lat, lon int) (int, int) {
 	newLat := lat + offsetLat
 	newLon := lon + offsetLon
 
-	if IsLand(model, newLat, newLon) {
+	// Accept the move only if the target cell is habitable. With no habitat table
+	// this is exactly IsLand (byte-identical: the two RNG draws above are unchanged,
+	// only the accept/reject predicate is generalized); with a table it also admits
+	// harsh-but-livable terrains.
+	if model.IsHabitable(newLat, newLon) {
 		return newLat, newLon
 	}
 	return lat, lon

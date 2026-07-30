@@ -31,7 +31,9 @@ func MatingRandom(model *core.Model, pop *core.Pop, availableMen, availableWomen
 		manLat := pop.IndData[man][individual.Lat]
 		manLon := pop.IndData[man][individual.Lon]
 
-		if utils.IsLand(model, manLat, manLon) {
+		// Habitat-aware (roadmap §3): == IsLand with no habitat table, also admits
+		// harsh habitable terrains when a suitability table is configured.
+		if model.IsHabitable(manLat, manLon) {
 			pop.IndData[woman][individual.Lat] = manLat
 			pop.IndData[woman][individual.Lon] = manLon
 		}

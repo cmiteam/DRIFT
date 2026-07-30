@@ -12,7 +12,7 @@ import (
 // extended lifespans, allowing them to build up a population over many generations.
 // Default is 3 couples, but can be configured via parameters.
 func SetupPopFlood(model *core.Model, pop *core.Pop) error {
-	landCoordinates := utils.FindLandCells(model)
+	landCoordinates := utils.FindHabitableCells(model) // habitat-aware (roadmap §3); == land cells with no habitat table
 	print("Found", len(landCoordinates), "land coordinates\n")
 
 	// If no map tracking, use default location [0,0]

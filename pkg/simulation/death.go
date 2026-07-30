@@ -54,6 +54,15 @@ func deathStandard(model *core.Model, pop *core.Pop) int {
 		if model.EventScheduler != nil {
 			adjustedDeathRisk *= eventMortalityFactor(model)
 		}
+		// Habitat suitability (roadmap §3): scale the actuarial death risk by the
+		// individual's cell suitability (harsher cell -> higher hazard). Guarded on
+		// HabitatActive so a run with no habitat_suitability table takes the byte-
+		// identical original path — the RNG roll above is unchanged, only the
+		// threshold moves (same shape as the famine factor).
+		if model.HabitatActive() {
+			adjustedDeathRisk *= habitatMortalityFactor(
+				model.CellSuitability(pop.IndData[ind][individual.Lat], pop.IndData[ind][individual.Lon]))
+		}
 		if die < adjustedDeathRisk {
 			if model.FreeParameters["seed"] == ind {
 				if age < pop.IndData[ind][individual.Lifespan] {
@@ -123,8 +132,20 @@ func deathStandard(model *core.Model, pop *core.Pop) int {
 
 		diff := len(pop.IndData) - allowedNumInds
 		keyList = generateKeyList(&pop.IndData, model.FreeParameters["seed"])
-		keyList = pickVictims(diff, keyList)
-		for _, ind := range keyList {
+		// Habitat suitability (roadmap §3): when a suitability table is active, the
+		// growth-ceiling cull removes the SAME number of individuals (diff, set by the
+		// global logistic / max_pop_size above) but weights the victims toward crowded
+		// and/or low-suitability cells — a soft spatial carrying capacity. Otherwise
+		// the original uniform-random cull runs unchanged (byte-identical). Not reached
+		// under a demographic scenario (DemeCaps -> cullByDeme above), so habitat is a
+		// no-op there, matching the global logistic term.
+		var victims []int
+		if model.HabitatActive() {
+			victims = pickVictimsHabitat(model, pop, diff, keyList)
+		} else {
+			victims = pickVictims(diff, keyList)
+		}
+		for _, ind := range victims {
 			if model.FreeParameters["seed"] == ind {
 				break
 			}
