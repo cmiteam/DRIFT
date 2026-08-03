@@ -577,6 +577,18 @@ func main() {
 				}
 			}
 		}
+		if model.Parameters["track_ROH"] == 1 {
+			// Runs of homozygosity (§4): per-individual F_ROH + short/medium/long
+			// length classes + the pooled ROH length distribution — the standard
+			// consanguinity / bottleneck / small-founder signal, comparable to real
+			// 1000G/HGDP data. Read-only over the founder bitfield (within-individual
+			// auto-zygosity; complementary to the between-individual IBD scan).
+			// Requires track_DNA so chromosomes exist. roh_sample_size 0 = all (no RNG).
+			ids := analysis.SampleIDs(pop, int(model.Parameters["roh_sample_size"]))
+			if err := analysis.SaveROH(model, analysis.ComputeROH(model, pop, ids)); err != nil {
+				log.Printf("Error saving ROH results: %v", err)
+			}
+		}
 
 		// Final checkpoint at the end of the run.
 		maybeCheckpoint(pop)
@@ -704,6 +716,15 @@ func runImportedAnalyses(model *core.Model, pop *core.Pop) {
 			if err := analysis.ExportHapMap(model, pop, ids); err != nil {
 				log.Printf("Error exporting hap/map: %v", err)
 			}
+		}
+	}
+	if model.Parameters["track_ROH"] == 1 {
+		// Runs of homozygosity (§4) on the imported real-data panel: ImportVCF fills
+		// the founder bitfield, so ROH measures auto-zygosity on actual 1000G/HGDP
+		// genotypes. roh_sample_size 0 = all.
+		ids := analysis.SampleIDs(pop, int(model.Parameters["roh_sample_size"]))
+		if err := analysis.SaveROH(model, analysis.ComputeROH(model, pop, ids)); err != nil {
+			log.Printf("Error saving ROH results: %v", err)
 		}
 	}
 }

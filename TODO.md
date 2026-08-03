@@ -544,7 +544,71 @@ Status key: `[ ]` not started · `[~]` in progress · `[x]` done · `[?]` needs 
 
 - [ ] **Deterministic seeding** (see 0 — also a prerequisite for everything in this section).
 - [ ] **Fst / population-structure statistics** to complement existing SFS / LD / coalescence.
-- [ ] **Runs-of-homozygosity** analysis.
+- [x] **Runs-of-homozygosity (ROH)** analysis. A read-only, opt-in module that scans each
+  individual's diploid genome for contiguous homozygous tracts and reports the ROH length
+  distribution / F_ROH / short-medium-long partition — the standard consanguinity + bottleneck +
+  small-founder signal, comparable to real 1000G/HGDP data. **Landed 2026-08-03.**
+  - **KEY FINDINGS (probed the real engine FIRST, à la §1/§6a/§6f/§6g/§3).** (1) The signal lives in
+    the **founder Chromosomes bitfield**, decisively — `pop.Chromosomes[id]` is a dense per-position
+    diploid genotype array (two `uint64` strand copies), and homozygosity at bit p is exactly
+    `bitAt(c[0],p)==bitAt(c[1],p)` with het sites as natural run-breakers, precisely the substrate
+    real ROH callers use. The de-novo **MutationPool is the wrong substrate** (sparse, no contiguous
+    per-position genotype). ROH is cleanly **complementary to the §7 IBD module**: IBD ORs the two
+    strands together for *between-individual* founder sharing; ROH compares the two strands *against
+    each other* for *within-individual* auto-zygosity — same coordinate machinery (buildContigs /
+    arm-tiling), opposite strand operator. (2) **`seed_style` is the pivotal variable.** `seed_style=2`
+    (max_het, the `parameter_defaults.csv` default) makes every founder strand0=all-1s / strand1=all-0s
+    ⇒ **heterozygous at every site ⇒ F_ROH starts at exactly 0 and accumulates via drift +
+    recombination** — the ideal clean outbred→inbred substrate. `seed_style=0` (single all-1s founder)
+    is **degenerate for ROH** — the single seed's bitfield fails to propagate and the living population
+    is genome-less within ~150 y (probe: living-with-genome 1→5→4→**0**). `seed_style=1` gives sparse
+    scattered het over a near-total homozygous background. (3) **Byte-identity is structural, not just
+    careful gating:** the shipped Default and the `-validate` neutral baseline both run `track_DNA=0`,
+    and `birth.go` only propagates child strand copies when `track_DNA>0`, so a bitfield only exists
+    under `track_DNA=1` ⇒ ROH gated on `track_DNA` is trivially absent from the credibility baseline.
+    (4) **The signal is real and large** (probe, N=200, bottleneck to 15): at y300 the bottleneck run vs
+    an outbred control at the same seed had het/ind **halved** and long-tract F_ROH **~4.4×** higher —
+    and the outbred *long*-tract F_ROH is **non-monotone** (peaks ~y50 as a founder-haplotype artifact,
+    then decays toward drift–recombination balance) while *total* homozygosity plateaus at ~0.70
+    (matching DRIFT's ~0.31 Ne/N). That maps onto the short/long partition exactly: **total/short ≈
+    cumulative inbreeding, long ≈ recent bottleneck/consanguinity**.
+  - **Design (chosen with Rob).** Fork 1 (units) = **bits + cM when a map is present**: run length is
+    reported natively in genome-bits AND centiMorgans via the §6a `utils.EnsureGeneticMap` accessor
+    (uniform `recomb_cM_per_bit` fallback, mirroring haplostats' `haploGeneticMap`), because "long" is
+    physically a recombination-length notion and cM is what makes classes real-data-comparable; a
+    native-bit floor `roh_min_bits` filters het-gap noise and works with no map. Fork 2 (partition) =
+    **3 classes via 2 numeric cM boundary params** (`roh_short_max_cM` / `roh_long_min_cM`; medium
+    between) — numeric ⇒ **no `stringParams` allowlist change**. Fork 3 (run boundary) = **per-arm**
+    (bounded within a single arm like the IBD module + DRIFT's legacy centromere-bracketing
+    recombination), so a run may not cross the arm boundary.
+  - **Module.** `pkg/analysis/roh.go` (`ComputeROH`: per-individual per-arm homozygous-run scan →
+    `ROHRun`/`ROHIndividual`/`ROHResult`; `rohGeneticMap` cM accessor) + `pkg/analysis/roh_output.go`
+    (`SaveROH`: `<model>_roh_per_individual_*` — N_ROH / SROH(bits,cM) / F_ROH(bits,cM) / het / class
+    breakdown per individual; `<model>_roh_distribution_*` — the pooled log2-binned length distribution
+    + per-class totals, the headline product; + a printed summary). Reuses in-package `bitAt`/`logBin`.
+  - **Wiring.** Behind a new opt-in **`track_ROH`** in both drift.go end-of-run (`SampleIDs`,
+    `roh_sample_size` 0=all, no RNG) and **`runImportedAnalyses`** — so ROH also runs on an imported
+    real-data panel (ImportVCF fills the bitfield ⇒ auto-zygosity on actual 1000G/HGDP genotypes).
+  - **Compatibility.** `track_ROH` off ⇒ no files, zero RNG; gated on `track_DNA` (absent from
+    `-validate`) ⇒ strictly-neutral runs byte-identical: `drift -validate` still **PASS**, D=−0.6611,
+    π/W=0.809, Ne/N=0.313, SFS χ²/dof=4.767 (refcount baseline unchanged). Read-only; no new core
+    state ⇒ no checkpoint bump. Params added to `parameter_defaults.csv` (Analysis group:
+    `track_ROH`/`roh_sample_size`/`roh_min_bits`/`roh_short_max_cM`/`roh_long_min_cM`).
+  - **Tests.** `pkg/analysis/roh_test.go` — hand-computed 16-bit/2-arm fixtures: per-arm bounding
+    (a fully-homozygous individual → TWO 8-bit runs not one 16-bit run), outbred-no-runs, the
+    **distinguishable consanguineous-vs-outbred** case (F_ROH 1.0 vs 0.0, more/longer runs) through the
+    real `ComputeROH`, the `roh_min_bits` floor, cM-classification via a real per-arm `ArmCM` map
+    (short/medium/long by cM), and SaveROH file-emission + empty no-op. Full `go test ./...` green.
+  - **Verified end-to-end** via local gitignored `users/smoke/models/ROHTest` (23-chrom 3046-bit 4-col
+    genome ⇒ uniform cM fallback, seed_style=2, track_DNA=1, bottleneck to 20 over y300–340, seed 4242)
+    vs `ROHTestOut` (identical but no bottleneck): through the **real binary** the bottleneck run shows
+    **F_ROH 0.800 vs 0.680**, het **halved 0.166 vs 0.260**, **long ROH 34.9 vs 25.5** (more, longer) and
+    fewer-but-longer total runs (99.6 vs 120.7) — the classic bottleneck ROH signature with all three
+    length classes populated; two runs **byte-identical** (all ROH files + `_results.csv`), and
+    **track_ROH on-vs-off `_results.csv` byte-identical** (no files when off).
+  - **Deferred follow-ups:** a segregating-panel (SNP-array-style) scan variant alongside the WGS-style
+    all-bits scan; a bp→cM import map so imported panels get real cM (currently uniform fallback); a
+    per-chromosome (centromere-spanning) boundary option; GUI plots of the N_ROH-vs-SROH cloud.
 - [ ] **Fixation / mutation-load time series** output.
 - [ ] **Parameter sweeps / batch experiments.** Expand a parameter grid into many queued runs
   (the webserver already has a `queue`), with aggregated cross-run summary output. Turns DRIFT
