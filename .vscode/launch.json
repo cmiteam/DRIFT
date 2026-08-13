@@ -1,0 +1,26 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Drift: Web Server",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}",
+            "args": ["--web"]
+        },
+        {
+            "name": "Drift: Run QuickTest (Rob)",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceFolder}",
+            "args": [
+                "-username=Rob",
+                "-model=QuickTest",
+                "-output-dir=users/Rob/models/QuickTest/results",
+                "-map-root=maps"
+            ]
+        }
+    ]
+}
