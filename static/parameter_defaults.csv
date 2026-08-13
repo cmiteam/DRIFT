@@ -108,6 +108,12 @@ roh_sample_size,ROH Sample Size,Text,int,0,Analysis
 roh_min_bits,ROH Min Run (bits),Text,int,5,Analysis
 roh_short_max_cM,ROH Short-Class Max (cM),Text,float,10,Analysis
 roh_long_min_cM,ROH Long-Class Min (cM),Text,float,25,Analysis
+track_pedigree,Track Diploid Pedigree,Check,bool,0,Analysis
+track_arg,Track Strand Provenance,Text,int,0,Analysis
+arg_loci,ARG Focal Loci,Text,string,,Analysis
+track_tmrka,Track TMR-K-A (ground truth),Check,bool,0,Analysis
+tmrka_k,TMR-K-A: K,Text,int,4,Analysis
+tmrka_sample_size,TMR-K-A Sample Size,Text,int,0,Analysis
 deme_inheritance,Deme Inheritance,Text,string,paternal,Population
 generation_time,Generation Time (yrs),Text,float,25,Population
 track_map,Track on Map,Check,bool,1,Maps

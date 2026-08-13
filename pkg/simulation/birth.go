@@ -80,11 +80,25 @@ func birthStandard(model *core.Model, pop *core.Pop) {
 			// will be used to control meiosis and mutation inheritance. These will
 			// be used for both meiosis and mutation inheritance, so we will set
 			// them up once and use them at will.
-			if model.Parameters["track_DNA"] > 0 || model.Parameters["track_mutations"] > 0 {
+			// track_arg joins the mask-building condition because strand provenance
+			// (TMR4A.md W2) is READ OFF these masks. On a run that already tracks DNA
+			// or mutations that costs nothing and changes no RNG draw; on a run that
+			// tracks neither it causes masks to be drawn that otherwise would not be,
+			// which changes the stream — opt-in, and documented in pkg/core/arg.go.
+			argOn := core.ARGFocalOn(model)
+			if model.Parameters["track_DNA"] > 0 || model.Parameters["track_mutations"] > 0 || argOn {
 				var genomemask0, genomemask1 []uint64
 				var centsmask0, centsmask1 []uint64
 				genomemask0, centsmask0 = createMask(model, 0)
 				genomemask1, centsmask1 = createMask(model, 1)
+
+				// Capture which parental strand each focal locus came from, before the
+				// masks are consumed and discarded. Requires track_pedigree: without the
+				// parent links these records are unreadable, and nothing would ever
+				// prune them.
+				if argOn && model.Parameters["track_pedigree"] == 1 {
+					pop.ARGCapture(child, core.EnsureARGLoci(model), genomemask0, genomemask1)
+				}
 
 				// Add tracked DNA
 				if model.Parameters["track_DNA"] > 0 {
@@ -155,6 +169,21 @@ func birthStandard(model *core.Model, pop *core.Pop) {
 					pop.IndData[child][individual.Fitness] = int(float64(fitness) * model.Parameters["mu_scale_factor"])
 					pop.IndData[child][individual.NumMutations] = numMutations
 				}
+			}
+
+			// Diploid pedigree retention (TMR4A.md W1). Unconditional on child sex —
+			// that asymmetry is exactly what makes MaleDB/FemaleDB below a pair of
+			// single-sex chains rather than a pedigree, and the TMR-K-A walker needs
+			// both parents of every child. Parents are ensured first so a founder gets
+			// a node the moment it reproduces (and so the child's increment lands on
+			// something); IndData is still live for both, since a parent cannot be
+			// dead. No RNG, so a track_pedigree run stays byte-identical.
+			if model.Parameters["track_pedigree"] == 1 {
+				pop.PedEnsure(dad, pop.IndData[dad][individual.BirthYear], pop.IndData[dad][individual.Sex])
+				pop.PedEnsure(mom, pop.IndData[mom][individual.BirthYear], pop.IndData[mom][individual.Sex])
+				pop.PedRecordBirth(child, dad, mom,
+					pop.IndData[child][individual.BirthYear],
+					pop.IndData[child][individual.Sex])
 			}
 
 			if model.Parameters["track_coalescence"] == 1 {

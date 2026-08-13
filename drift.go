@@ -258,6 +258,24 @@ func main() {
 	numRuns := int(model.Parameters["num_runs"])
 	totalYears := int(model.Parameters["end_year"])
 
+	// TMR4A.md W1/W2 config check. Strand provenance is indexed by the pedigree and
+	// pruned by it; without track_pedigree the records would be unreadable and would
+	// grow without bound, so capture is skipped and the run says so rather than
+	// producing an ARG the walker cannot traverse.
+	if model.Parameters["track_arg"] >= 1 {
+		if model.Parameters["track_pedigree"] != 1 {
+			fmt.Println("WARNING: track_arg requires track_pedigree; strand provenance will NOT be captured")
+		}
+		if model.Parameters["track_arg"] >= 2 {
+			fmt.Println("NOTE: track_arg=2 (breakpoint mode) is not implemented yet; using focal-loci mode")
+		}
+		if loci := core.EnsureARGLoci(model); len(loci) == 0 {
+			fmt.Println("WARNING: track_arg is set but arg_loci names no in-range loci; nothing will be captured")
+		} else {
+			fmt.Printf("Strand provenance: %d focal loci (TMR-K-A ground truth)\n", len(loci))
+		}
+	}
+
 	// Establish a reproducible RNG seed. If rng_seed is unset (<= 0), derive one
 	// from the clock and log it so the run can still be reproduced later by
 	// setting rng_seed to that value. Each run in a multi-run gets a distinct,
@@ -587,6 +605,20 @@ func main() {
 			ids := analysis.SampleIDs(pop, int(model.Parameters["roh_sample_size"]))
 			if err := analysis.SaveROH(model, analysis.ComputeROH(model, pop, ids)); err != nil {
 				log.Printf("Error saving ROH results: %v", err)
+			}
+		}
+
+		if model.Parameters["track_tmrka"] == 1 {
+			// Ground-truth TMR-K-A (TMR4A.md W5): walk the RECORDED genealogy back
+			// from the living sample at each focal locus and report the lineage-count
+			// trajectory, the three outcome classes, and the number of distinct
+			// founder haplotypes surviving. Not an estimate — no MCMC, no coalescent
+			// prior — which is what makes it the reference an ARGweaver run is scored
+			// against. Requires track_pedigree + track_arg + arg_loci.
+			// tmrka_sample_size 0 = every living individual (no RNG).
+			ids := analysis.SampleLiving(pop, int(model.Parameters["tmrka_sample_size"]))
+			if err := analysis.SaveTMRKA(model, analysis.ComputeTMRKA(model, pop, ids)); err != nil {
+				log.Printf("Error saving TMR-K-A results: %v", err)
 			}
 		}
 

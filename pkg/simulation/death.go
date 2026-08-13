@@ -319,6 +319,17 @@ func RIP(ind int, pop *core.Pop, model *core.Model) {
 	if pop.IndData[ind][individual.Daughters] == 0 {
 		delete(pop.FemaleDB, ind)
 	}
+
+	// Diploid pedigree (TMR4A.md W1): drop the alive-contribution and prune the branch
+	// if nothing points at this node any more, cascading to parents. Same retention
+	// discipline as the two single-sex deletes above, generalised to both parents and
+	// to indirect descendants — a dead node with no sons is still needed if a living
+	// granddaughter descends through it. Must run BEFORE IndData is deleted only in the
+	// sense that the node's own copy of BirthYear/Sex was taken at birth; the call
+	// itself reads nothing from IndData.
+	if model.Parameters["track_pedigree"] == 1 {
+		pop.PedRecordDeath(ind)
+	}
 	delete(pop.IndMutations, ind)
 	delete(pop.Chromosomes, ind)
 	delete(pop.Centromeres, ind)

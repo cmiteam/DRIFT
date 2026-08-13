@@ -86,6 +86,13 @@ type Model struct {
 	// every existing path byte-identical. Rebuilt from the param, not serialized (like the
 	// schedulers / habitat / barriers) — no checkpoint schema bump.
 	Migration *MigrationMatrix
+
+	// Focal locus set for strand provenance (TMR4A.md W2). Lazily parsed from the
+	// `arg_loci` param by EnsureARGLoci and cached here, like GeneticMap: sorted,
+	// deduplicated genome-bit positions. Nil until first consulted; a non-nil empty
+	// slice means "parsed, and the spec named no loci", which leaves capture inert.
+	// Rebuilt from the param, not serialized — no checkpoint schema bump.
+	ARGLoci []int
 }
 
 // DemographyScheduler advances a time-varying demographic scenario. Defined here
@@ -135,6 +142,23 @@ type Pop struct {
 	// checkpointing; nil is a valid zero value on resume.
 	NeHistory  map[int]*NeSnapshot
 	NePrevSnap *FreqSnapshot
+
+	// Diploid pedigree (TMR4A.md W1). child ID -> PedNode{Dad, Mom, BirthYear, Sex,
+	// refcount}, retained past death for as long as any living descendant can still
+	// walk through the node and pruned by refcount cascade otherwise. This is the
+	// substrate the TMR-K-A walker (W5) traverses; MaleDB/FemaleDB are single-sex
+	// chains and cannot serve. Populated only when track_pedigree is set (default off
+	// ⇒ nil ⇒ no writes, no RNG, byte-identical). See pkg/core/pedigree.go.
+	Pedigree map[int]*PedNode
+
+	// Strand provenance (TMR4A.md W2, focal-loci mode). individual ID -> packed
+	// bitset saying, per focal locus, which parental strand each of the two gametes
+	// was drawn from. Together with Pedigree this is the ARG the TMR-K-A walker
+	// traverses: Pedigree gives the parent, ARGDB gives the strand. Pruned by the
+	// same refcount cascade as Pedigree, so it cannot outlive the pedigree it indexes.
+	// Populated only when track_arg is set with a non-empty arg_loci (default off ⇒
+	// nil ⇒ no writes, no RNG). See pkg/core/arg.go.
+	ARGDB map[int][]uint64
 
 	// Genetic-load-through-time state (roadmap §6f). One LoadSnapshot per captured
 	// window, keyed by simulated year; SaveLoadTimeSeries writes it at end-of-run.

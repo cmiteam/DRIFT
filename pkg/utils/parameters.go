@@ -52,6 +52,7 @@ var stringParams = map[string]bool{
 	"dating_gen_times":     true,
 	"haplostats_demes":     true,
 	"deme_inheritance":     true,
+	"arg_loci":             true,
 	"habitat_suitability":  true,
 	"movement_barriers":    true,
 	"birth_style":          true,

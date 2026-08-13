@@ -143,6 +143,10 @@ func ensurePopMaps(p *core.Pop) {
 	if p.MaleDB == nil {
 		p.MaleDB = map[int]core.Ancestor{}
 	}
+	// Pedigree is deliberately NOT force-allocated: nil means "track_pedigree off",
+	// and the Ped* methods allocate lazily on first write, so a checkpoint taken with
+	// the flag off can be resumed with it on (later births are recorded, earlier
+	// ancestry reports as censored) without pretending an empty pedigree is a complete one.
 	if p.FemaleDB == nil {
 		p.FemaleDB = map[int]core.Ancestor{}
 	}

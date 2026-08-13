@@ -1,6 +1,8 @@
 # TMR4A in DRIFT — implementation specification
 
-**Status:** design only. Nothing in this document is implemented yet.
+**Status:** **step 1 of §7 landed** on `rob-TMR4A-1` — W1 + W2 (focal mode) + W5 + the W8 tests that
+guard them. Ground-truth TMR-*K*-A now runs end-to-end on ordinary diploid runs. W3, W4, W6, W7 and
+W9 are still design only. See §8 for the implementation record.
 **Scope:** what must be built to (1) compute *ground-truth* TMR4A inside DRIFT, and (2) calibrate
 ARGweaver's *inferred* TMR4A against that truth.
 **Roadmap ties:** README items 5a (four-alleles test) and 5b (ARGweaver); TODO §6a (real-data
@@ -171,7 +173,7 @@ Every item is opt-in and must leave a default run byte-identical (the `-validate
 D=−0.6611 / π-W=0.809 / Ne-N=0.313 / SFS-χ² 4.77). Any item that draws RNG on the default path is
 wrong by construction. New `.go` files LF on disk.
 
-### W1 — Diploid pedigree retention `track_pedigree`
+### W1 — Diploid pedigree retention `track_pedigree` — **LANDED**
 
 Record both parents for every child and retain any node with surviving descendants.
 
@@ -187,7 +189,7 @@ Record both parents for every child and retain any node with surviving descendan
 *Files:* `core/types.go`, `simulation/birth.go`, `simulation/death.go`, checkpoint schema.
 *Size:* ~150 lines + tests. *Risk:* unbounded growth on long runs — see §5.
 
-### W2 — Strand provenance `track_arg`
+### W2 — Strand provenance `track_arg` — **focal mode LANDED**
 
 Two modes, same consumer:
 
@@ -241,7 +243,7 @@ This is the item that encodes the objection in §0 and has no analogue in the cu
 registry ([pkg/modules/registry.go](pkg/modules/registry.go)).
 *Size:* ~300 lines + tests. *This is the largest and least conventional item.*
 
-### W5 — The TMR-K-A walker `analysis/tmrka.go`
+### W5 — The TMR-K-A walker `analysis/tmrka.go` — **LANDED**
 
 Backward from a sample of 2*N* strands at each focal locus:
 
@@ -297,7 +299,7 @@ Do **not** reimplement the MCMC (README 5b). Run the real tool externally.
 
 *Size:* ~250 lines + a written scaling rationale that stands on its own.
 
-### W8 — Validation
+### W8 — Validation — **LANDED for W1/W2/W5**
 
 - Walker correctness against a hand-built pedigree with known coalescence times (follow the
   hand-built-panel pattern used for §6b/§6g).
@@ -422,3 +424,68 @@ as the swept variable.
 
 Steps 1 and 3 are the calibration paper. Step 2 is the one that tests whether the metric means what
 it is claimed to mean.
+
+---
+
+## 8. Implementation record — step 1 (W1 + W2 focal + W5 + W8)
+
+Landed on `rob-TMR4A-1`. Every flag defaults off; the `-validate` gate is unchanged
+(**D=−0.6611 / π-W=0.809 / Ne-N=0.313 / SFS-χ² 4.767**) and no path draws RNG unless opted into.
+
+### What was built
+
+| Item | Files | Notes |
+|---|---|---|
+| W1 pedigree | [pkg/core/pedigree.go](pkg/core/pedigree.go), `core.Pop.Pedigree`, [birth.go](pkg/simulation/birth.go), [death.go](pkg/simulation/death.go), [initializepop.go](pkg/config/initializepop.go) | `PedNode{Dad,Mom,BirthYear,Sex,Refs,Alive}`; refcount = alive + retained children; release cascades to parents, iteratively (deep lineages would blow a recursive stack). Founder nodes seeded once after setup dispatch, so every setup module is covered. |
+| W2 provenance | [pkg/core/arg.go](pkg/core/arg.go), `core.Pop.ARGDB`, `core.Model.ARGLoci` | Focal-loci mode only. One flat `[]uint64` per birth: gamete 0 then gamete 1, one bit per focal locus. Pruned by the W1 cascade, so it cannot outlive the pedigree that indexes it. |
+| W5 walker | [pkg/analysis/tmrka.go](pkg/analysis/tmrka.go), [tmrka_output.go](pkg/analysis/tmrka_output.go) | Max-heap over (individual, strand) lineages, popped newest-first. Emits the full trajectory; TMR-*K*-A for any *K* is `TMRKAForK`. |
+| W8 tests | `pkg/core/{pedigree,arg}_test.go`, `pkg/simulation/{pedigree,arg,tmrka_sweep}_test.go`, `pkg/analysis/tmrka_test.go` | Hand-built pedigrees with known coalescence times; byte-identity; locus-sweep reproducibility. |
+
+### Parameters
+
+`track_pedigree` (0) · `track_arg` (0) · `arg_loci` ("") · `track_tmrka` (0) · `tmrka_k` (4) ·
+`tmrka_sample_size` (0). `arg_loci` grammar: comma/space-separated `P`, `A-B`, or `A-B:S`.
+`track_arg` requires `track_pedigree` — drift.go warns and skips capture otherwise.
+
+### Decisions worth knowing before extending this
+
+- **Mask inversion lives in exactly one function.** `meiosis` computes
+  `(mask & parent0) | (^mask & parent1)`, so a SET mask bit means parental copy **0**. `ARGCapture`
+  is the only place that inverts it, and `TestARGRecordedStrandMatchesMeiosisResult` checks the
+  recorded strand against the allele meiosis actually delivered, under both the legacy and the §6a
+  map recombination paths. Do not re-derive the convention at a read site.
+- **Coalescences are dated to the ancestor's birth year**, and the event list is **sorted by year
+  before** being turned into a trajectory. It is not discovered in time order: the walk pops by the
+  descendant's birth year, and with DRIFT's long founder lifespans a late birth to an ancient parent
+  yields an older event than one found later. An unsorted trajectory attaches the wrong counts to
+  the wrong years.
+- **The id tie-break in the walk heap is load-bearing.** Correctness rests on never arriving at a
+  node already stepped past. That holds because every arrival is strictly older than the node just
+  popped; descending-id tie-breaking preserves it even if a model ever allows a parent and child to
+  share a birth year, since DRIFT allocates ids monotonically.
+- **`FinalLineages` == `FounderStrandsSurviving` by construction** — surviving lineages sit on
+  distinct founder strands. They are computed by two different routes and cross-checked, because
+  this is the headline falsifiable number (§0) and a silent off-by-one in it would be invisible.
+- **`created_alleles_surviving`, `mutational_diffs`, `created_diffs` are emitted as `-1`.** They are
+  identity-by-*state* quantities and need W3 labels. Reporting the by-descent count in their place
+  would collapse exactly the distinction the study turns on.
+- **Censored walks write EMPTY date cells**, not zeros or sentinels — §6 risk 5. An empty cell
+  cannot be averaged by accident; the `outcome` column says why in words.
+
+### Smoke model
+
+`users/smoke/models/TMR4ATest` — 200 diploids, 500 years, 13 focal loci at `0-3000:250`.
+Representative output (rng_seed 4242): 13 loci → **5 coalesced, 8 censored at founding, 0 with no
+coalescence**; mean TMR-4-A depth 297.8 y (11.9 generations); founder haplotypes surviving per
+locus min 3 / mean 5.85 / max 11. Note the shape of that result: of 346 sampled lineages, all but
+3–11 coalesce, but at most loci the survivors are *more* than four distinct founder haplotypes, so
+there is no TMR-4-A to report — which is the censoring the module exists to make visible.
+
+### Not yet done, in the §7 order
+
+- **W9** (constant-*N* ARGweaver sweep) — needs no DRIFT code, but does need ARGweaver runs; it is
+  external tooling and run management, not an engine change. Still the highest-value next step.
+- **W3 + W4** — founder allele identity labels and created germline heterogeneity. W5 already has
+  the fields reserved and the walker already reports the founder-strand count they refine.
+- **W6 + W7** — merged VCF export and the ARGweaver bridge.
+- **W2 breakpoint mode** — promote when the §5 memory measurement bites.
