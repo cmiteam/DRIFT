@@ -1,9 +1,11 @@
 # TMR4A in DRIFT — implementation specification
 
 **Status:** **steps 1 and 2 of §7 landed** on `rob-TMR4A-1` — W1 + W2 (focal mode) + W5 + W3 + W4,
-with the W8 tests that guard them. Ground-truth TMR-*K*-A runs end-to-end; created-allele identity is
-separated from by-descent identity; and a single created couple can now transmit more than four
-alleles per locus, so §0's objection to "four is the ceiling" is executable rather than argued.
+with **W8 complete**, including the analytic anchor that fixes the walker's absolute timescale.
+Ground-truth TMR-*K*-A runs end-to-end; created-allele identity is separated from by-descent
+identity; a single created couple can now transmit more than four alleles per locus, so §0's
+objection to "four is the ceiling" is executable rather than argued; and the walker's depths have
+been checked against an independently-measured effective population size to within 5%.
 W6, W7 and W9 (the ARGweaver calibration) are still design only. See §8 for the implementation
 record.
 **Scope:** what must be built to (1) compute *ground-truth* TMR4A inside DRIFT, and (2) calibrate
@@ -304,14 +306,17 @@ Do **not** reimplement the MCMC (README 5b). Run the real tool externally.
 
 *Size:* ~250 lines + a written scaling rationale that stands on its own.
 
-### W8 — Validation — **LANDED for W1/W2/W5**
+### W8 — Validation — **LANDED**
 
 - Walker correctness against a hand-built pedigree with known coalescence times (follow the
-  hand-built-panel pattern used for §6b/§6g).
-- Byte-identity regression: all flags off ⇒ `-validate` unchanged.
+  hand-built-panel pattern used for §6b/§6g). **Done** with W1/W2/W5, extended for W3/W4.
+- Byte-identity regression: all flags off ⇒ `-validate` unchanged. **Done**, per feature and for
+  the genealogy capture the anchor adds to the §6h harness.
 - Determinism: identical seed + different focal-locus sets ⇒ identical genealogy (this is what makes
-  locus sweeps safe, see §5).
+  locus sweeps safe, see §5). **Done.**
 - A neutral large-*N* run where the true TMR4A is known analytically-ish, as a sanity anchor.
+  **Done** — see §8a, which is the only test in the set that would catch a walk whose absolute
+  timescale is wrong.
 
 ### W9 — Ne-prior sensitivity sweep (**no DRIFT code required**)
 
@@ -470,7 +475,8 @@ Landed on `rob-TMR4A-1`. Every flag defaults off; the `-validate` gate is unchan
 | W5 walker | [pkg/analysis/tmrka.go](pkg/analysis/tmrka.go), [tmrka_output.go](pkg/analysis/tmrka_output.go) | Max-heap over (individual, strand) lineages, popped newest-first. Emits the full trajectory; TMR-*K*-A for any *K* is `TMRKAForK`. |
 | W3 labels | [pkg/core/allele_labels.go](pkg/core/allele_labels.go), `core.Pop.FounderLabels`, [initializepop.go](pkg/config/initializepop.go), walker `summariseSources` | Created-allele identity per founder strand, round-robin over *A* = `founder_alleles_per_locus`. Stored on the founder, not carried through meiosis — W2 already resolves any lineage to its founder strand, so the label is a lookup at the end of the walk. Pruned by the W1 cascade. |
 | W4 created alleles | [pkg/core/created.go](pkg/core/created.go), [pkg/methods/seeding_created.go](pkg/methods/seeding_created.go), [pkg/methods/setup_pop_eden.go](pkg/methods/setup_pop_eden.go), [pkg/simulation/created_meiosis.go](pkg/simulation/created_meiosis.go) | *A* created HAPLOTYPES built at seeding, any two diverged by `founder_allele_divergence` with no elapsed time; a germline pool per founder; each germ cell carries TWO pool alleles and ordinary meiosis recombines them. New `eden` setup (one couple) and `created` seed style. |
-| W8 tests | `pkg/core/{pedigree,arg,allele_labels}_test.go`, `pkg/simulation/{pedigree,arg,tmrka_sweep,tmrka_labels}_test.go`, `pkg/analysis/{tmrka,tmrka_labels}_test.go` | Hand-built pedigrees with known coalescence times and hand-computed pair counts; byte-identity; locus-sweep reproducibility; labels-inert-on-by-descent-quantities. |
+| W8 tests | `pkg/core/{pedigree,arg,allele_labels,created}_test.go`, `pkg/simulation/{pedigree,arg,tmrka_sweep,tmrka_labels,created}_test.go`, `pkg/analysis/{tmrka,tmrka_labels}_test.go`, `pkg/methods/seeding_created_test.go` | Hand-built pedigrees with known coalescence times and hand-computed pair counts; byte-identity; locus-sweep reproducibility; labels-inert-on-by-descent-quantities. |
+| W8 analytic anchor | [pkg/analysis/tmrka_ne.go](pkg/analysis/tmrka_ne.go), [pkg/validation/tmrka_anchor.go](pkg/validation/tmrka_anchor.go) (+ `_test.go` for both), `NeutralConfig.TrackPedigree` / `.ARGLoci` | The absolute-timescale check — §8a. |
 
 ### Parameters
 
@@ -589,7 +595,110 @@ and the time at which it is reached is not a bound on the founding. The unit tes
 underneath it — one couple observed transmitting all 10 created alleles, five from each parent, with
 every gamete still a two-allele recombined mosaic.
 
-### Not yet done, in the §7 order
+## 8a. The W8 analytic anchor — what fixes the walker's absolute timescale
+
+Every other W8 test either fixes the genealogy by hand, or checks the walk against itself, or checks
+that a flag is inert. **All of them would still pass if the walk systematically reported the wrong
+depth.** The anchor is the one that would not.
+
+### The design
+
+Run the §6h neutral scenario — the real engine, strictly neutral, one panmictic population at known
+census *N* — with `track_pedigree` and `track_arg` on, then measure the effective population size
+**twice from the same run, by two routes that share no code**:
+
+| | route | driven by |
+|---|---|---|
+| `Ne_pool` | θ_W / 2μ, from the mutation pool's segregating sites (§6h) | total branch length, inferred from sequence |
+| `Ne_geneal` | TMR-*K*-A ÷ 4(1/*K* − 1/*n*), from the W5 walker | tree depth, read off who actually descended from whom |
+
+The second is exactly the inference §1B says runs backwards in the published analysis: there Ne is
+assumed and the depth follows; here the depth is known truth and the Ne it implies is the thing
+under test.
+
+Two properties are asserted **exactly**, because they hold for any genealogy at all: TMR-*K*-A can
+never rise with *K*, and the implied Ne must not depend on which *K* it was computed at, since
+4Ne(1/*K* − 1/*n*) is the only *K*-dependence a coalescent admits. That second one is a **shape
+check requiring no second estimate** — it is Ne-free.
+
+Years are converted to generations by the **realised** mean parent-to-child birth-year gap measured
+from the pedigree itself (`analysis.PedigreeGenerationTime`), not by the `generation_time`
+parameter, which is a reporting convenience and need not match what the life history did.
+
+### The result
+
+`RunTMRKAAnchor`, default settings (N=120, 6000-year burn-in, 24 sampled individuals ⇒ *n*=48
+lineages, 17 focal loci × 6 replicate seeds = 102 locus-genealogies, *K* ∈ {2,4,8}):
+
+> realised generation time **11.75 y** · **Ne_pool = 44.24** (Ne/N 0.369) · **Ne_geneal = 46.51**
+> · **ratio 0.951** · CV of implied Ne across *K* = **0.040** · 0 censored, 0 order violations.
+
+Per *K*: depth 85.0 / 42.4 / 20.4 generations at *K* = 2 / 4 / 8, implying Ne = 44.4 / 46.2 / 48.9.
+Across four independent base seeds the ratio is 0.951, 0.959, 0.971, 1.047. **Two independent
+routes to Ne, agreeing to about 5%.** The bands are set at ratio ∈ [0.75, 1.30] and CV ≤ 0.20 — wide
+enough to survive a reseed or a shortened run, narrow enough that a systematic half-depth bug (ratio
+→ ~2) cannot hide.
+
+### Two things the anchor turned up that were not being looked for
+
+**1. Focal-locus placement changes the measured genealogy by more than a factor of two.** Under
+DRIFT's default `recombination_model="legacy"` a meiosis mask is ONE contiguous interior segment per
+chromosome, endpoints drawn uniformly in the two arms. So P(inherit parental copy 0) is ≈½ at the
+centromere and ≈0 at a chromosome end: a locus at the start of an arm comes from the same parental
+copy at nearly every meiosis, its lineage barely switches strand, and its marginal genealogy is
+correspondingly shallow. Same scenario, same seeds, only the focal loci moved:
+
+| focal loci at | implied Ne |
+|---|---|
+| chromosome starts | 24.7 |
+| **uniform over positions** | **48.4** |
+| centromeres | 67.2 |
+| *(mutation pool says)* | *42.4* |
+
+Only the uniform placement is comparable with the pool, because mutations are dropped at
+uniformly-drawn positions and so average over exactly this heterogeneity. This is a property of the
+**engine's** recombination model, not of the walker — the walker reports all three genealogies
+correctly. `TestTMRKAAnchorDepthDependsOnLocusPlacement` pins the contrast so that "simplifying" the
+locus spec to one locus per chromosome cannot quietly break the anchor while looking tidier.
+**It matters for W7:** ARGweaver's model assumes recombination is position-homogeneous, so a W7
+export must not inherit this. Use `recombination_model="map"` for anything fed to ARGweaver, and
+verify the position-dependence is gone before trusting the comparison.
+
+**2. The §6h gate's Tajima's D is measured before equilibrium.** The anchor needs a long burn-in
+(the sample must coalesce before the walk reaches the founders), and at that length the neutral
+scenario looks materially different. Measured on the §6h scenario at R=6, sample size held fixed so
+only the burn-in moves:
+
+| burn-in | 1500 y | 3000 y | 6000 y |
+|---|---|---|---|
+| θ_W | 76.7 | 84.6 | 92.3 |
+| Ne/N | 0.320 | 0.352 | 0.385 |
+| Tajima's D | −0.683 | −0.266 | −0.279 |
+| θ_π/θ_W | 0.802 | 0.923 | 0.919 |
+
+The SFS *shape* converges by ~3000 y; the *scale* is still creeping at 6000 y (≈3.4 × 4Ne
+generations). Two consequences. First, **Ne_pool is biased low in the anchor**, and the ratio duly
+approaches 1 from below as the burn-in lengthens — 0.926 at 3000 y, 0.947 at 4500 y, 0.951 at
+6000 y — so the residual 5% is directional and explained, not noise. Second, and more important
+beyond this module: **DRIFT's characterized D ≈ −0.66 is largely a burn-in artefact, not the
+life-history property [pkg/validation/validation.go](pkg/validation/validation.go)'s package comment
+attributes it to.** By 3000 y the same scenario sits at ≈ −0.27 with θ_π/θ_W ≈ 0.92, much nearer
+Wright-Fisher. Nothing has been changed — the gate's value is being a fixed regression tripwire and
+it still passes byte-for-byte (**D=−0.6611 / π-W=0.809 / Ne-N=0.313 / SFS-χ² 4.767**) — but the
+number should not be read as DRIFT's equilibrium neutral baseline, and no downstream argument should
+be built on "DRIFT's neutral genealogies are strongly non-Kingman" without re-measuring at
+equilibrium. The anchor's own CV of 0.040 across *K* says they are close to Kingman-shaped there.
+
+### Cost and gating
+
+`NeutralConfig` gained `TrackPedigree` and `ARGLoci`, **both off by default**, so the §6h path
+allocates nothing extra and `-validate` is untouched. Neither draws RNG: the pedigree path never
+did, and the neutral scenario already tracks mutations so the meiosis masks `track_arg` reads are
+drawn either way — `TestTMRKAAnchorIsByteIdentical` asserts the whole neutral run is unchanged to
+the last bit of every float, and that with capture off no population is retained at all. The two
+heavy anchor tests cost ~38 s and ~16 s; the placement contrast skips under `-short`.
+
+## 8b. Not yet done, in the §7 order
 
 - **W9** (constant-*N* ARGweaver sweep) — needs no DRIFT code, but does need ARGweaver runs; it is
   external tooling and run management, not an engine change. Still the highest-value next step.

@@ -82,6 +82,19 @@ type NeutralConfig struct {
 	// life history sustain the census — used when probing how close DRIFT's neutral
 	// coalescent can get to the Wright-Fisher Tajima's-D ~ 0 expectation.
 	MortalityScale float64
+
+	// Ground-truth genealogy capture for the TMR-K-A analytic anchor (TMR4A.md W8).
+	// BOTH default to off, so the §6h gate above runs exactly as it always has; a
+	// replicate with them off keeps Pop nil and allocates nothing extra. With them on
+	// the replicate retains its population and sample so the W5 walker can be run over
+	// the same run the neutral statistics were read from — the two Ne estimates the
+	// anchor compares must come from ONE run or they are not comparing anything.
+	//
+	// Neither flag draws RNG here: the neutral scenario already tracks mutations, so
+	// the meiosis masks track_arg reads are drawn either way (see pkg/core/arg.go), and
+	// the pedigree path never drew any. TestTMRKAAnchorIsByteIdentical asserts it.
+	TrackPedigree bool
+	ARGLoci       string // focal locus spec; non-empty also switches track_arg on
 }
 
 // DefaultNeutralConfig returns calibrated settings for a fast, reliable end-to-end
@@ -149,6 +162,13 @@ type ReplicateResult struct {
 	Seed   int64
 	FinalN int
 	Stats  *analysis.NeutralStats
+
+	// Retained ONLY when NeutralConfig.TrackPedigree is set, for the TMR-K-A anchor
+	// (TMR4A.md W8). Nil on the default path, so the §6h run's memory profile is
+	// unchanged. SampleIDs is the very same sample Stats was computed from.
+	Pop       *core.Pop
+	Model     *core.Model
+	SampleIDs []int
 }
 
 // NeutralRunResult aggregates all replicates of a neutral run.
@@ -289,7 +309,11 @@ func runOneReplicate(cfg NeutralConfig, seed int64) ReplicateResult {
 
 	ids := analysis.SampleLiving(pop, cfg.SampleSize)
 	stats := analysis.ComputeNeutralStats(pop, ids)
-	return ReplicateResult{Seed: seed, FinalN: len(pop.IndData), Stats: stats}
+	rr := ReplicateResult{Seed: seed, FinalN: len(pop.IndData), Stats: stats}
+	if cfg.TrackPedigree {
+		rr.Pop, rr.Model, rr.SampleIDs = pop, model, ids
+	}
+	return rr
 }
 
 // buildNeutralModel constructs a fully in-memory, self-consistent neutral model:
@@ -352,6 +376,18 @@ func buildNeutralModel(cfg NeutralConfig) *core.Model {
 
 	// Validation output knobs.
 	p["validation_sample_size"] = float64(cfg.SampleSize)
+
+	// Ground-truth genealogy capture (TMR4A.md W1/W2), off unless asked for. track_arg
+	// is useless without track_pedigree — the records would have no parent links to be
+	// read through and nothing to prune them — so it is gated on both, matching the
+	// requirement birth.go enforces and drift.go warns about.
+	if cfg.TrackPedigree {
+		p["track_pedigree"] = 1
+		if cfg.ARGLoci != "" {
+			p["track_arg"] = 1
+			m.StringParams["arg_loci"] = cfg.ARGLoci
+		}
+	}
 
 	// Panmixia: random mating, default birth/death modules, default setup.
 	m.StringParams["mating_style"] = "random"
