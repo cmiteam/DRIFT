@@ -6,8 +6,9 @@ Ground-truth TMR-*K*-A runs end-to-end; created-allele identity is separated fro
 identity; a single created couple can now transmit more than four alleles per locus, so §0's
 objection to "four is the ceiling" is executable rather than argued; and the walker's depths have
 been checked against an independently-measured effective population size to within 5%.
-W6, W7 and W9 (the ARGweaver calibration) are still design only. See §8 for the implementation
-record.
+**W6 has since landed** (§8c): the export now carries both variant substrates and the ground-truth
+created-allele labels, which is what W7 reads. W7 and W9 are still design only. See §8 and §8c for
+the implementation record.
 **Scope:** what must be built to (1) compute *ground-truth* TMR4A inside DRIFT, and (2) calibrate
 ARGweaver's *inferred* TMR4A against that truth.
 **Roadmap ties:** README items 5a (four-alleles test) and 5b (ARGweaver); TODO §6a (real-data
@@ -75,7 +76,7 @@ describes the pre-W1/W2 state and is kept as the record of what was wrong.
 | Recombination, real cM maps | Present (§6a) | [pkg/simulation/birth.go:246-342](pkg/simulation/birth.go#L246-L342), [pkg/core/recomb.go](pkg/core/recomb.go) |
 | De-novo mutation, classes, variable rate | Present (§1) | [pkg/utils/mutation.go](pkg/utils/mutation.go), [pkg/utils/mutation_class.go](pkg/utils/mutation_class.go) |
 | Pool/bitfield co-segregation | Present under `linkage_model="arm"` | [pkg/utils/mutation.go:55-90](pkg/utils/mutation.go#L55-L90) |
-| VCF export | **Founder bitfield only** — de-novo pool is not written | [pkg/analysis/vcf.go:159-190](pkg/analysis/vcf.go#L159-L190) |
+| VCF export | Founder bitfield only *until W6*; now merges the de-novo pool under `vcf_include_mutations` | [pkg/analysis/vcf.go](pkg/analysis/vcf.go), [vcf_merged.go](pkg/analysis/vcf_merged.go) |
 | VCF import (real 1000G/HGDP) | Present, loads into the bitfield | [pkg/analysis/vcf_import.go](pkg/analysis/vcf_import.go) |
 | Y / mt coalescence | Present | [pkg/analysis/coalescence.go](pkg/analysis/coalescence.go) |
 | **Diploid pedigree** (W1) | **Present** since this doc — `track_pedigree` | [pkg/core/pedigree.go](pkg/core/pedigree.go) |
@@ -268,7 +269,7 @@ No MCMC, no prior, no inference error — this is the true genealogy.
 
 *Size:* ~250 lines + tests.
 
-### W6 — Merged VCF export (**prerequisite for W7**)
+### W6 — Merged VCF export (**prerequisite for W7**) — **LANDED**
 
 [ExportVCF](pkg/analysis/vcf.go#L109) writes the founder bitfield only. ARGweaver needs the
 segregating sites *including* de-novo mutations. Overlay the pool onto the bitfield per sampled
@@ -276,7 +277,8 @@ strand; they already share one coordinate space (`Mutation.Position` is a genome
 co-segregate under `linkage_model="arm"`. Key by mutation ID, not position, for the collision reason
 in W3. Optionally emit the W3 labels as an INFO/FORMAT field for downstream truth-vs-inference joins.
 
-*Size:* ~100 lines + tests.
+*Size:* ~100 lines + tests. See §8c for what was built and the one word in this sketch — "overlay" —
+that had to be read as *records*, not as a bitwise OR.
 
 ### W7 — ARGweaver bridge
 
@@ -705,6 +707,80 @@ heavy anchor tests cost ~38 s and ~16 s; the placement contrast skips under `-sh
 - **`mutational_diffs` / `created_diffs`** — still `-1`. W4 supplies the created divergence, so
   these are now computable: they need a pass that counts, over sampled pairs, sequence differences
   attributable to created divergence versus to de-novo mutation. Small, and the natural companion to
-  W6.
-- **W6 + W7** — merged VCF export and the ARGweaver bridge.
+  W6 — deliberately still not filled, because W6 emits sites and these are per-pair sequence counts.
+- **W7** — the ARGweaver bridge, now unblocked: the `.sites` converter reads the W6 file.
 - **W2 breakpoint mode** — promote when the §5 memory measurement bites.
+
+## 8c. Implementation record — W6, the merged VCF export
+
+Landed on `rob-TMR4A-1`. Both new flags default off, the pre-W6 output is reproduced byte for byte
+on the default path, and the `-validate` gate is unchanged
+(**D=−0.6611 / π-W=0.809 / Ne-N=0.313 / SFS-χ² 4.767**).
+
+### What was built
+
+| Item | Files | Notes |
+|---|---|---|
+| Merged export | [pkg/analysis/vcf_merged.go](pkg/analysis/vcf_merged.go), [vcf.go](pkg/analysis/vcf.go) | `VCFOptions{IncludeFixed, IncludeMutations, AlleleLabels}` replaces the bare `includeFixed` argument; the zero value is the pre-W6 behaviour. One record per source site, keyed by identity: `F<bit>` for a founder bitfield site, `M<id>` for a pool mutation. |
+| Truth annotation | [pkg/analysis/tmrka_sources.go](pkg/analysis/tmrka_sources.go), `FounderAlleleLabelsAt` | FORMAT `FL` (Number=2, Integer) at focal loci: the W3 created-allele label of each phased strand, resolved by walking the recorded genealogy per lineage. `.` where unrecoverable. |
+| Diagnostics | `VCFStats.NumFounderSites` / `NumMutationSites` / `MutationsIndexed` / `MutationsUnpooled` / `MutationsOutOfRange` | Every drop is counted and printed, never silent. |
+| Tests | [pkg/analysis/vcf_merged_test.go](pkg/analysis/vcf_merged_test.go) | The three overlay-loss cases, the fixed/out-of-range/unpooled drops, byte-identity of the default path against a pool-free population, the FL field, and the resolver-versus-walker cross-check. |
+| Smoke model | `users/smoke/models/TMR4AVCFTest` | The TMR4ATest scenario plus mutations, `linkage_model=arm`, `recombination_model=map`, and the merged export. |
+
+### Parameters
+
+`vcf_include_mutations` (0) · `vcf_allele_labels` (0), alongside the existing `export_VCF`,
+`vcf_sample_size`, `vcf_include_fixed`.
+
+### Decisions worth knowing before extending this
+
+- **"Overlay the pool onto the bitfield" cannot mean a bitwise OR**, and this is the whole of W6's
+  design. An OR loses a site three ways, each silently: (1) `GenerateNewMutations` draws
+  `RandIntn(genome_bits)` so positions RECUR, and two mutations at one position would merge into
+  one site carrying two genealogies; (2) a mutation under an already-set founder bit vanishes,
+  since 1 OR 1 = 1; (3) a founder allele and a de-novo allele at one coordinate have different
+  histories, and collapsing them asserts a coalescence that never happened. So each source site
+  gets its own record and the ID column carries the identity. This is §6 risk 4 — "identity must
+  key on mutation ID and founder label throughout, never on coordinate" — reaching the export.
+  **It is not a marginal case:** in the smoke run 213 of 223 de-novo records share a POS with a
+  founder record, because a dense founder bitfield leaves few free positions. An OR would have
+  merged away 95% of the mutational history the file exists to carry.
+- **Several records may share one POS, and that is the infinite-sites model, not a duplicate.**
+  Any downstream join must key on the ID column. The file says so in a header line.
+- **`linkage_model="arm"` is required, and the default is not it.** Under the default `"legacy"`
+  the pool uses the OPPOSITE meiosis-mask polarity from the bitfield (see
+  [pkg/utils/mutation.go](pkg/utils/mutation.go)), so a de-novo mutation at position P follows the
+  opposite parental strand from the founder allele at P: the two substrates **anti-segregate**, and
+  a merged file from a legacy run describes haplotypes no meiosis produced. Both drift.go (at
+  startup) and ExportVCF (at write time) warn. This is the W6 counterpart of §8a's finding that
+  anything fed to ARGweaver needs `recombination_model="map"`; the smoke model sets both.
+- **An unpooled mutation id is dropped and counted, never placed at position 0.** An id carried in
+  `IndMutations` but absent from `MutationPool` has no Position. Under the default
+  `mutation_count_model="refcount"` there are none; under the opt-in `"legacy"` asymmetry a
+  still-carried lineage can be GC'd while alive, and the old resolve-to-zero-Mutation behaviour is
+  exactly the artificial position-0 linkage §6f found distorting the SFS. Reporting the count is
+  the honest alternative to reproducing it.
+- **`FounderAlleleLabelsAt` is not a second walker.** `walkLocus` merges lineages and carries a
+  sample weight through the merge, which is right for the pairwise decomposition and destroys the
+  mapping from an individual sampled strand back to its source — which is precisely what a
+  per-sample FORMAT field needs. So the resolver walks each lineage independently using the SAME
+  `stepBack` and the SAME `sourceLabel`; there is no coalescence logic in it to get wrong.
+  `TestFounderAlleleLabelsAgreeWithWalker` pins the two together: with no unlabelled sources, the
+  distinct FL values across the sample must equal the walker's `CreatedAllelesSurviving`.
+- **An unresolvable strand emits `.`, never a shared default.** Two `.` strands may be two
+  different unknown created alleles; the same rule the walker's `UnlabelledSources` enforces.
+- **The imported-panel re-export forces the merge OFF.** `ImportVCF` deliberately mirrors every
+  panel site into BOTH the bitfield and the pool so bitfield-reading and pool-reading analyses each
+  see it, so merging on the way back out would emit every site twice. `runImportedAnalyses` says so
+  rather than silently doubling the file.
+
+### Smoke model
+
+`users/smoke/models/TMR4AVCFTest` — TMR4ATest's demography (200 diploids, 500 years, 13 focal loci
+at `0-3000:250`) with `track_mutations=1`, `init_heterozygosity=0.05`, `linkage_model=arm`,
+`recombination_model=map`, and a 20-individual VCF sample. Result (rng_seed 4242):
+
+> **3203 records × 20 samples = 2980 founder + 223 de-novo**, of 223 carried — 0 unpooled, 0
+> out-of-range. All 13 focal loci carry `FL`, with 2 to 4 distinct created alleles among the 40
+> sampled strands and **no unresolvable strand**, matching the walker's own min 2 / max 4 over the
+> full 148-individual population.

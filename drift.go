@@ -296,6 +296,22 @@ func main() {
 		}
 	}
 
+	// Merged VCF export (TMR4A.md W6). Both prerequisites are silent failures if left
+	// unset — an empty pool writes a founder-only file that LOOKS complete, and legacy
+	// linkage writes haplotypes no meiosis produced — so say so before the run, not
+	// after it. See pkg/analysis/vcf_merged.go.
+	if model.Parameters["vcf_include_mutations"] == 1 {
+		if model.Parameters["track_mutations"] <= 0 {
+			fmt.Println("WARNING: vcf_include_mutations requires track_mutations; there will be no " +
+				"de-novo pool to merge and the VCF will hold founder sites only")
+		}
+		if model.StringParam("linkage_model", "legacy") != "arm" {
+			fmt.Println("WARNING: vcf_include_mutations under linkage_model=\"legacy\": the pool and " +
+				"the bitfield anti-segregate, so merged haplotypes are an artefact. Use " +
+				"linkage_model=\"arm\" for anything fed to an ARG inference tool.")
+		}
+	}
+
 	// Establish a reproducible RNG seed. If rng_seed is unset (<= 0), derive one
 	// from the clock and log it so the run can still be reproduced later by
 	// setting rng_seed to that value. Each run in a multi-run gets a distinct,
@@ -486,10 +502,12 @@ func main() {
 			// VCF export (§6a): standard interchange format so external tools
 			// (PLINK, vcftools, ADMIXTURE) run on DRIFT output as on real data.
 			// Requires track_DNA so chromosomes exist. vcf_sample_size 0 = all.
+			// vcf_include_mutations merges the de-novo pool in (TMR4A.md W6) —
+			// without it the file describes only the founder bitfield and every
+			// mutation since founding is invisible.
 			sampleSize := int(model.Parameters["vcf_sample_size"])
-			includeFixed := model.Parameters["vcf_include_fixed"] == 1
 			ids := analysis.SampleIDs(pop, sampleSize)
-			if _, err := analysis.ExportVCF(model, pop, ids, includeFixed); err != nil {
+			if _, err := analysis.ExportVCF(model, pop, ids, analysis.VCFOptionsFromModel(model)); err != nil {
 				log.Printf("Error exporting VCF: %v", err)
 			}
 		}
@@ -705,10 +723,19 @@ func main() {
 func runImportedAnalyses(model *core.Model, pop *core.Pop) {
 	if model.Parameters["export_VCF"] == 1 {
 		// Round-trip re-export: read the imported panel back out as a normalized VCF.
+		// The de-novo merge (TMR4A.md W6) is forced OFF here: ImportVCF deliberately
+		// mirrors every panel site into BOTH the bitfield and the pool so that
+		// bitfield-reading and pool-reading analyses each see it, so merging on the way
+		// out would emit every site twice.
 		sampleSize := int(model.Parameters["vcf_sample_size"])
-		includeFixed := model.Parameters["vcf_include_fixed"] == 1
+		opts := analysis.VCFOptionsFromModel(model)
+		if opts.IncludeMutations {
+			fmt.Println("NOTE: vcf_include_mutations ignored on the imported-panel re-export; " +
+				"import already mirrors every site into both the bitfield and the pool")
+			opts.IncludeMutations = false
+		}
 		ids := analysis.SampleIDs(pop, sampleSize)
-		if _, err := analysis.ExportVCF(model, pop, ids, includeFixed); err != nil {
+		if _, err := analysis.ExportVCF(model, pop, ids, opts); err != nil {
 			log.Printf("Error exporting VCF: %v", err)
 		}
 	}

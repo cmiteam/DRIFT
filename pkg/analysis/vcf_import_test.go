@@ -221,7 +221,7 @@ func TestImportVCFRoundTrip(t *testing.T) {
 		t.Fatalf("import: %v", err)
 	}
 	ids := []int{0, 1, 2, 3}
-	vcfStats, err := ExportVCF(m, p, ids, false)
+	vcfStats, err := ExportVCF(m, p, ids, VCFOptions{})
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}

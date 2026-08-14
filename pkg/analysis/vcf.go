@@ -29,6 +29,11 @@ package analysis
 // sites carry no information and would bloat the file); set vcf_include_fixed to
 // emit every position. Sampling (vcf_sample_size) bounds the column count.
 //
+// THE DE-NOVO POOL (TMR4A.md W6) is a SECOND variant substrate this file wrote
+// nothing about until vcf_include_mutations existed; see vcf_merged.go for what
+// merging it in means, why it is one record per mutation rather than an OR onto
+// the bit, and why linkage_model="arm" is required for the result to be coherent.
+//
 // Wired into drift.go behind the export_VCF parameter (default off); requires
 // track_DNA so chromosomes exist.
 
@@ -38,6 +43,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 )
 
 // vcfContig describes one chromosome's placement in the linear bit genome.
@@ -51,8 +57,21 @@ type vcfContig struct {
 // VCFStats summarizes an export pass (returned for logging / tests).
 type VCFStats struct {
 	NumSamples int
-	NumSites   int // records written
+	NumSites   int // records written (founder + de-novo)
 	Path       string
+
+	// Merged-export breakdown (TMR4A.md W6); all zero unless
+	// VCFOptions.IncludeMutations is set.
+	NumFounderSites  int // records from the founder bitfield
+	NumMutationSites int // records from the de-novo mutation pool
+	MutationsIndexed int // distinct pool mutations carried by the sample
+	// Carried mutation ids with no MutationPool entry, so no position: dropped, not
+	// placed at position 0. Non-zero means mutation_count_model="legacy" GC'd a
+	// still-carried lineage (utils/mutation.go).
+	MutationsUnpooled int
+	// Indexed mutations whose Position fell outside every chromosome arm, so no VCF
+	// coordinate exists for them. Dropped and counted rather than silently absent.
+	MutationsOutOfRange int
 }
 
 // buildContigs turns model.ChromosomeArms into a chromosome-sorted list with the
@@ -105,8 +124,10 @@ func bitAt(words []uint64, p int) bool {
 // ExportVCF writes the sampled individuals' genomes to a VCF v4.2 file in the
 // model's results directory and returns a summary. Pass a SAMPLE of ids (see
 // SampleIDs); individuals without tracked chromosomes are skipped. When
-// includeFixed is false only sites polymorphic within the sample are written.
-func ExportVCF(model *core.Model, pop *core.Pop, ids []int, includeFixed bool) (*VCFStats, error) {
+// opts.IncludeFixed is false only sites polymorphic within the sample are written;
+// see VCFOptions (vcf_merged.go) for the W6 merged-export and truth-annotation
+// switches. The zero VCFOptions reproduces the pre-W6 output byte for byte.
+func ExportVCF(model *core.Model, pop *core.Pop, ids []int, opts VCFOptions) (*VCFStats, error) {
 	// Keep only individuals that actually carry two strand copies, in the given
 	// (already sorted) id order, so the sample columns are stable.
 	samples := make([]int, 0, len(ids))
@@ -131,14 +152,36 @@ func ExportVCF(model *core.Model, pop *core.Pop, ids []int, includeFixed bool) (
 
 	contigs := buildContigs(model)
 
+	// De-novo pool overlay (TMR4A.md W6) and the W3 truth annotation, both built once
+	// over the sample before any record is written. Nil when not requested, which is
+	// what keeps the record loop below on its pre-W6 path.
+	var mutIdx *mutationIndex
+	if opts.IncludeMutations {
+		mutIdx = buildMutationIndex(pop, samples)
+		warnMergedLinkage(model, mutIdx)
+	}
+	var labels map[int][]string
+	if opts.AlleleLabels {
+		labels = buildLabelFields(model, pop, samples)
+	}
+
 	// --- Header ---
 	fmt.Fprintln(w, "##fileformat=VCFv4.2")
 	fmt.Fprintf(w, "##source=DRIFT model=%s run=%d year=%d\n", model.ModelName, run, year)
 	fmt.Fprintln(w, "##FILTER=<ID=PASS,Description=\"All filters passed\">")
 	fmt.Fprintln(w, "##INFO=<ID=AC,Number=A,Type=Integer,Description=\"Allele count in genotypes, for the ALT allele\">")
 	fmt.Fprintln(w, "##INFO=<ID=AN,Number=1,Type=Integer,Description=\"Total number of alleles in called genotypes\">")
+	if mutIdx != nil {
+		fmt.Fprintln(w, "##INFO=<ID=SRC,Number=1,Type=String,Description=\"Variant substrate: founder (seeded bitfield) or denovo (mutation pool)\">")
+	}
 	fmt.Fprintln(w, "##FORMAT=<ID=GT,Number=1,Type=String,Description=\"Genotype\">")
+	if labels != nil {
+		fmt.Fprintln(w, "##FORMAT=<ID=FL,Number=2,Type=Integer,Description=\"Ground-truth created-allele label (TMR4A W3) of each phased strand at this focal locus; . = not recoverable\">")
+	}
 	fmt.Fprintln(w, "##ALT allele encodes the founder-derived (bit=1) state; REF the ancestral (bit=0) state; letters are placeholders.")
+	if mutIdx != nil {
+		fmt.Fprintln(w, "##Records are keyed by IDENTITY, not coordinate: F<bit> is a founder bitfield site, M<id> a de-novo mutation. Positions recur, so several records may share one POS — that is the infinite-sites model, not a duplicate.")
+	}
 	for _, ct := range contigs {
 		fmt.Fprintf(w, "##contig=<ID=%d,length=%d>\n", ct.chrom, ct.span)
 	}
@@ -151,24 +194,38 @@ func ExportVCF(model *core.Model, pop *core.Pop, ids []int, includeFixed bool) (
 	fmt.Fprintln(w)
 
 	an := 2 * len(samples)
+	// INFO suffix and record ids only exist in merged mode; hoisted so the default
+	// path formats exactly the string it always did.
+	srcFounder, srcDenovo := "", ""
+	if mutIdx != nil {
+		srcFounder, srcDenovo = ";SRC=founder", ";SRC=denovo"
+	}
 
 	// --- Records ---
 	// Reused genotype-string buffer to avoid per-site allocation.
-	gt := make([]byte, 0, 3*len(samples)+3*len(samples))
-	numSites := 0
+	gt := make([]byte, 0, 8*len(samples))
+	stats := &VCFStats{NumSamples: len(samples), Path: path}
+	mutSeen := 0
 	for _, ct := range contigs {
 		for _, arm := range ct.arms {
 			start, length := arm[0], arm[1]
 			for bit := start; bit < start+length; bit++ {
+				pos := bit - ct.base + 1
+				// The FL annotation is a property of the LOCUS, so both the founder
+				// record and any de-novo record at this position carry it.
+				fl := labels[bit]
+				format := "GT"
+				if fl != nil {
+					format = "GT:FL"
+				}
+
+				// --- founder bitfield site ---
 				ac := 0
 				gt = gt[:0]
-				for _, id := range samples {
+				for si, id := range samples {
 					c := pop.Chromosomes[id]
 					a0, a1 := bitAt(c[0], bit), bitAt(c[1], bit)
-					gt = append(gt, '\t')
-					gt = appendAllele(gt, a0)
-					gt = append(gt, '|')
-					gt = appendAllele(gt, a1)
+					gt = appendSample(gt, a0, a1, fl, si)
 					if a0 {
 						ac++
 					}
@@ -176,21 +233,77 @@ func ExportVCF(model *core.Model, pop *core.Pop, ids []int, includeFixed bool) (
 						ac++
 					}
 				}
-				if !includeFixed && (ac == 0 || ac == an) {
+				if opts.IncludeFixed || (ac != 0 && ac != an) {
+					recID := "."
+					if mutIdx != nil {
+						recID = "F" + strconv.Itoa(bit)
+					}
+					writeVCFRecord(w, ct.chrom, pos, recID, srcFounder, ac, an, format, gt)
+					stats.NumSites++
+					stats.NumFounderSites++
+				}
+
+				// --- de-novo pool sites at this position (W6) ---
+				if mutIdx == nil {
 					continue
 				}
-				pos := bit - ct.base + 1
-				fmt.Fprintf(w, "%d\t%d\t.\tA\tT\t.\tPASS\tAC=%d;AN=%d\tGT",
-					ct.chrom, pos, ac, an)
-				w.Write(gt)
-				fmt.Fprintln(w)
-				numSites++
+				for _, mid := range mutIdx.byPos[bit] {
+					mutSeen++
+					gt, ac = mutIdx.appendGenotypes(gt[:0], mid, len(samples), fl)
+					if !opts.IncludeFixed && (ac == 0 || ac == an) {
+						continue
+					}
+					writeVCFRecord(w, ct.chrom, pos, "M"+strconv.Itoa(mid), srcDenovo, ac, an, format, gt)
+					stats.NumSites++
+					stats.NumMutationSites++
+				}
 			}
 		}
 	}
 
-	fmt.Printf("VCF: %d sites × %d samples → %s\n", numSites, len(samples), path)
-	return &VCFStats{NumSamples: len(samples), NumSites: numSites, Path: path}, nil
+	if mutIdx != nil {
+		stats.MutationsIndexed = mutIdx.total
+		stats.MutationsUnpooled = mutIdx.unpooled
+		stats.MutationsOutOfRange = mutIdx.total - mutSeen
+		fmt.Printf("VCF: %d sites × %d samples (%d founder + %d de-novo of %d carried) → %s\n",
+			stats.NumSites, len(samples), stats.NumFounderSites, stats.NumMutationSites,
+			mutIdx.total, path)
+		if stats.MutationsUnpooled > 0 || stats.MutationsOutOfRange > 0 {
+			fmt.Printf("VCF: dropped %d unpooled and %d out-of-range mutations (no position to write them at)\n",
+				stats.MutationsUnpooled, stats.MutationsOutOfRange)
+		}
+	} else {
+		fmt.Printf("VCF: %d sites × %d samples → %s\n", stats.NumSites, len(samples), path)
+	}
+	return stats, nil
+}
+
+// writeVCFRecord emits one record line. With recID "." and src "" this is exactly the
+// line the pre-W6 exporter wrote.
+func writeVCFRecord(w *bufio.Writer, chrom, pos int, recID, src string, ac, an int, format string, gt []byte) {
+	fmt.Fprintf(w, "%d\t%d\t%s\tA\tT\t.\tPASS\tAC=%d;AN=%d%s\t%s", chrom, pos, recID, ac, an, src, format)
+	w.Write(gt)
+	fmt.Fprintln(w)
+}
+
+// warnMergedLinkage says loudly when a merged export is about to describe haplotypes
+// no meiosis produced. Under linkage_model="legacy" (the DEFAULT) the de-novo pool
+// uses the opposite meiosis-mask polarity from the founder bitfield, so the two
+// substrates ANTI-segregate and their combination is an artefact — see vcf_merged.go.
+// A warning rather than a refusal: the merge is still the right thing to do on an
+// arm-linkage run, and a legacy run's file is diagnostically useful as long as nobody
+// mistakes it for a genealogy.
+func warnMergedLinkage(model *core.Model, idx *mutationIndex) {
+	if idx == nil || idx.total == 0 {
+		fmt.Println("WARNING: vcf_include_mutations is set but the sample carries no pool mutations; " +
+			"is track_mutations on?")
+		return
+	}
+	if model.StringParam("linkage_model", "legacy") != "arm" {
+		fmt.Println("WARNING: merged VCF export under linkage_model=\"legacy\": de-novo mutations " +
+			"anti-segregate with the founder bitfield, so the exported haplotypes are an artefact " +
+			"of the mixed polarity. Set linkage_model=\"arm\" for anything fed to an ARG inference tool.")
+	}
 }
 
 func appendAllele(b []byte, set bool) []byte {

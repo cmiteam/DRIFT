@@ -16,7 +16,7 @@ func TestExportVCF_SegregatingOnly(t *testing.T) {
 	pop := makeIBDTestPop()
 	model.ResultsDir = t.TempDir()
 
-	stats, err := ExportVCF(model, pop, []int{1, 2, 3, 4}, false)
+	stats, err := ExportVCF(model, pop, []int{1, 2, 3, 4}, VCFOptions{})
 	if err != nil {
 		t.Fatalf("ExportVCF failed: %v", err)
 	}
@@ -75,7 +75,7 @@ func TestExportVCF_IncludeFixed(t *testing.T) {
 	pop := makeIBDTestPop()
 	model.ResultsDir = t.TempDir()
 
-	stats, err := ExportVCF(model, pop, []int{1, 2, 3}, true)
+	stats, err := ExportVCF(model, pop, []int{1, 2, 3}, VCFOptions{IncludeFixed: true})
 	if err != nil {
 		t.Fatalf("ExportVCF failed: %v", err)
 	}
