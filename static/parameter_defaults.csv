@@ -72,6 +72,9 @@ vcf_sample_size,VCF Sample Size,Text,int,0,Analysis
 vcf_include_fixed,VCF Include Fixed Sites,Check,bool,0,Analysis
 vcf_include_mutations,VCF Merge De-Novo Mutations,Check,bool,0,Analysis
 vcf_allele_labels,VCF Emit Allele-Label Truth,Check,bool,0,Analysis
+export_argweaver,Export ARGweaver .sites,Check,bool,0,Analysis
+argweaver_bp_per_bit,ARGweaver bp per Genome Bit,Text,int,100,Analysis
+argweaver_chroms,ARGweaver Chromosomes,Text,string,,Analysis
 num_demes,Number of Demes,Text,int,1,Population
 deme_migration_rate,Deme Migration Rate,Text,float,0,Population
 migration_matrix,Migration Matrix,Text,string,,Population

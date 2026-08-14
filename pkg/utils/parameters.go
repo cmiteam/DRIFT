@@ -53,6 +53,7 @@ var stringParams = map[string]bool{
 	"haplostats_demes":     true,
 	"deme_inheritance":     true,
 	"arg_loci":             true,
+	"argweaver_chroms":     true,
 	"founder_allele_model": true,
 	"habitat_suitability":  true,
 	"movement_barriers":    true,

@@ -300,16 +300,26 @@ func main() {
 	// unset — an empty pool writes a founder-only file that LOOKS complete, and legacy
 	// linkage writes haplotypes no meiosis produced — so say so before the run, not
 	// after it. See pkg/analysis/vcf_merged.go.
-	if model.Parameters["vcf_include_mutations"] == 1 {
+	if model.Parameters["vcf_include_mutations"] == 1 || model.Parameters["export_argweaver"] == 1 {
 		if model.Parameters["track_mutations"] <= 0 {
-			fmt.Println("WARNING: vcf_include_mutations requires track_mutations; there will be no " +
-				"de-novo pool to merge and the VCF will hold founder sites only")
+			fmt.Println("WARNING: merging the de-novo pool requires track_mutations; there will be no " +
+				"pool to merge and the export will hold founder sites only")
 		}
 		if model.StringParam("linkage_model", "legacy") != "arm" {
-			fmt.Println("WARNING: vcf_include_mutations under linkage_model=\"legacy\": the pool and " +
+			fmt.Println("WARNING: merged export under linkage_model=\"legacy\": the pool and " +
 				"the bitfield anti-segregate, so merged haplotypes are an artefact. Use " +
 				"linkage_model=\"arm\" for anything fed to an ARG inference tool.")
 		}
+	}
+	// Said at STARTUP and not only at export time: the export writes a full scaling
+	// rationale at the end of the run, but discovering there that the recombination
+	// kernel was wrong means the whole run has to be repeated (TMR4A.md §8a).
+	if model.Parameters["export_argweaver"] == 1 &&
+		model.StringParam("recombination_model", "legacy") != "map" {
+		fmt.Println("WARNING: export_argweaver under recombination_model=\"legacy\": the legacy " +
+			"kernel makes a locus's genealogy depend on where in the arm it sits (>2x, TMR4A.md §8a) " +
+			"while ARGweaver assumes recombination is position-homogeneous. Use " +
+			"recombination_model=\"map\" — this cannot be fixed after the run.")
 	}
 
 	// Establish a reproducible RNG seed. If rng_seed is unset (<= 0), derive one
@@ -498,17 +508,34 @@ func main() {
 				log.Printf("Error saving IBD results: %v", err)
 			}
 		}
-		if model.Parameters["export_VCF"] == 1 {
-			// VCF export (§6a): standard interchange format so external tools
-			// (PLINK, vcftools, ADMIXTURE) run on DRIFT output as on real data.
-			// Requires track_DNA so chromosomes exist. vcf_sample_size 0 = all.
-			// vcf_include_mutations merges the de-novo pool in (TMR4A.md W6) —
-			// without it the file describes only the founder bitfield and every
-			// mutation since founding is invisible.
-			sampleSize := int(model.Parameters["vcf_sample_size"])
-			ids := analysis.SampleIDs(pop, sampleSize)
-			if _, err := analysis.ExportVCF(model, pop, ids, analysis.VCFOptionsFromModel(model)); err != nil {
-				log.Printf("Error exporting VCF: %v", err)
+		if model.Parameters["export_VCF"] == 1 || model.Parameters["export_argweaver"] == 1 {
+			// The genotype exports (§6a VCF, TMR4A.md W6/W7 ARGweaver), sharing ONE
+			// sample. SampleIDs DRAWS RNG when vcf_sample_size subsamples, so calling
+			// it once per export would hand the two files different individuals — and
+			// they would both still look well-formed, while the truth-vs-inference join
+			// across them silently compared different people. The sample is therefore
+			// taken once here and passed to both. Requires track_DNA so chromosomes
+			// exist; vcf_sample_size 0 = all (and draws no RNG).
+			ids := analysis.SampleIDs(pop, int(model.Parameters["vcf_sample_size"]))
+
+			if model.Parameters["export_VCF"] == 1 {
+				// Standard interchange format so external tools (PLINK, vcftools,
+				// ADMIXTURE) run on DRIFT output as on real data.
+				// vcf_include_mutations merges the de-novo pool in (TMR4A.md W6) —
+				// without it the file describes only the founder bitfield and every
+				// mutation since founding is invisible.
+				if _, err := analysis.ExportVCF(model, pop, ids, analysis.VCFOptionsFromModel(model)); err != nil {
+					log.Printf("Error exporting VCF: %v", err)
+				}
+			}
+			if model.Parameters["export_argweaver"] == 1 {
+				// ARGweaver .sites (TMR4A.md W7): the same sample, the same sites and
+				// the same segregating filter as the VCF, plus the region BED, the
+				// computed scaling rationale, and a ready arg-sample command line.
+				if _, err := analysis.ExportARGweaver(model, pop, ids,
+					analysis.ARGweaverOptionsFromModel(model)); err != nil {
+					log.Printf("Error exporting ARGweaver sites: %v", err)
+				}
 			}
 		}
 		if model.Parameters["track_Fst"] == 1 {

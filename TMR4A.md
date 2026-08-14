@@ -7,8 +7,10 @@ identity; a single created couple can now transmit more than four alleles per lo
 objection to "four is the ceiling" is executable rather than argued; and the walker's depths have
 been checked against an independently-measured effective population size to within 5%.
 **W6 has since landed** (§8c): the export now carries both variant substrates and the ground-truth
-created-allele labels, which is what W7 reads. W7 and W9 are still design only. See §8 and §8c for
-the implementation record.
+created-allele labels. **W7's export half has landed too** (§8d): the `.sites`/`.bed` converter and
+a scaling rationale that is computed rather than asserted. W7's output parser is still open — it
+needs a real ARGweaver run to be written against — and W9 is still design only. See §8, §8c and §8d
+for the implementation record.
 **Scope:** what must be built to (1) compute *ground-truth* TMR4A inside DRIFT, and (2) calibrate
 ARGweaver's *inferred* TMR4A against that truth.
 **Roadmap ties:** README items 5a (four-alleles test) and 5b (ARGweaver); TODO §6a (real-data
@@ -280,11 +282,11 @@ in W3. Optionally emit the W3 labels as an INFO/FORMAT field for downstream trut
 *Size:* ~100 lines + tests. See §8c for what was built and the one word in this sketch — "overlay" —
 that had to be read as *records*, not as a bitwise OR.
 
-### W7 — ARGweaver bridge
+### W7 — ARGweaver bridge — **export half LANDED; parser still open**
 
 Do **not** reimplement the MCMC (README 5b). Run the real tool externally.
 
-- Converter to ARGweaver `.sites` (+ region `.bed`), from W6 output.
+- Converter to ARGweaver `.sites` (+ region `.bed`), from W6 output. **Done — see §8d.**
 - **Resolution and rate ratio are independent dials in DRIFT.** Multiplying the chromosome CSV's
   arm Start/Length by a scale factor X raises `genome_bits`
   ([pkg/utils/csv.go:205-222](pkg/utils/csv.go#L205-L222)) without touching either rate anchor:
@@ -303,8 +305,10 @@ Do **not** reimplement the MCMC (README 5b). Run the real tool externally.
   accordingly; see §5.
 - The residual scaling question is therefore narrow and answerable: state the bp-per-bit convention,
   state the two per-generation rate anchors, show θ/ρ matches human values. Not the open-ended
-  problem framed in earlier drafts.
+  problem framed in earlier drafts. **Done, and computed rather than asserted — §8d.**
 - Parser for ARGweaver output → inferred TMR-*K*-A on the same loci, joined against W5 truth.
+  **Still open**, and deliberately: it needs a real ARGweaver output file to be written against,
+  and ARGweaver is not yet installed here.
 
 *Size:* ~250 lines + a written scaling rationale that stands on its own.
 
@@ -708,8 +712,79 @@ heavy anchor tests cost ~38 s and ~16 s; the placement contrast skips under `-sh
   these are now computable: they need a pass that counts, over sampled pairs, sequence differences
   attributable to created divergence versus to de-novo mutation. Small, and the natural companion to
   W6 — deliberately still not filled, because W6 emits sites and these are per-pair sequence counts.
-- **W7** — the ARGweaver bridge, now unblocked: the `.sites` converter reads the W6 file.
+- **W7's parser** — ARGweaver output → inferred TMR-*K*-A, joined against W5 truth on `locus`. The
+  export half is done (§8d); this half needs a real ARGweaver run to be written against.
 - **W2 breakpoint mode** — promote when the §5 memory measurement bites.
+
+## 8d. Implementation record — W7's export half
+
+Landed on `rob-TMR4A-1`. `export_argweaver` defaults off; the `-validate` gate is unchanged
+(**D=−0.6611 / π-W=0.809 / Ne-N=0.313 / SFS-χ² 4.767**).
+
+### What was built
+
+| Item | Files | Notes |
+|---|---|---|
+| `.sites` converter | [pkg/analysis/argweaver.go](pkg/analysis/argweaver.go) | One file per chromosome, since arg-sample runs one region at a time. Format verified against the ARGweaver manual, not assumed: `NAMES` one entry per HAPLOID genome, `REGION` 1-based **end-inclusive**, site rows 1-based absolute and required to be **sorted**. |
+| Region BED | same | 3-column, 0-based half-open — the form `--maskmap` and the usual tooling read. |
+| Scaling rationale | [pkg/analysis/argweaver_scaling.go](pkg/analysis/argweaver_scaling.go) | Computes the three things §6 risk 1 says must be defended, off the live model, and writes them next to the data with warnings. |
+| arg-sample command file | same | A runnable `.sh` with the derived `--mutrate` and per-region `--recombrate` filled in. |
+| Tests | `argweaver_test.go`, `argweaver_scaling_test.go` | Format contract; collision spreading; overflow drop-and-count; site-for-site agreement with the W6 VCF; hand-computed θ/ρ, bp-per-bit invariance, and every warning. |
+
+### Parameters
+
+`export_argweaver` (0) · `argweaver_bp_per_bit` (100) · `argweaver_chroms` ("" = all). The sample is
+deliberately **`vcf_sample_size`**, not a flag of its own — see the wiring note below.
+
+### Decisions and findings worth knowing before extending this
+
+- **θ/ρ is set by two per-generation counts and nothing else**, exactly as W7 says. Written out:
+
+      θ/ρ = μ/r = (mutations per GAMETE) / (crossovers per MEIOSIS)
+
+  The bp-per-bit convention *B* divides both, so it cancels; *B* buys resolution only.
+  `TestRateAnchorsBpPerBitIsScaleInvariant` asserts the ratio is identical at *B*=10 and *B*=1000
+  while both per-bp rates move by exactly 100×.
+- **`mu` is per INDIVIDUAL; crossovers are per GAMETE.** `GenerateNewMutations` draws Poisson(rate)
+  once per newborn and puts each mutation on ONE of its two strands, so the per-gamete count is
+  `mu/2`. Comparing `mu` directly against crossovers per meiosis overstates θ/ρ by exactly 2.
+- **THE FINDING: the realized recombination rate is NOT the cM map's rate.** `createMaskFromMap`
+  gives every mapped chromosome one **obligate** crossover plus Poisson((totalCM − 50)/100) extras.
+  On DRIFT's shipped short cM maps the obligate crossover dominates completely — measured on the
+  smoke model, **23 realized crossovers per meiosis against the 1.523 the cM column implies, a
+  15.1× inflation**. A ρ derived from the cM column would have been wrong by that whole factor. The
+  export uses the **realized** count, per region, because the obligate crossover also makes the rate
+  chromosome-specific and a genome-wide average would be wrong for every region it was applied to.
+- **A consequence for the headline run: `mu` must be ~50, not the shipped 1.** With 23 chromosomes
+  the obligate crossover puts a floor of 23 crossovers per meiosis, so human θ/ρ ≈ 1.04 needs
+  `mu ≈ 2 × 23 × 1.04 ≈ 48` mutations per individual per generation. At the smoke's `mu=1` the
+  ratio is **0.0217, i.e. 0.021× human**, and the report says so in as many words. That is the
+  scaling rationale earning its place: the number is defensible or it is visibly not.
+- **Collisions are why bp-per-bit must exceed 1.** §8c measured 213 of 223 de-novo sites sharing a
+  coordinate with a founder site. `.sites` keys on position and requires sorted coordinates, so each
+  genome bit owns a bp window of width *B* and colliding sites are laid out consecutively inside it.
+  Over ≤100 bp the implied recombination between them is ~1e-6 per generation, i.e. nothing; the
+  alternative — one site per bit — would discard most of the mutational history. A bit that
+  overflows its window drops the excess and **counts** it.
+- **A REAL BUG THE SMOKE CAUGHT, and the reason the sample is shared.** `SampleIDs` **draws RNG**
+  when `vcf_sample_size` subsamples, so calling it once per export handed the VCF and the `.sites`
+  file **different sets of 20 individuals**. Both files were well-formed, the site counts differed
+  by only 24 of 3203, and the truth-vs-inference join across them would have compared different
+  people — silently. drift.go now takes the sample **once** and passes it to both.
+  `TestARGweaverSitesMatchVCFRecords` guards the format-level agreement; the shared draw is what
+  makes the sample agreement real.
+- **`argweaver_chroms` had to join the `stringParams` allowlist.** `argweaver_chroms=1` is
+  all-numeric, so `SetParameter`'s ParseFloat routing would have dropped it into `Parameters` where
+  `StringParam` cannot see it — the same latent defect §3 hit with `movement_barriers=3`.
+  `TestStringParamAllowlist` caught it before it shipped.
+
+### Smoke model
+
+`users/smoke/models/TMR4AVCFTest`, extended with `export_argweaver=1` at 100 bp/bit. Result
+(rng_seed 4242): **23 regions, 3203 sites × 40 haplotypes** — exactly the VCF's 3203 records, on
+verifiably the same 20 individuals — plus the region BED, the command file, and a scaling rationale
+carrying two warnings: the 0.021× θ/ρ and the 15.1× obligate-crossover inflation. Both are real
+properties of the configuration, not export bugs, and both must be fixed before any headline run.
 
 ## 8c. Implementation record — W6, the merged VCF export
 
