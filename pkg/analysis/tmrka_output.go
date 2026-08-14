@@ -73,6 +73,43 @@ func SaveTMRKA(model *core.Model, res *TMRKAResult) error {
 	// count, NOT against an inferred date.
 	fmt.Printf("  founder haplotypes surviving per locus: min %d, mean %.2f, max %d\n",
 		minFinal, float64(sumFinal)/float64(len(res.Loci)), maxFinal)
+
+	// The W3 line, when labels are on: how many distinct CREATED alleles survive, and
+	// what share of sampled pairs are separated by created divergence rather than by
+	// anything that accumulated. Reported separately from the by-descent count above
+	// precisely because the two must never be read as the same number.
+	sumCreated, nCreated, sumCreatedPairs, sumTotalPairs, unlabelled := 0, 0, 0, 0, 0
+	minCreated, maxCreated := 1<<62, 0
+	for i := range res.Loci {
+		l := &res.Loci[i]
+		if l.CreatedAllelesSurviving < 0 {
+			continue
+		}
+		nCreated++
+		sumCreated += l.CreatedAllelesSurviving
+		if l.CreatedAllelesSurviving < minCreated {
+			minCreated = l.CreatedAllelesSurviving
+		}
+		if l.CreatedAllelesSurviving > maxCreated {
+			maxCreated = l.CreatedAllelesSurviving
+		}
+		sumCreatedPairs += l.CreatedPairs
+		sumTotalPairs += l.InitialLineages * (l.InitialLineages - 1) / 2
+		unlabelled += l.UnlabelledSources
+	}
+	if nCreated > 0 {
+		frac := 0.0
+		if sumTotalPairs > 0 {
+			frac = float64(sumCreatedPairs) / float64(sumTotalPairs)
+		}
+		fmt.Printf("  CREATED alleles surviving per locus: min %d, mean %.2f, max %d "+
+			"— %.1f%% of sampled pairs differ by created divergence, not elapsed time\n",
+			minCreated, float64(sumCreated)/float64(nCreated), maxCreated, 100*frac)
+		if unlabelled > 0 {
+			fmt.Printf("  WARNING: %d surviving lineages froze at unlabelled founders "+
+				"(counted as distinct unknown alleles)\n", unlabelled)
+		}
+	}
 	if res.MissingARG > 0 {
 		fmt.Printf("  %d loci skipped: no strand provenance recorded\n", res.MissingARG)
 	}
@@ -103,7 +140,8 @@ func saveTMRKALoci(model *core.Model, res *TMRKAResult) error {
 	if err := w.Write([]string{
 		"locus", "k", "outcome", "tmrka_year", "tmrka_gens_ago", "tmrca_year",
 		"sample_year", "initial_lineages", "lineages_at_founding", "coalescences",
-		"founder_strands_surviving", "created_alleles_surviving",
+		"founder_strands_surviving", "created_alleles_surviving", "unlabelled_sources",
+		"total_pairs", "coalesced_pairs", "created_pairs", "created_pair_frac",
 		"mutational_diffs", "created_diffs",
 	}); err != nil {
 		return err
@@ -114,6 +152,13 @@ func saveTMRKALoci(model *core.Model, res *TMRKAResult) error {
 		gensAgo := ""
 		if l.HasTMRKA && res.GenerationTime > 0 {
 			gensAgo = fmt.Sprintf("%.2f", float64(res.SampleYear-l.TMRKAYear)/res.GenerationTime)
+		}
+		totalPairs := l.InitialLineages * (l.InitialLineages - 1) / 2
+		// The created share is left EMPTY, not 0, when labelling is off — same rule as
+		// the date columns: an absent quantity must not be averageable.
+		createdFrac := ""
+		if l.CreatedPairs >= 0 && totalPairs > 0 {
+			createdFrac = fmt.Sprintf("%.6f", float64(l.CreatedPairs)/float64(totalPairs))
 		}
 		if err := w.Write([]string{
 			strconv.Itoa(l.Position),
@@ -128,6 +173,11 @@ func saveTMRKALoci(model *core.Model, res *TMRKAResult) error {
 			strconv.Itoa(l.Coalescences),
 			strconv.Itoa(l.FounderStrandsSurviving),
 			strconv.Itoa(l.CreatedAllelesSurviving),
+			strconv.Itoa(l.UnlabelledSources),
+			strconv.Itoa(totalPairs),
+			strconv.Itoa(l.CoalescedPairs),
+			strconv.Itoa(l.CreatedPairs),
+			createdFrac,
 			strconv.Itoa(l.MutationalDiffs),
 			strconv.Itoa(l.CreatedDiffs),
 		}); err != nil {

@@ -262,6 +262,26 @@ func main() {
 	// pruned by it; without track_pedigree the records would be unreadable and would
 	// grow without bound, so capture is skipped and the run says so rather than
 	// producing an ARG the walker cannot traverse.
+	// TMR4A.md W4 config check. The created model needs BOTH halves: the created seeder
+	// builds the allele pool, and founder_allele_model routes births through it. Half a
+	// model is worse than neither, so say so loudly instead of quietly reverting.
+	if core.CreatedModelOn(model) || modules.SeedStyle(model) == "created" {
+		created := core.CreatedModelOn(model)
+		seeded := modules.SeedStyle(model) == "created"
+		switch {
+		case created && !seeded:
+			fmt.Println("WARNING: founder_allele_model=created but seed_style is not \"created\"; " +
+				"no founder allele pools will exist and every birth takes the ordinary diploid path")
+		case seeded && !created:
+			fmt.Println("WARNING: seed_style=created but founder_allele_model is not \"created\"; " +
+				"created alleles will be built but transmitted as ordinary diploid strands")
+		default:
+			a := int(model.Parameters["founder_alleles_per_locus"])
+			fmt.Printf("Created founder alleles: A=%d, divergence=%.4g — germline heterogeneity active\n",
+				a, model.Parameters["founder_allele_divergence"])
+		}
+	}
+
 	if model.Parameters["track_arg"] >= 1 {
 		if model.Parameters["track_pedigree"] != 1 {
 			fmt.Println("WARNING: track_arg requires track_pedigree; strand provenance will NOT be captured")
@@ -335,7 +355,10 @@ func main() {
 			if year >= int(model.Parameters["seed_year"]) && model.FreeParameters["seed"] == -1 {
 				events.Seed(model, pop)
 				model.FreeParameters["seed"] = 1
-				fmt.Println("   Seeded population in year", year, "with seed style", int(model.Parameters["seed_style"]))
+				// Report the RESOLVED style name, not the numeric parameter: named
+				// styles (e.g. seed_style="created") leave the numeric slot at its
+				// default, so printing the number reports the wrong seeder.
+				fmt.Println("   Seeded population in year", year, "with seed style", modules.SeedStyle(model))
 			}
 
 			simulation.Birth(model, pop)

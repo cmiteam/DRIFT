@@ -160,6 +160,32 @@ type Pop struct {
 	// nil ⇒ no writes, no RNG). See pkg/core/arg.go.
 	ARGDB map[int][]uint64
 
+	// Founder allele identity labels (TMR4A.md W3). founder ID -> the created-allele
+	// label carried by each of its two strands. Lets the walker report how many
+	// distinct CREATED ALLELES survive in a sample (identity by state at founding)
+	// rather than only how many distinct founder haplotypes do (identity by descent) —
+	// two numbers the whole argument turns on separating. Inert: no fitness, no
+	// mutation, no effect on any existing statistic. Populated only when
+	// track_allele_labels is set (default off ⇒ nil ⇒ no writes, no RNG). See
+	// pkg/core/allele_labels.go.
+	FounderLabels map[int][2]int
+
+	// Created founder alleles with germline heterogeneity (TMR4A.md W4), populated only
+	// under founder_allele_model="created" by the created seeder (default "diploid" ⇒
+	// all nil ⇒ every path is the pre-W4 path byte-for-byte).
+	//
+	// CreatedAlleleSeqs holds the A created HAPLOTYPES — full-genome bitfields, any two
+	// differing at an expected fraction founder_allele_divergence of sites. Held once
+	// globally rather than per founder, so the cost is A × genome_bits regardless of how
+	// many founders there are. FounderAllelePool says which of them each founder carries
+	// in its germline; a founder's somatic genome is the first two of its pool.
+	// CreatedARGDB is the provenance counterpart of ARGDB for gametes drawn from a pool:
+	// child ID -> per gamete, per focal locus, the created allele index (or CreatedNone).
+	// See pkg/core/created.go.
+	CreatedAlleleSeqs [][]uint64
+	FounderAllelePool map[int][]int
+	CreatedARGDB      map[int][]uint16
+
 	// Genetic-load-through-time state (roadmap §6f). One LoadSnapshot per captured
 	// window, keyed by simulated year; SaveLoadTimeSeries writes it at end-of-run.
 	// Populated only when track_load is set (default off ⇒ nil ⇒ no capture, no

@@ -133,6 +133,15 @@ func (p *Pop) pedRelease(id int) {
 		// it, so it is pruned by the same cascade rather than by a second, separately
 		// maintained refcount that could drift out of step with this one.
 		delete(p.ARGDB, cur)
+		// Same reasoning for the W3 founder-allele label: a released node is one no
+		// living descendant can reach, so nothing can ever look its label up again.
+		delete(p.FounderLabels, cur)
+		delete(p.CreatedARGDB, cur)
+		// FounderAllelePool is deliberately NOT pruned. It is one entry per founder for
+		// the whole run — nothing to reclaim — and it is the standing definition of what
+		// was created, which reporting compares surviving alleles against. Tying that
+		// definition's lifetime to who happens to have descendants would be a footgun
+		// for no benefit.
 
 		for _, parent := range [2]int{dad, mom} {
 			if parent == PedFounder {

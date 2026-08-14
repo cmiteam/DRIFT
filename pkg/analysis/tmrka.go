@@ -91,12 +91,41 @@ type TMRKALocus struct {
 	// Distinct founder (individual, strand) sources the surviving lineages trace to —
 	// the identity-by-descent count of founder haplotypes in the sample at this locus.
 	FounderStrandsSurviving int
-	// Distinct CREATED ALLELES surviving, i.e. the identity-by-state count once founder
-	// alleles carry labels (W3). -1 until W3 lands; never silently equated with the
+	// Distinct CREATED ALLELES surviving, i.e. the identity-by-state-at-founding count,
+	// from the W3 labels. -1 when labelling is off; never silently equated with the
 	// by-descent count above, because the whole argument turns on telling them apart.
+	// It is ≤ FounderStrandsSurviving: several founder haplotypes can carry the same
+	// created allele, and then their descendants' differences are purely mutational.
 	CreatedAllelesSurviving int
+	// Surviving lineages that froze somewhere other than a labelled founder (an
+	// individual whose ancestry was never recorded). Each is counted as its own unknown
+	// created allele above, since assuming shared identity is the error to avoid. 0 in a
+	// well-formed run; non-zero means the labelled generation and the generation the
+	// walk terminates at have come apart. -1 when labelling is off.
+	UnlabelledSources int
 
-	// Pairwise-difference decomposition at the locus (W3/W4). -1 until those items land.
+	// Pairwise decomposition over the C(2n,2) sampled lineage pairs at this locus.
+	//
+	// CoalescedPairs — pairs that meet at a common ancestor, so any difference between
+	// them accumulated by mutation since. Always computed.
+	//
+	// CreatedPairs — pairs whose lineages end on founder strands carrying DIFFERENT
+	// created alleles. Their divergence at this locus was created, not accumulated: no
+	// mutational path connects them and no year exists at which they coalesce. This is
+	// the quantity §0 says a coalescent model converts into apparent age, so its share
+	// of all pairs is the study's key per-locus number. -1 when labelling is off.
+	//
+	// The remainder — pairs that neither coalesce nor differ by created allele — are
+	// distinct founder haplotypes that happen to carry the SAME created allele. Their
+	// differences are mutational too, which is why CreatedPairs and not
+	// (total − CoalescedPairs) is the created share.
+	CoalescedPairs int
+	CreatedPairs   int
+
+	// Sequence-difference counts at the locus (§4). These are identity-by-state counts
+	// over actual sequence and need W4's `founder_allele_divergence` to exist; -1 until
+	// then. Deliberately NOT filled with the pair counts above, which measure something
+	// different.
 	MutationalDiffs int
 	CreatedDiffs    int
 
@@ -154,9 +183,17 @@ func (l *TMRKALocus) TMRKAForK(k int) (int, bool) {
 
 // lineage is one ancestral lineage's current position: a specific strand of a specific
 // individual. Two lineages at the same position have coalesced.
+// A CREATED terminus (TMR4A.md W4) is also a lineageKey: `created` set, `ind` the founder
+// whose germline the allele came from, and `strand` carrying the created-allele index
+// instead of 0/1. That is not a trick — it is the same object. Two lineages that reach the
+// same created allele in the same founder have met (one created sequence, one germline,
+// no mutational difference between the copies), so they must coalesce there, and reusing
+// the key makes the existing collision test do that for free. Two lineages at DIFFERENT
+// created alleles are different keys and never meet, which is the censoring §0 requires.
 type lineageKey struct {
-	ind    int
-	strand int
+	ind     int
+	strand  int
+	created bool
 }
 
 // walkItem is a heap entry. The heap pops the YOUNGEST lineage first (largest birth
@@ -241,6 +278,13 @@ func walkLocus(pop *core.Pop, ids []int, locusIdx, nLoci, pos, k, sampleYear int
 	// Seed one lineage per sampled strand. Distinct sampled individuals are distinct
 	// nodes, so the initial set has exactly 2n members.
 	active := make(map[lineageKey]bool, 2*len(ids))
+	// weight[key] = how many of the ORIGINAL sampled lineages currently sit at this node.
+	// It rides along with each lineage as it steps back and accumulates on coalescence,
+	// so at the end every surviving source knows how much of the sample descends from it.
+	// That is what turns the walk into a pairwise decomposition: two sampled lineages
+	// share an ancestor exactly when they end up under the same source, and the pair
+	// counts follow from the weights without re-walking anything.
+	weight := make(map[lineageKey]int, 2*len(ids))
 	h := &walkHeap{}
 	for _, id := range ids {
 		n, ok := pop.Pedigree[id]
@@ -251,6 +295,7 @@ func walkLocus(pop *core.Pop, ids []int, locusIdx, nLoci, pos, k, sampleYear int
 		for s := 0; s < 2; s++ {
 			key := lineageKey{ind: id, strand: s}
 			active[key] = true
+			weight[key] = 1
 			*h = append(*h, walkItem{key: key, year: year})
 		}
 	}
@@ -261,8 +306,10 @@ func walkLocus(pop *core.Pop, ids []int, locusIdx, nLoci, pos, k, sampleYear int
 		K:                       k,
 		SampleYear:              sampleYear,
 		InitialLineages:         len(active),
-		CreatedAllelesSurviving: -1, // filled by W3
-		MutationalDiffs:         -1, // filled by W3/W6
+		CreatedAllelesSurviving: -1, // filled by summariseSources when W3 labels are on
+		UnlabelledSources:       -1,
+		CreatedPairs:            -1,
+		MutationalDiffs:         -1, // sequence-difference counts; need W4 divergence
 		CreatedDiffs:            -1,
 	}
 	// Coalescence YEARS, collected in walk order and sorted afterwards. They are not
@@ -290,7 +337,7 @@ func walkLocus(pop *core.Pop, ids []int, locusIdx, nLoci, pos, k, sampleYear int
 			continue // already merged away by an earlier coalescence
 		}
 
-		parent, parentStrand, ok := stepBack(pop, it.key, locusIdx, nLoci)
+		next, ok := stepBack(pop, it.key, locusIdx, nLoci)
 		if !ok {
 			// Founding generation reached on this lineage: terminate it HERE rather
 			// than forcing a root. This is the censoring that TMR4A.md §0 insists must
@@ -298,21 +345,25 @@ func walkLocus(pop *core.Pop, ids []int, locusIdx, nLoci, pos, k, sampleYear int
 			frozen[it.key] = true
 			continue
 		}
-		pn, pok := pop.Pedigree[parent]
+		pn, pok := pop.Pedigree[next.ind]
 		if !pok {
 			frozen[it.key] = true
 			continue
 		}
 
-		next := lineageKey{ind: parent, strand: parentStrand}
 		delete(active, it.key)
+		w := weight[it.key]
+		delete(weight, it.key)
 		if active[next] || frozen[next] {
 			// Coalescence: two lineages have met in the same strand of the same
-			// ancestor. Dated to the ancestor's birth year.
+			// ancestor. Dated to the ancestor's birth year. The arriving lineage's
+			// share of the sample merges into the node it met.
 			events = append(events, pn.BirthYear)
+			weight[next] += w
 			continue
 		}
 		active[next] = true
+		weight[next] = w
 		heap.Push(h, walkItem{key: next, year: pn.BirthYear})
 	}
 
@@ -329,6 +380,7 @@ func walkLocus(pop *core.Pop, ids []int, locusIdx, nLoci, pos, k, sampleYear int
 		sources[key] = true
 	}
 	loc.FounderStrandsSurviving = len(sources)
+	summariseSources(pop, loc, sources, weight, locusIdx)
 
 	// Sort the events into true time order (most recent first) before turning them into
 	// a trajectory, then read every derived quantity off that trajectory. SliceStable
@@ -354,27 +406,127 @@ func walkLocus(pop *core.Pop, ids []int, locusIdx, nLoci, pos, k, sampleYear int
 	return loc
 }
 
-// stepBack maps (individual, strand) to (parent, parent-strand) at a focal locus — the
-// single elementary move of the walk, and the exact place W1 and W2 meet. Child strand 0
-// came from the paternal gamete and strand 1 from the maternal gamete (birth.go's
-// convention), so the strand index doubles as the gamete index into the provenance
-// record. ok=false means the founding generation: no parent recorded, or no provenance
-// recorded, either way the walk stops.
-func stepBack(pop *core.Pop, key lineageKey, locusIdx, nLoci int) (parent, parentStrand int, ok bool) {
+// summariseSources turns the surviving lineages and their sample weights into the
+// created-allele counts and the pairwise decomposition (TMR4A.md W3).
+//
+// The pair arithmetic, stated once so the code below is checkable by eye. Write T for the
+// sample's lineage count and w_i for the share of it descending from source i:
+//
+//	total pairs      C(T,2)
+//	coalesced pairs  Σ C(w_i,2)                       — pairs meeting at a common ancestor
+//	created pairs    Σ_{ℓ<ℓ'} W_ℓ·W_ℓ' = (T² − ΣW_ℓ²)/2  — pairs in different created alleles
+//
+// where W_ℓ sums w_i over the sources carrying created allele ℓ. Grouping by label rather
+// than by source is the entire point: two sources with the SAME label contribute nothing
+// to the created total, because their descendants' differences are mutational even though
+// the two lineages never coalesce. An unlabelled source is given a private label so it
+// can never be assumed to share an allele with anything.
+func summariseSources(pop *core.Pop, loc *TMRKALocus, sources map[lineageKey]bool, weight map[lineageKey]int, locusIdx int) {
+	// Deterministic order: map iteration is randomized and the unlabelled sources below
+	// are assigned private labels by position.
+	keys := make([]lineageKey, 0, len(sources))
+	for key := range sources {
+		keys = append(keys, key)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].ind != keys[j].ind {
+			return keys[i].ind < keys[j].ind
+		}
+		return keys[i].strand < keys[j].strand
+	})
+
+	for _, key := range keys {
+		w := weight[key]
+		loc.CoalescedPairs += w * (w - 1) / 2
+	}
+
+	if !pop.FounderLabelsOn() {
+		loc.CreatedAllelesSurviving = -1
+		loc.CreatedPairs = -1
+		loc.UnlabelledSources = -1
+		return
+	}
+
+	// Labelling is on, so the count of unlabelled sources is a real measurement of zero
+	// or more — clear the "absent" sentinel before tallying rather than incrementing it.
+	loc.UnlabelledSources = 0
+
+	// Private labels for unlabelled sources start above every real label so they cannot
+	// collide with one.
+	byLabel := map[int]int{}
+	nextPrivate := 0
+	for _, key := range keys {
+		if label, ok := sourceLabel(pop, key, locusIdx); ok {
+			byLabel[label] += weight[key]
+			if label >= nextPrivate {
+				nextPrivate = label + 1
+			}
+		}
+	}
+	for _, key := range keys {
+		if _, ok := sourceLabel(pop, key, locusIdx); !ok {
+			loc.UnlabelledSources++
+			byLabel[nextPrivate] = weight[key]
+			nextPrivate++
+		}
+	}
+
+	loc.CreatedAllelesSurviving = len(byLabel)
+
+	total := 0
+	sumSquares := 0
+	for _, w := range byLabel {
+		total += w
+		sumSquares += w * w
+	}
+	loc.CreatedPairs = (total*total - sumSquares) / 2
+}
+
+// sourceLabel returns the created-allele identity a terminated lineage carries. For a
+// created terminus (W4) the key already IS the allele — nothing to look up. For a founder
+// strand it is the W3 label, which under the created model comes from that founder's pool
+// so the two items answer with the same numbering and a run mixing both stays coherent.
+func sourceLabel(pop *core.Pop, key lineageKey, locusIdx int) (int, bool) {
+	if key.created {
+		return key.strand, true
+	}
+	return pop.FounderLabel(key.ind, key.strand, locusIdx)
+}
+
+// stepBack maps one lineage position to the next one back at a focal locus — the single
+// elementary move of the walk, and the exact place W1, W2 and W4 meet. Child strand 0 came
+// from the paternal gamete and strand 1 from the maternal gamete (birth.go's convention),
+// so the strand index doubles as the gamete index into the provenance record. ok=false
+// means the walk stops here: a created allele, a founder, or an individual whose parent or
+// provenance was never recorded.
+func stepBack(pop *core.Pop, key lineageKey, locusIdx, nLoci int) (lineageKey, bool) {
+	// A created allele has no ancestor by construction. This is the terminal case the
+	// whole module is about: there is no earlier node and no year at which it meets
+	// anything else, so the walk must stop rather than invent one.
+	if key.created {
+		return lineageKey{}, false
+	}
 	n, exists := pop.Pedigree[key.ind]
 	if !exists {
-		return 0, 0, false
+		return lineageKey{}, false
 	}
-	parent = n.Dad
+	parent := n.Dad
 	if key.strand == 1 {
 		parent = n.Mom
 	}
 	if parent == core.PedFounder {
-		return 0, 0, false
+		return lineageKey{}, false
 	}
-	parentStrand, ok = pop.ARGStrand(key.ind, key.strand, locusIdx, nLoci)
+	// A gamete drawn from a founder's created pool (W4) resolves to a created ALLELE, not
+	// to one of that founder's two somatic strands — checked first, because under the
+	// created model the ordinary strand bit is also recorded but describes only which of
+	// the germ cell's two alleles was taken, not which allele that is.
+	if allele, ok := pop.CreatedProvenance(key.ind, key.strand, locusIdx, nLoci); ok {
+		return lineageKey{ind: parent, strand: allele, created: true}, true
+	}
+	parentStrand, ok := pop.ARGStrand(key.ind, key.strand, locusIdx, nLoci)
 	if !ok {
-		return 0, 0, false
+		return lineageKey{}, false
 	}
-	return parent, parentStrand, true
+	return lineageKey{ind: parent, strand: parentStrand}, true
 }

@@ -96,23 +96,50 @@ func birthStandard(model *core.Model, pop *core.Pop) {
 				// masks are consumed and discarded. Requires track_pedigree: without the
 				// parent links these records are unreadable, and nothing would ever
 				// prune them.
+				// CREATED-FOUNDER GERMLINE (TMR4A.md W4), hard-gated and implemented in
+				// created_meiosis.go. When the created model is active and this parent is
+				// a founder with a created-allele pool, the germ cell producing this
+				// gamete carries two alleles drawn from that pool instead of the parent's
+				// two somatic strands — which is how one couple transmits more than four
+				// alleles at a locus. Everything downstream (mask, recombination,
+				// polarity) is unchanged. Two RNG draws per created gamete, in a fixed
+				// paternal-then-maternal order; nothing at all under the default model.
+				var germ [2][2]int
+				var germOK [2]bool
+				germ[0], germOK[0] = createdGermCell(model, pop, dad)
+				germ[1], germOK[1] = createdGermCell(model, pop, mom)
+
 				if argOn && model.Parameters["track_pedigree"] == 1 {
-					pop.ARGCapture(child, core.EnsureARGLoci(model), genomemask0, genomemask1)
+					loci := core.EnsureARGLoci(model)
+					pop.ARGCapture(child, loci, genomemask0, genomemask1)
+					// A gamete drawn from a created pool also records WHICH created
+					// allele it took, in a separate record the walker prefers over the
+					// strand bit above.
+					pop.CreatedCapture(child, loci,
+						[2][]uint64{genomemask0, genomemask1}, germ, germOK)
 				}
 
 				// Add tracked DNA
 				if model.Parameters["track_DNA"] > 0 {
 					// only create a child's chromosomes if there is something to track in at least one parent
-					if pop.IndData[dad][individual.AlleleCount] > 0 || pop.IndData[mom][individual.AlleleCount] > 0 {
+					if pop.IndData[dad][individual.AlleleCount] > 0 || pop.IndData[mom][individual.AlleleCount] > 0 || germOK[0] || germOK[1] {
 						pop.Chromosomes[child] = [][]uint64{make([]uint64, (model.FreeParameters["genome_bits"]+63)/64), make([]uint64, (model.FreeParameters["genome_bits"]+63)/64)}
 					}
 					numSetBits := 0
-					// only go through meiosis if there is a set bit in mom or dad
-					if pop.IndData[dad][individual.AlleleCount] > 0 {
+					// only go through meiosis if there is a set bit in mom or dad — or,
+					// under the created model, if this parent presented a germ cell, whose
+					// alleles are the source instead of the parent's somatic strands.
+					if germOK[0] {
+						createdMeiosis(pop, genomemask0, germ[0], child, 0)
+						numSetBits += utils.CountSetBits(pop.Chromosomes[child][0])
+					} else if pop.IndData[dad][individual.AlleleCount] > 0 {
 						meiosis(pop, genomemask0, dad, child, 0)
 						numSetBits += utils.CountSetBits(pop.Chromosomes[child][0])
 					}
-					if pop.IndData[mom][individual.AlleleCount] > 0 {
+					if germOK[1] {
+						createdMeiosis(pop, genomemask1, germ[1], child, 1)
+						numSetBits += utils.CountSetBits(pop.Chromosomes[child][1])
+					} else if pop.IndData[mom][individual.AlleleCount] > 0 {
 						meiosis(pop, genomemask1, mom, child, 1)
 						numSetBits += utils.CountSetBits(pop.Chromosomes[child][1])
 					}
@@ -432,13 +459,21 @@ func setMaskBits(mask []uint64, lo, hi int) {
 // chromosomes[child][1] = maternal inheritance
 
 func meiosis(pop *core.Pop, mask []uint64, parent int, child int, copy int) {
-	parentCopy0 := pop.Chromosomes[parent][0]
-	parentCopy1 := pop.Chromosomes[parent][1]
+	pop.Chromosomes[child][copy] = meiosisFrom(mask, pop.Chromosomes[parent][0], pop.Chromosomes[parent][1])
+}
+
+// meiosisFrom is the meiosis kernel over two explicit source strands: where the mask bit
+// is SET the child takes src0, where it is CLEAR it takes src1. Factored out so the
+// created-founder germline path (TMR4A.md W4, created_meiosis.go) applies the identical
+// polarity to a germ cell's two created alleles instead of a parent's two somatic strands.
+// One definition, so the two paths cannot drift apart — and so the strand-provenance
+// convention recorded in pkg/core/arg.go has exactly one thing to agree with.
+func meiosisFrom(mask, src0, src1 []uint64) []uint64 {
 	childCopy := make([]uint64, len(mask))
 	for i := 0; i < len(mask); i++ {
-		childCopy[i] = (mask[i] & parentCopy0[i]) | (^mask[i] & parentCopy1[i])
+		childCopy[i] = (mask[i] & src0[i]) | (^mask[i] & src1[i])
 	}
-	pop.Chromosomes[child][copy] = childCopy
+	return childCopy
 }
 
 func inheritCentromeres(model *core.Model, pop *core.Pop, centsmask0 []uint64, centsmask1 []uint64, dad int, mom int, child int) {

@@ -17,6 +17,10 @@ func init() {
 	modules.RegisterSetup("default", methods.SetupPopDefault)
 	modules.RegisterSetup("flood", methods.SetupPopFlood)
 	modules.RegisterSetup("creation", methods.SetupPopCreation)
+	// The created-origin test bed for TMR4A.md W4: one long-lived couple, so four
+	// alleles per locus is a real ceiling under ordinary diploidy and only created
+	// germline heterogeneity can exceed it.
+	modules.RegisterSetup("eden", methods.SetupPopEden)
 }
 
 // InitializePop creates and initializes a population using the selected setup
@@ -27,7 +31,28 @@ func InitializePop(model *core.Model) *core.Pop {
 		panic(fmt.Sprintf("Failed to initialize population: %v", err))
 	}
 	seedPedigreeFounders(model, pop)
+	seedFounderAlleleLabels(model, pop)
 	return pop
+}
+
+// seedFounderAlleleLabels assigns each founder strand one of `founder_alleles_per_locus`
+// created-allele identities (TMR4A.md W3). Same placement and same reasoning as
+// seedPedigreeFounders: once, after setup dispatch, so every setup module is covered and
+// the labelled generation is exactly the generation the backward walk terminates at.
+// Draws no RNG.
+func seedFounderAlleleLabels(model *core.Model, pop *core.Pop) {
+	if model.Parameters["track_allele_labels"] != 1 {
+		return
+	}
+	alleles := int(model.Parameters["founder_alleles_per_locus"])
+	if alleles < 1 {
+		alleles = 4
+	}
+	ids := make([]int, 0, len(pop.IndData))
+	for id := range pop.IndData {
+		ids = append(ids, id)
+	}
+	pop.AssignFounderLabels(ids, alleles)
 }
 
 // seedPedigreeFounders gives every member of the initial population a pedigree node

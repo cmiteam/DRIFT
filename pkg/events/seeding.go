@@ -12,6 +12,10 @@ func init() {
 	modules.RegisterSeed("single", methods.SeedingSingle)
 	modules.RegisterSeed("population", methods.SeedingPopulation)
 	modules.RegisterSeed("max_het", methods.SeedingMaxHet)
+	// Created founder alleles (TMR4A.md W4): builds A created haplotypes diverged by
+	// founder_allele_divergence and gives each founder a germline pool of them.
+	// Has no legacy integer code — seed_style="created" selects it by name.
+	modules.RegisterSeed("created", methods.SeedingCreated)
 }
 
 // Seed dispatches to the seeding module selected by the seed_style parameter

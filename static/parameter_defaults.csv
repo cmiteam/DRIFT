@@ -111,6 +111,10 @@ roh_long_min_cM,ROH Long-Class Min (cM),Text,float,25,Analysis
 track_pedigree,Track Diploid Pedigree,Check,bool,0,Analysis
 track_arg,Track Strand Provenance,Text,int,0,Analysis
 arg_loci,ARG Focal Loci,Text,string,,Analysis
+track_allele_labels,Track Founder Allele Labels,Check,bool,0,Analysis
+founder_alleles_per_locus,Created Alleles per Locus (A),Text,int,4,Analysis
+founder_allele_model,Founder Allele Model,Dropdown,string,diploid,Analysis
+founder_allele_divergence,Created Allele Divergence,Text,float,0,Analysis
 track_tmrka,Track TMR-K-A (ground truth),Check,bool,0,Analysis
 tmrka_k,TMR-K-A: K,Text,int,4,Analysis
 tmrka_sample_size,TMR-K-A Sample Size,Text,int,0,Analysis

@@ -1,8 +1,11 @@
 # TMR4A in DRIFT — implementation specification
 
-**Status:** **step 1 of §7 landed** on `rob-TMR4A-1` — W1 + W2 (focal mode) + W5 + the W8 tests that
-guard them. Ground-truth TMR-*K*-A now runs end-to-end on ordinary diploid runs. W3, W4, W6, W7 and
-W9 are still design only. See §8 for the implementation record.
+**Status:** **steps 1 and 2 of §7 landed** on `rob-TMR4A-1` — W1 + W2 (focal mode) + W5 + W3 + W4,
+with the W8 tests that guard them. Ground-truth TMR-*K*-A runs end-to-end; created-allele identity is
+separated from by-descent identity; and a single created couple can now transmit more than four
+alleles per locus, so §0's objection to "four is the ceiling" is executable rather than argued.
+W6, W7 and W9 (the ARGweaver calibration) are still design only. See §8 for the implementation
+record.
 **Scope:** what must be built to (1) compute *ground-truth* TMR4A inside DRIFT, and (2) calibrate
 ARGweaver's *inferred* TMR4A against that truth.
 **Roadmap ties:** README items 5a (four-alleles test) and 5b (ARGweaver); TODO §6a (real-data
@@ -58,7 +61,9 @@ than four alleles per locus**, and the "4" in TMR4A is simply the wrong bound to
 
 ## 1. What DRIFT has today
 
-Verified against the tree on `rob-working`.
+Verified against the tree on `rob-working` when this document was written. The four "Absent" rows
+were the gaps this document existed to close; they are now filled — see §8. The prose below them
+describes the pre-W1/W2 state and is kept as the record of what was wrong.
 
 | Capability | State | Where |
 |---|---|---|
@@ -71,10 +76,10 @@ Verified against the tree on `rob-working`.
 | VCF export | **Founder bitfield only** — de-novo pool is not written | [pkg/analysis/vcf.go:159-190](pkg/analysis/vcf.go#L159-L190) |
 | VCF import (real 1000G/HGDP) | Present, loads into the bitfield | [pkg/analysis/vcf_import.go](pkg/analysis/vcf_import.go) |
 | Y / mt coalescence | Present | [pkg/analysis/coalescence.go](pkg/analysis/coalescence.go) |
-| **Diploid pedigree** | **Absent** | see below |
-| **Segment provenance (ARG)** | **Absent** | see below |
-| **Allele identity labels** | **Absent** — bitfield is biallelic 0/1 | — |
-| **Founder germline heterogeneity** | **Absent** — founders are strictly diploid | — |
+| **Diploid pedigree** (W1) | **Present** since this doc — `track_pedigree` | [pkg/core/pedigree.go](pkg/core/pedigree.go) |
+| **Segment provenance** (W2) | **Present** since this doc, focal mode — `track_arg` | [pkg/core/arg.go](pkg/core/arg.go) |
+| **Allele identity labels** (W3) | **Present** since this doc — `track_allele_labels` | [pkg/core/allele_labels.go](pkg/core/allele_labels.go) |
+| **Founder germline heterogeneity** (W4) | **Present** since this doc — `founder_allele_model=created` | [pkg/core/created.go](pkg/core/created.go) |
 
 ### The two gaps that matter most
 
@@ -206,7 +211,7 @@ before rasterising them to a mask — take them there rather than re-deriving fr
 
 *Size:* ~200 lines + tests.
 
-### W3 — Founder allele identity track `track_allele_labels`
+### W3 — Founder allele identity track `track_allele_labels` — **LANDED**
 
 The bitfield holds one bit per site: two states, no identity. Two created alleles that happen to
 carry the same bit at a site are indistinguishable from two copies of one allele, which is precisely
@@ -221,7 +226,7 @@ the IBS/IBD confusion the test cannot afford.
 
 *Size:* ~150 lines + tests.
 
-### W4 — Created founder alleles with germline heterogeneity `founder_allele_model`
+### W4 — Created founder alleles with germline heterogeneity `founder_allele_model` — **LANDED**
 
 This is the item that encodes the objection in §0 and has no analogue in the current code.
 
@@ -345,15 +350,39 @@ The cheapest high-value experiment in the programme, and it can run before any o
 
 ## 4. Output
 
-One row per focal locus per run:
+One row per focal locus per run. **As built** (W1/W2/W3/W5), superseding this section's original
+sketch — see the note below for what changed and why:
 
 ```
-locus, k, outcome, tmrka_year, tmrca_year, lineages_at_founding,
-created_alleles_surviving, mutational_diffs, created_diffs
+locus, k, outcome, tmrka_year, tmrka_gens_ago, tmrca_year, sample_year,
+initial_lineages, lineages_at_founding, coalescences,
+founder_strands_surviving, created_alleles_surviving, unlabelled_sources,
+total_pairs, coalesced_pairs, created_pairs, created_pair_frac,
+mutational_diffs, created_diffs
 ```
 
 plus the full lineage-count trajectory as a separate series, and — when W7 has run — the ARGweaver
 inferred TMR-*K*-A joined on `locus` for the truth-vs-inference plot.
+
+**Two corrections to the original sketch, both discovered in the build:**
+
+1. `created_alleles_surviving` needed a companion. It is the identity-by-**state**-at-founding count
+   (distinct created alleles, from the W3 labels). The identity-by-**descent** count — distinct
+   founder haplotypes — is a different and equally necessary number, so it is emitted separately as
+   `founder_strands_surviving`. `created_alleles_surviving` ≤ `founder_strands_surviving`, and the
+   gap between them is the whole point of W3: several founder haplotypes can carry the same created
+   allele, and then their descendants' differences are mutational despite never coalescing.
+2. `mutational_diffs` / `created_diffs` are **sequence-difference** counts and cannot be computed
+   until W4 supplies `founder_allele_divergence`. They are emitted as `-1` and were NOT quietly
+   filled with something else. What W3 *does* make computable now is the **pairwise** decomposition
+   over the C(2*n*,2) sampled lineage pairs, emitted as three new columns:
+   - `coalesced_pairs` — pairs meeting at a common ancestor; all divergence accumulated since.
+   - `created_pairs` — pairs whose lineages end on founder strands carrying **different** created
+     alleles. Their divergence was created, not accumulated: no mutational path connects them and
+     no year exists at which they coalesce. `created_pair_frac` is its share of all pairs.
+   - the remainder — distinct founder haplotypes carrying the **same** created allele, so
+     mutational too. This is why `created_pairs` must be computed by label and not as
+     (total − coalesced), which would overcount created divergence by exactly this class.
 
 The headline figure of the study is **inferred TMR4A vs true TMR4A**, with created-allele divergence
 as the swept variable.
@@ -427,7 +456,7 @@ it is claimed to mean.
 
 ---
 
-## 8. Implementation record — step 1 (W1 + W2 focal + W5 + W8)
+## 8. Implementation record — steps 1 and 2 (W1 + W2 focal + W5 + W8, then W3 + W4)
 
 Landed on `rob-TMR4A-1`. Every flag defaults off; the `-validate` gate is unchanged
 (**D=−0.6611 / π-W=0.809 / Ne-N=0.313 / SFS-χ² 4.767**) and no path draws RNG unless opted into.
@@ -439,13 +468,21 @@ Landed on `rob-TMR4A-1`. Every flag defaults off; the `-validate` gate is unchan
 | W1 pedigree | [pkg/core/pedigree.go](pkg/core/pedigree.go), `core.Pop.Pedigree`, [birth.go](pkg/simulation/birth.go), [death.go](pkg/simulation/death.go), [initializepop.go](pkg/config/initializepop.go) | `PedNode{Dad,Mom,BirthYear,Sex,Refs,Alive}`; refcount = alive + retained children; release cascades to parents, iteratively (deep lineages would blow a recursive stack). Founder nodes seeded once after setup dispatch, so every setup module is covered. |
 | W2 provenance | [pkg/core/arg.go](pkg/core/arg.go), `core.Pop.ARGDB`, `core.Model.ARGLoci` | Focal-loci mode only. One flat `[]uint64` per birth: gamete 0 then gamete 1, one bit per focal locus. Pruned by the W1 cascade, so it cannot outlive the pedigree that indexes it. |
 | W5 walker | [pkg/analysis/tmrka.go](pkg/analysis/tmrka.go), [tmrka_output.go](pkg/analysis/tmrka_output.go) | Max-heap over (individual, strand) lineages, popped newest-first. Emits the full trajectory; TMR-*K*-A for any *K* is `TMRKAForK`. |
-| W8 tests | `pkg/core/{pedigree,arg}_test.go`, `pkg/simulation/{pedigree,arg,tmrka_sweep}_test.go`, `pkg/analysis/tmrka_test.go` | Hand-built pedigrees with known coalescence times; byte-identity; locus-sweep reproducibility. |
+| W3 labels | [pkg/core/allele_labels.go](pkg/core/allele_labels.go), `core.Pop.FounderLabels`, [initializepop.go](pkg/config/initializepop.go), walker `summariseSources` | Created-allele identity per founder strand, round-robin over *A* = `founder_alleles_per_locus`. Stored on the founder, not carried through meiosis — W2 already resolves any lineage to its founder strand, so the label is a lookup at the end of the walk. Pruned by the W1 cascade. |
+| W4 created alleles | [pkg/core/created.go](pkg/core/created.go), [pkg/methods/seeding_created.go](pkg/methods/seeding_created.go), [pkg/methods/setup_pop_eden.go](pkg/methods/setup_pop_eden.go), [pkg/simulation/created_meiosis.go](pkg/simulation/created_meiosis.go) | *A* created HAPLOTYPES built at seeding, any two diverged by `founder_allele_divergence` with no elapsed time; a germline pool per founder; each germ cell carries TWO pool alleles and ordinary meiosis recombines them. New `eden` setup (one couple) and `created` seed style. |
+| W8 tests | `pkg/core/{pedigree,arg,allele_labels}_test.go`, `pkg/simulation/{pedigree,arg,tmrka_sweep,tmrka_labels}_test.go`, `pkg/analysis/{tmrka,tmrka_labels}_test.go` | Hand-built pedigrees with known coalescence times and hand-computed pair counts; byte-identity; locus-sweep reproducibility; labels-inert-on-by-descent-quantities. |
 
 ### Parameters
 
-`track_pedigree` (0) · `track_arg` (0) · `arg_loci` ("") · `track_tmrka` (0) · `tmrka_k` (4) ·
-`tmrka_sample_size` (0). `arg_loci` grammar: comma/space-separated `P`, `A-B`, or `A-B:S`.
-`track_arg` requires `track_pedigree` — drift.go warns and skips capture otherwise.
+`track_pedigree` (0) · `track_arg` (0) · `arg_loci` ("") · `track_allele_labels` (0) ·
+`founder_alleles_per_locus` (4) · `founder_allele_model` ("diploid") · `founder_allele_divergence`
+(0) · `track_tmrka` (0) · `tmrka_k` (4) · `tmrka_sample_size` (0). `arg_loci` grammar:
+comma/space-separated `P`, `A-B`, or `A-B:S`. Module selectors: `setup_style=eden` (one created
+couple), `seed_style=created` (build the created alleles).
+
+`track_arg` requires `track_pedigree`, and `founder_allele_model=created` requires
+`seed_style=created` — drift.go warns on either half-configuration rather than silently taking half
+the model.
 
 ### Decisions worth knowing before extending this
 
@@ -466,9 +503,54 @@ Landed on `rob-TMR4A-1`. Every flag defaults off; the `-validate` gate is unchan
 - **`FinalLineages` == `FounderStrandsSurviving` by construction** — surviving lineages sit on
   distinct founder strands. They are computed by two different routes and cross-checked, because
   this is the headline falsifiable number (§0) and a silent off-by-one in it would be invisible.
-- **`created_alleles_surviving`, `mutational_diffs`, `created_diffs` are emitted as `-1`.** They are
-  identity-by-*state* quantities and need W3 labels. Reporting the by-descent count in their place
-  would collapse exactly the distinction the study turns on.
+- **`mutational_diffs` / `created_diffs` are still emitted as `-1`.** They are sequence-difference
+  counts and need W4's `founder_allele_divergence`. They were not filled with the W3 pair counts,
+  which measure something different — see §4. Reporting a by-descent count in an
+  identity-by-state column would collapse exactly the distinction the study turns on.
+- **W3 labels live on the founder strand, not on every individual.** TMR4A.md's W3 sketch has the
+  label "inherited through meiosis alongside the bitfield". That is unnecessary once W2 exists: the
+  walk already resolves (sampled individual, strand, locus) → (founder individual, founder strand),
+  so the label is a lookup at the end of the walk instead of a payload carried through every birth.
+  Identical result, 2F-entry table instead of a per-birth allocation. `FounderLabel` takes a locus
+  index it currently ignores — under the diploid founder model a strand is one created haplotype at
+  every locus, and W4 is where that stops being true.
+- **`created_pairs` is computed by label, never as (total − coalesced).** The subtraction would
+  count every non-coalescing pair as created divergence, including pairs on distinct founder
+  haplotypes that carry the SAME created allele — whose differences are mutational. That class is
+  the entire reason W3 exists, so collapsing it would silently undo the item.
+- **An unlabelled source gets a private label, never a shared one.** A lineage that freezes
+  somewhere other than a labelled founder is counted as its own unknown created allele and reported
+  in `unlabelled_sources`. Assuming shared identity in the absence of evidence is the exact error
+  the labels exist to prevent. 0 in a well-formed run.
+- **The labelled generation is the pedigree's founder generation** — where the walk terminates. If
+  a model seeds genomes at a `seed_year` after t=0 the two come apart; for this study use
+  seed_year=0 so the pedigree founders ARE the created generation.
+- **A created germ cell carries TWO alleles, and ordinary meiosis recombines them.** This is the
+  one real design decision in W4. The alternative — drawing an allele independently at each locus —
+  destroys linkage inside a gamete: the transmitted haplotype becomes a mosaic of arbitrarily many
+  created alleles and no recombination model applies to it. A germ cell holding two alleles is both
+  more physical and far less invasive: the mask, the recombination model, and the meiosis polarity
+  are all untouched, and the ONLY difference from an ordinary birth is which two sequences the mask
+  is applied to. It also costs exactly two RNG draws per created gamete regardless of how many focal
+  loci are configured — drawing per locus would make the stream depend on `arg_loci` and destroy the
+  locus-sweep reproducibility W8 tests.
+- **`meiosisFrom` is the single meiosis kernel.** Both the ordinary and the created path go through
+  it, so the polarity cannot drift between them and the provenance convention in arg.go has exactly
+  one thing to agree with. `TestCreatedGenomeMatchesRecordedAllele` then checks the child's actual
+  genome bit against the created allele the record names, which is the W4 counterpart of the W2
+  mask-convention test.
+- **A created terminus is just a lineageKey with `created` set**, holding the founder in `ind` and
+  the allele index in `strand`. Two lineages reaching the same created allele in the same founder
+  have met — one created sequence, one germline, no mutational difference between the copies — so
+  they coalesce, and reusing the key makes the existing collision test do that for free. Different
+  alleles are different keys and never meet.
+- **Divergence solves 2q(1−q) = d, not q = d/2.** The naive choice is low by 25% at d = 0.5, which
+  would silently mis-scale the study's most important dial.
+  `TestCreatedSeedingHitsRequestedDivergence` checks realized divergence against the requested value
+  at four settings.
+- **The created model is two halves and needs both.** `seed_style=created` builds the alleles;
+  `founder_allele_model=created` routes births through them. drift.go warns when only one is set,
+  because half the model is worse than neither.
 - **Censored walks write EMPTY date cells**, not zeros or sentinels — §6 risk 5. An empty cell
   cannot be averaged by accident; the `outcome` column says why in words.
 
@@ -481,11 +563,39 @@ locus min 3 / mean 5.85 / max 11. Note the shape of that result: of 346 sampled 
 3–11 coalesce, but at most loci the survivors are *more* than four distinct founder haplotypes, so
 there is no TMR-4-A to report — which is the censoring the module exists to make visible.
 
+With W3 labels on (`track_allele_labels=1`, *A*=4), every by-descent number above is unchanged — the
+labels are inert — and the created-identity line reads: **created alleles surviving per locus min 1 /
+mean 2.31 / max 4, with 36.7% of sampled pairs differing by created divergence rather than elapsed
+time.** That gap is the finding in miniature. At the censored loci the by-descent count says "7 to 11
+distinct founder haplotypes, no TMR-4-A exists"; the created count says those trace to only 2–4
+created alleles, which is exactly what a founding couple can transmit. And at four loci the sample
+descends from a *single* created allele (`created_pairs` = 0), so there the TMR-4-A of 226 is a
+genuine descent time with no created divergence mixed in.
+
+### Created-origin smoke model (W4)
+
+`users/smoke/models/EdenTest` — `setup_style=eden` (ONE long-lived couple), `seed_style=created`,
+`founder_allele_model=created`, *A*=10 created alleles at *d*=0.05 pairwise divergence set at t=0
+with no elapsed time, grown to 200 individuals over 500 years. Result (rng_seed 4242):
+
+> **13/13 focal loci censored at founding — no TMR-4-A exists at any of them.**
+> Founder haplotypes surviving per locus min 7 / mean 9.15 / max 12; **created alleles surviving
+> min 5 / mean 7.15 / max 10**; 78.0% of sampled pairs differ by created divergence, not elapsed
+> time.
+
+That is §0's second premise failing in a run: a **two-person** origin leaves five to ten distinct,
+never-coalescing alleles at every locus, so "four lineages" is not a bound the data has to respect
+and the time at which it is reached is not a bound on the founding. The unit tests pin the mechanism
+underneath it — one couple observed transmitting all 10 created alleles, five from each parent, with
+every gamete still a two-allele recombined mosaic.
+
 ### Not yet done, in the §7 order
 
 - **W9** (constant-*N* ARGweaver sweep) — needs no DRIFT code, but does need ARGweaver runs; it is
   external tooling and run management, not an engine change. Still the highest-value next step.
-- **W3 + W4** — founder allele identity labels and created germline heterogeneity. W5 already has
-  the fields reserved and the walker already reports the founder-strand count they refine.
+- **`mutational_diffs` / `created_diffs`** — still `-1`. W4 supplies the created divergence, so
+  these are now computable: they need a pass that counts, over sampled pairs, sequence differences
+  attributable to created divergence versus to de-novo mutation. Small, and the natural companion to
+  W6.
 - **W6 + W7** — merged VCF export and the ARGweaver bridge.
 - **W2 breakpoint mode** — promote when the §5 memory measurement bites.
