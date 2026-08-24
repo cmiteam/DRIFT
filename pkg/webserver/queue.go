@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -78,6 +79,43 @@ func initQueue() {
 	go queue.processor()
 }
 
+// sanitizeOutputDir resolves a caller-supplied results directory, falling back to the
+// per-model default when it is empty.
+//
+// The value arrives from a web form and becomes a filesystem WRITE target, so it is
+// confined deliberately rather than trusted: no absolute path, no drive letter or UNC
+// volume (which would escape on Windows even when IsAbs says otherwise, as in "C:foo"),
+// and no ".." that climbs out of the DRIFT folder once the path is cleaned. The check is
+// done on the resolved absolute path, not on the raw text, so ".." buried mid-path is
+// caught along with a leading one.
+func sanitizeOutputDir(raw, fallback string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return fallback, nil
+	}
+	if filepath.VolumeName(raw) != "" || filepath.IsAbs(raw) {
+		return "", fmt.Errorf("output directory must be relative to the DRIFT folder, "+
+			"not an absolute path: %q", raw)
+	}
+	clean := filepath.Clean(filepath.FromSlash(raw))
+	if clean == "." || clean == string(filepath.Separator) {
+		return fallback, nil
+	}
+	root, err := filepath.Abs(".")
+	if err != nil {
+		return "", fmt.Errorf("resolving DRIFT folder: %w", err)
+	}
+	abs, err := filepath.Abs(filepath.Join(root, clean))
+	if err != nil {
+		return "", fmt.Errorf("resolving output directory: %w", err)
+	}
+	rel, err := filepath.Rel(root, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("output directory must stay inside the DRIFT folder: %q", raw)
+	}
+	return filepath.ToSlash(rel), nil
+}
+
 // AddJob adds a new simulation job to the queue
 func (q *SimulationQueue) AddJob(username, modelName string, params interface{}) (*SimulationJob, error) {
 	q.mu.Lock()
@@ -86,8 +124,16 @@ func (q *SimulationQueue) AddJob(username, modelName string, params interface{})
 	// Generate unique job ID
 	jobID := fmt.Sprintf("%s_%s_%d", username, modelName, time.Now().Unix())
 
-	// Create output directory path
+	// Create output directory path. A job may override it (see sanitizeOutputDir),
+	// which is what lets separate studies keep separate result folders.
 	outputDir := fmt.Sprintf("users/%s/models/%s/results", username, modelName)
+	if req, ok := params.(StartSimulationRequest); ok {
+		dir, err := sanitizeOutputDir(req.OutputDir, outputDir)
+		if err != nil {
+			return nil, err
+		}
+		outputDir = dir
+	}
 
 	job := &SimulationJob{
 		ID:        jobID,

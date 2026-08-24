@@ -29,9 +29,13 @@ func Start() error {
 	// Setup routes
 	mux := http.NewServeMux()
 
-	// Serve static files (HTML, CSS, JS)
+	// Serve static files (HTML, CSS, JS). no-cache forces the browser to REVALIDATE
+	// every time rather than serving app.js from memory cache — it may still get a 304,
+	// so this costs nothing, but an edit to app.js now shows up on an ordinary refresh.
+	// Without it a stale app.js survives reloads and silently hides newly-added form
+	// fields, which reads as "the parameters disappeared".
 	fs := http.FileServer(http.Dir(config.StaticDir))
-	mux.Handle("/", fs)
+	mux.Handle("/", noCache(fs))
 
 	// API routes
 	mux.HandleFunc("/api/login", handleLogin)
@@ -127,5 +131,14 @@ func respondError(w http.ResponseWriter, message string, statusCode int) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": false,
 		"error":   message,
+	})
+}
+
+// noCache asks the browser to revalidate a static asset on every request. ETag and
+// Last-Modified still apply, so an unchanged file costs one 304 rather than a transfer.
+func noCache(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+		h.ServeHTTP(w, r)
 	})
 }

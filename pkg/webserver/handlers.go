@@ -151,6 +151,9 @@ type StartSimulationRequest struct {
 	SaveState      string  `json:"save_state,omitempty"`
 	LoadState      string  `json:"load_state,omitempty"`
 	ForkSeed       int     `json:"fork_seed,omitempty"`
+	// OutputDir overrides where results are written, relative to the DRIFT folder.
+	// Empty keeps users/<user>/models/<model>/results.
+	OutputDir      string  `json:"output_dir,omitempty"`
 }
 
 // handleSimulationStart handles starting a new simulation
