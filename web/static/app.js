@@ -86,6 +86,75 @@ const PARAMETER_METADATA = {
     'wander': { tab: 'other', label: 'Wander Distance', type: 'int', min: 0, group: 'Mating & Geography' },
     'max_breeding_inds': { tab: 'other', label: 'Max Breeding Individuals', type: 'int', description: '-1 for unlimited', group: 'Mating & Geography' },
     'sex_chrom_index': { tab: 'other', label: 'Sex Chromosome Index', type: 'int', min: 1, group: 'Genetics' },
+
+    // Recombination / linkage kernels. These are string-valued and were rendering as
+    // number spinners, so "map" and "arm" could not be entered from the GUI at all.
+    // Both are PREREQUISITES for the ARGweaver export below (TMR4A.md §8a, §8c).
+    'recombination_model': { tab: 'other', label: 'Recombination Model', type: 'dropdown', group: 'Genetics',
+        options: [{ value: 'legacy', label: 'legacy (single interior segment)' }, { value: 'map', label: 'map (cM genetic map)' }], stringValued: true,
+        description: 'ARGweaver export requires "map" — legacy makes a locus’s genealogy depend on where in the arm it sits' },
+    'linkage_model': { tab: 'other', label: 'Linkage Model', type: 'dropdown', group: 'Genetics',
+        options: [{ value: 'legacy', label: 'legacy (inverted mask polarity)' }, { value: 'arm', label: 'arm (pool co-segregates)' }], stringValued: true,
+        description: 'ARGweaver and the merged VCF require "arm" — under legacy the mutation pool and founder bitfield anti-segregate' },
+    'recomb_cM_per_bit': { tab: 'other', label: 'Recomb cM per Genome Bit', type: 'float', min: 0, step: 0.01, group: 'Genetics',
+        description: 'Fallback rate for arms with no cM column in chromosome_data.csv' },
+    'recomb_obligate_cM': { tab: 'other', label: 'Recomb Obligate Crossover cM', type: 'float', min: 0, step: 1, group: 'Genetics',
+        description: 'cM credited against the guaranteed crossover. Set equal to the chromosome’s TOTAL cM so realized = nominal' },
+    'mutation_rate_map': { tab: 'other', label: 'Mutation Rate Map', type: 'text', group: 'Genetics',
+        placeholder: '1000-2000:10; 50000-51000:0.1',
+        description: 'Semicolon-separated START-END:MULT regions' },
+
+    // ARGweaver / TMR4A workflow (TMR4A.md W1-W7), ordered as the pipeline runs:
+    // ground truth -> merged VCF -> ARGweaver export.
+    'track_pedigree': { tab: 'other', label: 'Track Diploid Pedigree', type: 'checkbox', group: 'ARGWeaver',
+        description: 'W1. Required by strand provenance and the TMR-K-A walker' },
+    'track_arg': { tab: 'other', label: 'Track Strand Provenance', type: 'checkbox', group: 'ARGWeaver',
+        description: 'W2. Requires the pedigree' },
+    'arg_loci': { tab: 'other', label: 'ARG Focal Loci', type: 'text', group: 'ARGWeaver',
+        placeholder: '0-1000000:50000',
+        description: 'Bit positions or START-END:STEP. Use semicolons, never commas' },
+    'track_allele_labels': { tab: 'other', label: 'Track Founder Allele Labels', type: 'checkbox', group: 'ARGWeaver',
+        description: 'W3. Created-allele identity (IBS) as distinct from descent (IBD)' },
+    'founder_alleles_per_locus': { tab: 'other', label: 'Created Alleles per Locus (A)', type: 'int', min: 1, group: 'ARGWeaver',
+        description: 'W4. Greater than 4 gives a founding couple germline heterogeneity' },
+    'founder_allele_model': { tab: 'other', label: 'Founder Allele Model', type: 'dropdown', group: 'ARGWeaver',
+        options: [{ value: 'diploid', label: 'diploid' }, { value: 'germline', label: 'germline' }], stringValued: true },
+    'founder_allele_divergence': { tab: 'other', label: 'Created Allele Divergence', type: 'float', min: 0, step: 0.01, group: 'ARGWeaver' },
+    'founder_allele_site_model': { tab: 'other', label: 'Created Allele Site Model', type: 'dropdown', group: 'ARGWeaver',
+        options: [{ value: 'independent', label: 'independent (alleles may coincide by chance)' }, { value: 'exclusive', label: 'exclusive (one allele per variable site, no recurrent states)' }], stringValued: true,
+        description: 'exclusive removes identity-by-state coincidence: no two created alleles ever share a derived site. Caps divergence at 2/A' },
+    'track_tmrka': { tab: 'other', label: 'Track TMR-K-A (ground truth)', type: 'checkbox', group: 'ARGWeaver',
+        description: 'W5. The truth the ARGweaver inference is judged against' },
+    'tmrka_k': { tab: 'other', label: 'TMR-K-A: K', type: 'int', min: 1, group: 'ARGWeaver',
+        description: 'K in TMR-K-A. 4 reproduces the published TMR4A statistic' },
+    'tmrka_sample_size': { tab: 'other', label: 'TMR-K-A Sample Size', type: 'int', min: 0, group: 'ARGWeaver',
+        description: '0 = every individual. NOTE: this does not yet restrict the walker to the same individuals the VCF sampled' },
+    'export_VCF': { tab: 'other', label: 'Export VCF', type: 'checkbox', group: 'ARGWeaver',
+        description: 'W6. The ARGweaver export shares this sample' },
+    'vcf_sample_size': { tab: 'other', label: 'VCF Sample Size', type: 'int', min: 0, group: 'ARGWeaver',
+        description: 'Individuals to draw; 0 = all. Each contributes two haplotypes' },
+    'vcf_include_fixed': { tab: 'other', label: 'VCF Include Fixed Sites', type: 'checkbox', group: 'ARGWeaver' },
+    'vcf_include_mutations': { tab: 'other', label: 'VCF Merge De-Novo Mutations', type: 'checkbox', group: 'ARGWeaver',
+        description: 'Required for ARGweaver — without it the export carries seeded variation only' },
+    'vcf_allele_labels': { tab: 'other', label: 'VCF Emit Allele-Label Truth', type: 'checkbox', group: 'ARGWeaver',
+        description: 'Adds the FORMAT FL truth field, the join key for the ARGweaver comparison' },
+    'export_argweaver': { tab: 'other', label: 'Export ARGweaver .sites', type: 'checkbox', group: 'ARGWeaver',
+        description: 'W7. Requires recombination_model=map and linkage_model=arm' },
+    'argweaver_bp_per_bit': { tab: 'other', label: 'ARGweaver bp per Genome Bit', type: 'int', min: 1, group: 'ARGWeaver',
+        description: 'Declared bp-per-bit convention. Cancels out of theta/rho; buys resolution. Must exceed 1 so colliding sites fit their window' },
+    'argweaver_chroms': { tab: 'other', label: 'ARGweaver Chromosomes', type: 'text', group: 'ARGWeaver',
+        placeholder: '1',
+        description: 'Blank exports every chromosome. Separate with semicolons, never commas' },
+    'argweaver_emit': { tab: 'other', label: 'ARGweaver Artifacts', type: 'text', group: 'ARGWeaver',
+        placeholder: 'sites;cmd;scaling',
+        description: 'Blank emits all four (sites, bed, cmd, scaling). Separate with semicolons, never commas' },
+    'argweaver_maxtime': { tab: 'other', label: 'ARGweaver Max Time (gens)', type: 'float', min: 0, step: 100, group: 'ARGWeaver',
+        description: '0 omits the flag, leaving arg-sample’s 200000-generation default — far deeper than any DRIFT history' },
+    'argweaver_ntimes': { tab: 'other', label: 'ARGweaver Time Points', type: 'int', min: 0, group: 'ARGWeaver',
+        description: '0 omits the flag (arg-sample defaults to 20)' },
+    'argweaver_seed': { tab: 'other', label: 'ARGweaver Random Seed', type: 'int', min: 0, group: 'ARGWeaver',
+        description: '0 omits the flag, and arg-sample then seeds from the clock — runs will not reproduce' },
+
     'animation_save_interval': { tab: 'other', label: 'Animation Save Interval', type: 'int', min: 1, group: 'Save Settings' },
 
     // Pluggable phase modules (options populated at runtime from /api/modules/list).
@@ -651,7 +720,7 @@ function renderOtherParameters(params) {
     }
 
     // Render grouped parameters
-    const groupOrder = ['Simulation Modules', 'Population Dynamics', 'Bottleneck', 'Life Stage', 'Reproduction', 'Mating & Geography', 'Genetics', 'Save Settings'];
+    const groupOrder = ['Simulation Modules', 'Population Dynamics', 'Bottleneck', 'Life Stage', 'Reproduction', 'Mating & Geography', 'Genetics', 'ARGWeaver', 'Save Settings'];
 
     for (const groupName of groupOrder) {
         const groupParams = paramsByGroup[groupName];
@@ -755,6 +824,18 @@ function createParameterField(key, value, metadata) {
                     input.appendChild(option);
                 }
             }
+            fieldDiv.appendChild(input);
+            break;
+
+        // String-valued parameters (recombination_model, arg_loci, argweaver_emit, ...).
+        // Without this case they fell through to 'int' and became number spinners, which
+        // cannot express "map" or "0-1000000:50000" at all.
+        case 'text':
+            input = document.createElement('input');
+            input.type = 'text';
+            input.id = key;
+            input.value = value ?? '';
+            if (metadata?.placeholder) input.placeholder = metadata.placeholder;
             fieldDiv.appendChild(input);
             break;
 
@@ -1041,6 +1122,12 @@ async function handleStartSimulation(e) {
         ...formParams
     };
 
+    // Results directory. Blank keeps the per-model default; the server confines whatever
+    // is supplied to the DRIFT folder, so a rejected path fails the start rather than
+    // writing somewhere unexpected.
+    const outputDir = (document.getElementById('output_dir')?.value || '').trim();
+    if (outputDir) params.output_dir = outputDir;
+
     // Run-state save / load / fork
     const saveState = (document.getElementById('save_state')?.value || '').trim();
     const loadState = document.getElementById('load_state')?.value || '';
@@ -1300,8 +1387,10 @@ function collectFormParameters() {
         if (input.type === 'checkbox') {
             parameters[id] = input.checked ? 1 : 0;
         } else if (input.tagName === 'SELECT') {
-            // Phase-module selectors carry a string name; keep it as-is.
-            if (metadata?.phaseStyle) {
+            // Phase-module selectors and other string-valued dropdowns
+            // (recombination_model=map, linkage_model=arm) keep their text;
+            // parsing them as ints would silently write 0.
+            if (metadata?.phaseStyle || metadata?.stringValued) {
                 parameters[id] = input.value;
             } else if (fieldType === 'dropdown' && metadata?.options) {
                 // Numeric-valued dropdowns (e.g. mating_style, selection)
@@ -1310,6 +1399,9 @@ function collectFormParameters() {
                 // Keep as string if not a numeric dropdown
                 parameters[id] = input.value;
             }
+        } else if (fieldType === 'text') {
+            // String parameters (arg_loci, argweaver_emit, ...) must survive verbatim.
+            parameters[id] = input.value;
         } else if (fieldType === 'float') {
             parameters[id] = parseFloatSafe(input.value, 0);
         } else {

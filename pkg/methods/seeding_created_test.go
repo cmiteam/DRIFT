@@ -180,3 +180,126 @@ func TestCreatedSeedingIsDeterministic(t *testing.T) {
 		}
 	}
 }
+
+// The "exclusive" site model (founder_allele_site_model). Its defining property is that no
+// two created alleles ever carry the derived state at the same site, so an observed shared
+// state downstream is genuine shared inheritance rather than coincidence. Both models must
+// still hit the requested pairwise divergence — that is the dial the study turns.
+
+func createdSiteModelPop(alleles int, divergence float64, genomeBits int, siteModel string) *core.Model {
+	m := createdSeedModel(alleles, divergence, genomeBits)
+	m.StringParams["founder_allele_site_model"] = siteModel
+	return m
+}
+
+// carriersAt counts how many created alleles hold the derived state at one bit.
+func carriersAt(seqs [][]uint64, bit int) int {
+	n := 0
+	for _, seq := range seqs {
+		if (seq[bit/64]>>(uint(bit)%64))&1 == 1 {
+			n++
+		}
+	}
+	return n
+}
+
+func TestCreatedSeedingExclusiveHasNoRecurrentStates(t *testing.T) {
+	const bits, alleles = 20000, 5
+	utils.SeedRNG(4242)
+	pop := createdSeedPop(2)
+	SeedingCreated(createdSiteModelPop(alleles, 0.2, bits, "exclusive"), pop)
+
+	variable := 0
+	for bit := 0; bit < bits; bit++ {
+		switch n := carriersAt(pop.CreatedAlleleSeqs, bit); {
+		case n == 0:
+		case n == 1:
+			variable++
+		default:
+			t.Fatalf("bit %d is derived in %d alleles; the exclusive model permits at most 1 "+
+				"— that coincidence is exactly what it exists to remove", bit, n)
+		}
+	}
+	// p = A*d/2 = 5*0.2/2 = 0.5 of sites variable.
+	if got := float64(variable) / bits; math.Abs(got-0.5) > 0.02 {
+		t.Errorf("variable-site fraction %.4f, want ~0.5 (= A*d/2)", got)
+	}
+}
+
+// The independent model is expected to produce recurrent states — this pins the contrast
+// so the two models cannot be silently conflated.
+func TestCreatedSeedingIndependentDoesProduceRecurrentStates(t *testing.T) {
+	const bits, alleles = 20000, 5
+	utils.SeedRNG(4242)
+	pop := createdSeedPop(2)
+	SeedingCreated(createdSiteModelPop(alleles, 0.2, bits, "independent"), pop)
+
+	for bit := 0; bit < bits; bit++ {
+		if carriersAt(pop.CreatedAlleleSeqs, bit) > 1 {
+			return // found one, as expected
+		}
+	}
+	t.Error("independent model produced no site derived in 2+ alleles; at q~0.1 over 20k sites "+
+		"that is essentially impossible and suggests the model is not drawing independently")
+}
+
+func TestCreatedSeedingExclusiveHitsRequestedDivergence(t *testing.T) {
+	const bits, alleles = 20000, 5
+	for _, d := range []float64{0.01, 0.1, 0.25, 0.4} { // ceiling is 2/A = 0.4
+		utils.SeedRNG(1234)
+		pop := createdSeedPop(2)
+		SeedingCreated(createdSiteModelPop(alleles, d, bits, "exclusive"), pop)
+
+		sum, pairs := 0.0, 0
+		for i := 0; i < alleles; i++ {
+			for j := i + 1; j < alleles; j++ {
+				sum += hammingFrac(pop.CreatedAlleleSeqs[i], pop.CreatedAlleleSeqs[j], bits)
+				pairs++
+			}
+		}
+		if got := sum / float64(pairs); math.Abs(got-d) > 0.01 {
+			t.Errorf("exclusive d=%g: realized mean pairwise divergence %.4f", d, got)
+		}
+	}
+}
+
+// The exclusive model cannot express d > 2/A, because every variable site is spent on a
+// single allele. It must cap rather than silently produce something else.
+func TestCreatedSeedingExclusiveCapsDivergenceAtTwoOverA(t *testing.T) {
+	const bits, alleles = 20000, 10 // ceiling 2/10 = 0.2
+	utils.SeedRNG(7)
+	pop := createdSeedPop(2)
+	SeedingCreated(createdSiteModelPop(alleles, 0.5, bits, "exclusive"), pop)
+
+	sum, pairs := 0.0, 0
+	for i := 0; i < alleles; i++ {
+		for j := i + 1; j < alleles; j++ {
+			sum += hammingFrac(pop.CreatedAlleleSeqs[i], pop.CreatedAlleleSeqs[j], bits)
+			pairs++
+		}
+	}
+	if got := sum / float64(pairs); math.Abs(got-0.2) > 0.01 {
+		t.Errorf("requested d=0.5 with A=10: realized divergence %.4f, want it capped to 0.2", got)
+	}
+}
+
+// An unset site model must reproduce the original behaviour exactly, since every existing
+// created model omits the parameter.
+func TestCreatedSeedingDefaultsToIndependent(t *testing.T) {
+	const bits, alleles = 8192, 4
+	utils.SeedRNG(31337)
+	popDefault := createdSeedPop(2)
+	SeedingCreated(createdSeedModel(alleles, 0.1, bits), popDefault)
+
+	utils.SeedRNG(31337)
+	popExplicit := createdSeedPop(2)
+	SeedingCreated(createdSiteModelPop(alleles, 0.1, bits, "independent"), popExplicit)
+
+	for a := range popDefault.CreatedAlleleSeqs {
+		for w := range popDefault.CreatedAlleleSeqs[a] {
+			if popDefault.CreatedAlleleSeqs[a][w] != popExplicit.CreatedAlleleSeqs[a][w] {
+				t.Fatalf("allele %d word %d differs: unset site model must equal \"independent\"", a, w)
+			}
+		}
+	}
+}

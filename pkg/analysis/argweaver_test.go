@@ -253,6 +253,231 @@ func TestARGweaverRegionBedConvention(t *testing.T) {
 	}
 }
 
+// argweaver_emit can only ever REDUCE output. Every caller that predates the parameter
+// builds ARGweaverOptions with a zero Emit, and must still get all four artifacts.
+func TestARGweaverEmitZeroValueWritesEverything(t *testing.T) {
+	model, pop := mergedFixture()
+	model.ResultsDir = t.TempDir()
+
+	stats, err := ExportARGweaver(model, pop, []int{1, 2, 3}, ARGweaverOptions{BpPerBit: 10})
+	if err != nil {
+		t.Fatalf("ExportARGweaver failed: %v", err)
+	}
+	for _, p := range []struct{ name, path string }{
+		{"sites", stats.Regions[0].Path},
+		{"bed", stats.BedPath},
+		{"scaling", stats.RationalePath},
+		{"cmd", stats.CommandPath},
+	} {
+		if p.path == "" {
+			t.Errorf("%s path is empty; the zero Emit must resolve to all four", p.name)
+			continue
+		}
+		if _, err := os.Stat(p.path); err != nil {
+			t.Errorf("%s not written: %v", p.name, err)
+		}
+	}
+}
+
+// Suppressing an artifact must remove the FILE without disturbing the statistics the
+// remaining artifacts report on — the site walk still has to run.
+func TestARGweaverEmitSuppressesArtifacts(t *testing.T) {
+	model, pop := mergedFixture()
+	dir := t.TempDir()
+	model.ResultsDir = dir
+
+	stats, err := ExportARGweaver(model, pop, []int{1, 2, 3},
+		ARGweaverOptions{BpPerBit: 10, Emit: ARGweaverEmit{Sites: true}})
+	if err != nil {
+		t.Fatalf("ExportARGweaver failed: %v", err)
+	}
+	if stats.BedPath != "" || stats.RationalePath != "" || stats.CommandPath != "" {
+		t.Errorf("bed=%q scaling=%q cmd=%q, want all empty", stats.BedPath, stats.RationalePath, stats.CommandPath)
+	}
+	if _, err := os.Stat(stats.Regions[0].Path); err != nil {
+		t.Errorf("sites was selected but not written: %v", err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("readdir: %v", err)
+	}
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".sites") {
+			t.Errorf("unexpected file %q; only .sites was selected", e.Name())
+		}
+	}
+}
+
+// Dropping the .sites files must not cost the caller the region spans or site counts,
+// because the scaling rationale is computed from them.
+func TestARGweaverEmitScalingOnlyStillCountsSites(t *testing.T) {
+	model, pop := mergedFixture()
+	dir := t.TempDir()
+	model.ResultsDir = dir
+
+	full, err := ExportARGweaver(model, pop, []int{1, 2, 3}, ARGweaverOptions{BpPerBit: 10})
+	if err != nil {
+		t.Fatalf("full export failed: %v", err)
+	}
+
+	model.ResultsDir = t.TempDir()
+	lean, err := ExportARGweaver(model, pop, []int{1, 2, 3},
+		ARGweaverOptions{BpPerBit: 10, Emit: ARGweaverEmit{Scaling: true}})
+	if err != nil {
+		t.Fatalf("scaling-only export failed: %v", err)
+	}
+	if lean.TotalSites != full.TotalSites || lean.TotalDropped != full.TotalDropped {
+		t.Errorf("sites=%d dropped=%d, want %d/%d — the walk must run even when discarded",
+			lean.TotalSites, lean.TotalDropped, full.TotalSites, full.TotalDropped)
+	}
+	if len(lean.Regions) != len(full.Regions) || lean.Regions[0].EndBp != full.Regions[0].EndBp {
+		t.Errorf("region spans differ between full and scaling-only exports")
+	}
+	if _, err := os.Stat(lean.Regions[0].Path); err == nil {
+		t.Errorf("a .sites file was written despite sites being unselected")
+	}
+}
+
+func TestParseEmit(t *testing.T) {
+	for _, tc := range []struct {
+		spec string
+		want ARGweaverEmit
+	}{
+		{"", allEmit()},
+		{"   ", allEmit()},
+		{"all", allEmit()},
+		{"sites", ARGweaverEmit{Sites: true}},
+		{"sites,cmd", ARGweaverEmit{Sites: true, Cmd: true}},
+		{"SITES; Bed", ARGweaverEmit{Sites: true, Bed: true}},
+		{"sites bed cmd scaling", allEmit()},
+		{"sites,nonsense", ARGweaverEmit{Sites: true}},
+	} {
+		if got := parseEmit(tc.spec); got != tc.want {
+			t.Errorf("parseEmit(%q) = %+v, want %+v", tc.spec, got, tc.want)
+		}
+	}
+}
+
+// A spec of nothing but garbage resolves to everything rather than silently exporting an
+// empty run — the warning already told the user, and losing the data is the worse failure.
+func TestARGweaverEmitAllUnknownResolvesToEverything(t *testing.T) {
+	if got := parseEmit("nonsense").resolved(); got != allEmit() {
+		t.Errorf("resolved = %+v, want everything", got)
+	}
+}
+
+// The sampling knobs are omitted when unset so the command file never claims a setting
+// the user did not choose, and rendered verbatim when they are.
+func TestARGweaverSamplingFlags(t *testing.T) {
+	if got := samplingFlags(ARGweaverOptions{}); got != "" {
+		t.Errorf("unset flags rendered %q, want empty", got)
+	}
+	got := samplingFlags(ARGweaverOptions{MaxTime: 2000, NTimes: 40, Seed: 42})
+	want := "--maxtime 2000 --ntimes 40 --randseed 42"
+	if got != want {
+		t.Errorf("samplingFlags = %q, want %q", got, want)
+	}
+}
+
+func TestARGweaverCommandFileCarriesSamplingFlags(t *testing.T) {
+	model, pop := mergedFixture()
+	model.ResultsDir = t.TempDir()
+
+	stats, err := ExportARGweaver(model, pop, []int{1, 2, 3},
+		ARGweaverOptions{BpPerBit: 10, MaxTime: 2000, NTimes: 40, Seed: 42})
+	if err != nil {
+		t.Fatalf("ExportARGweaver failed: %v", err)
+	}
+	data, err := os.ReadFile(stats.CommandPath)
+	if err != nil {
+		t.Fatalf("read command file: %v", err)
+	}
+	cmd := string(data)
+	for _, want := range []string{"--maxtime 2000", "--ntimes 40", "--randseed 42"} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("command file missing %q", want)
+		}
+	}
+	if strings.Contains(cmd, "argweaver_maxtime is UNSET") {
+		t.Errorf("command file warns maxtime is unset when it was set")
+	}
+}
+
+// Unset maxtime/seed must produce the warnings, because arg-sample's own defaults are a
+// 200000-generation grid and a clock seed — both wrong for a DRIFT run.
+func TestARGweaverCommandFileWarnsOnUnsetGrid(t *testing.T) {
+	model, pop := mergedFixture()
+	model.ResultsDir = t.TempDir()
+
+	stats, err := ExportARGweaver(model, pop, []int{1, 2, 3}, ARGweaverOptions{BpPerBit: 10})
+	if err != nil {
+		t.Fatalf("ExportARGweaver failed: %v", err)
+	}
+	data, err := os.ReadFile(stats.CommandPath)
+	if err != nil {
+		t.Fatalf("read command file: %v", err)
+	}
+	cmd := string(data)
+	for _, want := range []string{"argweaver_maxtime is UNSET", "argweaver_seed is UNSET"} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("command file missing warning %q", want)
+		}
+	}
+	// The explanatory header names --maxtime, so only the runnable lines can be checked.
+	for _, line := range strings.Split(cmd, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		for _, flag := range []string{"--maxtime", "--ntimes", "--randseed"} {
+			if strings.Contains(line, flag) {
+				t.Errorf("command line %q carries %s, which was never set", line, flag)
+			}
+		}
+	}
+}
+
+// The command file must not send the reader to a scaling rationale argweaver_emit
+// suppressed — those warnings are what decide whether the rates are trustworthy.
+func TestARGweaverCommandFileDoesNotCiteSuppressedScaling(t *testing.T) {
+	model, pop := mergedFixture()
+	model.ResultsDir = t.TempDir()
+
+	stats, err := ExportARGweaver(model, pop, []int{1, 2, 3},
+		ARGweaverOptions{BpPerBit: 10, Emit: ARGweaverEmit{Sites: true, Cmd: true}})
+	if err != nil {
+		t.Fatalf("ExportARGweaver failed: %v", err)
+	}
+	data, err := os.ReadFile(stats.CommandPath)
+	if err != nil {
+		t.Fatalf("read command file: %v", err)
+	}
+	cmd := string(data)
+	if strings.Contains(cmd, "_argweaver_scaling.txt") {
+		t.Errorf("command file cites a scaling file that was never written")
+	}
+	if !strings.Contains(cmd, "argweaver_emit suppressed") {
+		t.Errorf("command file does not say the rationale was suppressed")
+	}
+}
+
+func TestHistoryGenerations(t *testing.T) {
+	model, _ := mergedFixture()
+	model.Parameters["generation_time"] = 25
+	model.Parameters["seed_year"] = 0
+	model.FreeParameters["year"] = 500
+	if got := historyGenerations(model); got != 20 {
+		t.Errorf("historyGenerations = %v, want 20 (500 years / 25)", got)
+	}
+
+	model.Parameters["generation_time"] = 0
+	if got := historyGenerations(model); got != 0 {
+		t.Errorf("generation_time 0 must yield 0, got %v", got)
+	}
+	if got := historyGenerations(nil); got != 0 {
+		t.Errorf("nil model must yield 0, got %v", got)
+	}
+}
+
 func nearby(pos []int, lo, hi int) []int {
 	var out []int
 	for _, p := range pos {

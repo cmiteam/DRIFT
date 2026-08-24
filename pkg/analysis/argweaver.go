@@ -46,6 +46,7 @@ import (
 	"bufio"
 	"drift/pkg/core"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -67,11 +68,73 @@ type ARGweaverOptions struct {
 	// Chroms restricts the export to these chromosomes; empty exports all. A real study
 	// scopes to one arm (§1A: one arm is larger than ARGweaver's native ~2 Mb block).
 	Chroms []int
+	// Emit selects which artifacts reach disk. A parameter sweep that only wants the
+	// `.sites` files should not have to delete three companions per run.
+	Emit ARGweaverEmit
+	// MaxTime, NTimes and Seed are arg-sample knobs written into the generated command
+	// file. Each is omitted when zero, leaving arg-sample's own default in force. They
+	// live here rather than being left to the command line because --maxtime's default
+	// of 200000 generations is three to four orders of magnitude deeper than any DRIFT
+	// history, and a default that wrong is not a default worth inheriting silently.
+	MaxTime float64
+	NTimes  int
+	Seed    int
+}
+
+// ARGweaverEmit selects the export's four artifacts. The zero value is treated as
+// "all" by resolved(), so a caller building ARGweaverOptions directly keeps the
+// pre-parameterisation behaviour; suppression is opt-in through argweaver_emit.
+type ARGweaverEmit struct {
+	Sites   bool
+	Bed     bool
+	Cmd     bool
+	Scaling bool
+}
+
+func allEmit() ARGweaverEmit {
+	return ARGweaverEmit{Sites: true, Bed: true, Cmd: true, Scaling: true}
+}
+
+func (e ARGweaverEmit) resolved() ARGweaverEmit {
+	if !e.Sites && !e.Bed && !e.Cmd && !e.Scaling {
+		return allEmit()
+	}
+	return e
+}
+
+// parseEmit reads argweaver_emit. Empty selects everything, which is what every
+// existing model gets — this parameter can only ever reduce output, never change it.
+func parseEmit(spec string) ARGweaverEmit {
+	fields := strings.FieldsFunc(spec, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == ';'
+	})
+	if len(fields) == 0 {
+		return allEmit()
+	}
+	var e ARGweaverEmit
+	for _, f := range fields {
+		switch strings.ToLower(strings.TrimSpace(f)) {
+		case "sites":
+			e.Sites = true
+		case "bed":
+			e.Bed = true
+		case "cmd":
+			e.Cmd = true
+		case "scaling":
+			e.Scaling = true
+		case "all":
+			e = allEmit()
+		default:
+			fmt.Printf("WARNING: argweaver_emit: unknown artifact %q, skipped "+
+				"(want sites, bed, cmd, scaling or all)\n", f)
+		}
+	}
+	return e
 }
 
 // ARGweaverOptionsFromModel reads the export settings off the model parameters.
 func ARGweaverOptionsFromModel(model *core.Model) ARGweaverOptions {
-	opts := ARGweaverOptions{BpPerBit: 100}
+	opts := ARGweaverOptions{BpPerBit: 100, Emit: allEmit()}
 	if model == nil {
 		return opts
 	}
@@ -87,6 +150,10 @@ func ARGweaverOptionsFromModel(model *core.Model) ARGweaverOptions {
 			fmt.Printf("WARNING: argweaver_chroms: bad chromosome %q, skipped\n", f)
 		}
 	}
+	opts.Emit = parseEmit(model.StringParam("argweaver_emit", ""))
+	opts.MaxTime = model.Parameters["argweaver_maxtime"]
+	opts.NTimes = int(model.Parameters["argweaver_ntimes"])
+	opts.Seed = int(model.Parameters["argweaver_seed"])
 	return opts
 }
 
@@ -125,6 +192,11 @@ type argSite struct {
 func ExportARGweaver(model *core.Model, pop *core.Pop, ids []int, opts ARGweaverOptions) (*ARGweaverStats, error) {
 	if opts.BpPerBit < 1 {
 		opts.BpPerBit = 1
+	}
+	opts.Emit = opts.Emit.resolved()
+	if !opts.Emit.Sites && (opts.Emit.Cmd || opts.Emit.Bed) {
+		fmt.Println("WARNING: argweaver_emit excludes sites, so the command file and region BED " +
+			"will reference `.sites` files this run does not write.")
 	}
 	samples := make([]int, 0, len(ids))
 	for _, id := range ids {
@@ -172,8 +244,10 @@ func ExportARGweaver(model *core.Model, pop *core.Pop, ids []int, opts ARGweaver
 		Anchors:       ComputeRateAnchors(model, opts.BpPerBit, contigs),
 	}
 
+	// The site walk runs whether or not the file is kept: it is what produces the region
+	// spans and site counts the BED, the rationale and the command file all report on.
 	for _, ct := range contigs {
-		region, err := writeSitesFile(prefix, ct, model, pop, samples, mutIdx, opts.BpPerBit)
+		region, err := writeSitesFile(prefix, ct, model, pop, samples, mutIdx, opts.BpPerBit, opts.Emit.Sites)
 		if err != nil {
 			return nil, err
 		}
@@ -183,14 +257,20 @@ func ExportARGweaver(model *core.Model, pop *core.Pop, ids []int, opts ARGweaver
 	}
 
 	var err error
-	if stats.BedPath, err = writeRegionBed(prefix, stats.Regions); err != nil {
-		return nil, err
+	if opts.Emit.Bed {
+		if stats.BedPath, err = writeRegionBed(prefix, stats.Regions); err != nil {
+			return nil, err
+		}
 	}
-	if stats.RationalePath, err = writeRationaleFile(prefix, model, stats.Anchors); err != nil {
-		return nil, err
+	if opts.Emit.Scaling {
+		if stats.RationalePath, err = writeRationaleFile(prefix, model, stats.Anchors); err != nil {
+			return nil, err
+		}
 	}
-	if stats.CommandPath, err = writeCommandFile(prefix, stats, len(pop.IndData)); err != nil {
-		return nil, err
+	if opts.Emit.Cmd {
+		if stats.CommandPath, err = writeCommandFile(prefix, stats, len(pop.IndData), opts, model); err != nil {
+			return nil, err
+		}
 	}
 
 	fmt.Printf("ARGweaver: %d regions, %d sites x %d haplotypes at %d bp/bit -> %s_chr*.sites\n",
@@ -208,16 +288,22 @@ func ExportARGweaver(model *core.Model, pop *core.Pop, ids []int, opts ARGweaver
 // writeSitesFile emits one chromosome's `.sites`. The site walk mirrors ExportVCF's
 // exactly — contig arms in order, founder bit then its de-novo mutations by ascending id,
 // segregating within the sample only — so the two files describe the same site set.
+// emit false still performs the full walk — the region span and site counts are needed
+// by the other three artifacts — but discards the bytes instead of creating the file.
 func writeSitesFile(prefix string, ct vcfContig, model *core.Model, pop *core.Pop,
-	samples []int, mutIdx *mutationIndex, bpPerBit int) (*ARGweaverRegion, error) {
+	samples []int, mutIdx *mutationIndex, bpPerBit int, emit bool) (*ARGweaverRegion, error) {
 
 	path := fmt.Sprintf("%s_chr%d.sites", prefix, ct.chrom)
-	file, err := os.Create(path)
-	if err != nil {
-		return nil, fmt.Errorf("create sites file: %w", err)
+	var out io.Writer = io.Discard
+	if emit {
+		file, err := os.Create(path)
+		if err != nil {
+			return nil, fmt.Errorf("create sites file: %w", err)
+		}
+		defer file.Close()
+		out = file
 	}
-	defer file.Close()
-	w := bufio.NewWriter(file)
+	w := bufio.NewWriter(out)
 	defer w.Flush()
 
 	region := &ARGweaverRegion{
@@ -347,7 +433,8 @@ func writeRationaleFile(prefix string, model *core.Model, a *RateAnchors) (strin
 // rates already filled in. The rates are the single easiest thing to get wrong at the
 // command line — they are two per-generation counts divided by a declared convention, and
 // nothing about the .sites file itself records them — so they ship next to the data.
-func writeCommandFile(prefix string, stats *ARGweaverStats, censusN int) (string, error) {
+func writeCommandFile(prefix string, stats *ARGweaverStats, censusN int,
+	opts ARGweaverOptions, model *core.Model) (string, error) {
 	path := prefix + "_argweaver_cmd.sh"
 	file, err := os.Create(path)
 	if err != nil {
@@ -359,8 +446,17 @@ func writeCommandFile(prefix string, stats *ARGweaverStats, censusN int) (string
 
 	a := stats.Anchors
 	fmt.Fprintln(w, "#!/bin/sh")
-	fmt.Fprintln(w, "# Generated by DRIFT (TMR4A.md W7). Rates are derived in the companion")
-	fmt.Fprintf(w, "# %s_argweaver_scaling.txt -- read it before trusting any output.\n", basename(prefix))
+	if opts.Emit.Scaling {
+		fmt.Fprintln(w, "# Generated by DRIFT (TMR4A.md W7). Rates are derived in the companion")
+		fmt.Fprintf(w, "# %s_argweaver_scaling.txt -- read it before trusting any output.\n", basename(prefix))
+	} else {
+		// Don't send the reader to a file argweaver_emit suppressed. The warnings that
+		// file carries are the ones that decide whether a run is worth trusting at all,
+		// so say plainly that they were not written rather than pointing at nothing.
+		fmt.Fprintln(w, "# Generated by DRIFT (TMR4A.md W7). Rates are derived in the scaling")
+		fmt.Fprintln(w, "# rationale, which argweaver_emit suppressed for this run -- re-run with")
+		fmt.Fprintln(w, "# 'scaling' in argweaver_emit to see the warnings that vet these rates.")
+	}
 	fmt.Fprintln(w, "#")
 	fmt.Fprintf(w, "# --mutrate is genome-wide (%.6g per site per generation); --recombrate is\n", a.MuPerBp)
 	fmt.Fprintln(w, "# PER REGION, because DRIFT's obligate crossover makes it chromosome-specific.")
@@ -370,6 +466,32 @@ func writeCommandFile(prefix string, stats *ARGweaverStats, censusN int) (string
 	fmt.Fprintln(w, "# before any data is consulted, so sweep it rather than trusting one value.")
 	fmt.Fprintf(w, "# DRIFT's own CENSUS size at export was %d diploids -- a starting point, not a\n", censusN)
 	fmt.Fprintln(w, "# recommendation, and NOT the same quantity as a coalescent Ne.")
+	fmt.Fprintln(w, "#")
+
+	// The time grid is the trap this file exists to disarm. arg-sample defaults to
+	// --maxtime 200000 generations over --ntimes 20 log-spaced points. A DRIFT history is
+	// three to four orders of magnitude shallower, so at the defaults EVERY coalescence in
+	// the data falls below the first grid point and the reported depth is the prior.
+	gens := historyGenerations(model)
+	if gens > 0 {
+		fmt.Fprintf(w, "# THE TIME GRID. This run's history is %.0f generations deep. arg-sample's own\n", gens)
+		fmt.Fprintln(w, "# --maxtime default is 200000 generations over 20 log-spaced points, which would")
+		fmt.Fprintln(w, "# put every coalescence in this data below its first grid point -- the reported")
+		fmt.Fprintln(w, "# depth would then be the discretisation and the prior, not the data.")
+	} else {
+		fmt.Fprintln(w, "# THE TIME GRID. arg-sample's --maxtime default is 200000 generations over 20")
+		fmt.Fprintln(w, "# log-spaced points, which is far deeper than any DRIFT history.")
+	}
+	if opts.MaxTime <= 0 {
+		fmt.Fprintln(w, "# argweaver_maxtime is UNSET, so that default applies below. Set it.")
+	}
+	fmt.Fprintln(w, "#")
+	if opts.Seed <= 0 {
+		fmt.Fprintln(w, "# argweaver_seed is UNSET: arg-sample seeds from the clock, so these runs will")
+		fmt.Fprintln(w, "# not reproduce. Set it before generating anything you intend to cite.")
+		fmt.Fprintln(w, "#")
+	}
+
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "POPSIZE=${POPSIZE:-%d}\n", censusN)
 	fmt.Fprintln(w)
@@ -382,9 +504,46 @@ func writeCommandFile(prefix string, stats *ARGweaverStats, censusN int) (string
 		}
 		fmt.Fprintf(w, "arg-sample --sites %s \\\n", basename(r.Path))
 		fmt.Fprintf(w, "  --popsize \"$POPSIZE\" --mutrate %.6g --recombrate %.6g \\\n", a.MuPerBp, rho)
+		if extra := samplingFlags(opts); extra != "" {
+			fmt.Fprintf(w, "  %s \\\n", extra)
+		}
 		fmt.Fprintf(w, "  --output %s_chr%d\n\n", basename(prefix), r.Chrom)
 	}
 	return path, nil
+}
+
+// samplingFlags renders the optional arg-sample knobs. Each is omitted when zero so the
+// generated command inherits arg-sample's own default rather than a DRIFT-invented one —
+// the file should never claim a setting the user did not choose.
+func samplingFlags(opts ARGweaverOptions) string {
+	var parts []string
+	if opts.MaxTime > 0 {
+		parts = append(parts, fmt.Sprintf("--maxtime %.6g", opts.MaxTime))
+	}
+	if opts.NTimes > 0 {
+		parts = append(parts, fmt.Sprintf("--ntimes %d", opts.NTimes))
+	}
+	if opts.Seed > 0 {
+		parts = append(parts, fmt.Sprintf("--randseed %d", opts.Seed))
+	}
+	return strings.Join(parts, " ")
+}
+
+// historyGenerations is the depth of the simulated history at export, in generations —
+// the quantity --maxtime has to cover. Zero when the model does not pin it down.
+func historyGenerations(model *core.Model) float64 {
+	if model == nil {
+		return 0
+	}
+	genTime := model.Parameters["generation_time"]
+	if genTime <= 0 {
+		return 0
+	}
+	years := float64(model.FreeParameters["year"]) - model.Parameters["seed_year"]
+	if years <= 0 {
+		return 0
+	}
+	return years / genTime
 }
 
 func basename(p string) string {

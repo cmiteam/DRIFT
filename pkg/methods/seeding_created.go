@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 )
 
 // Created founder-allele seeding — TMR4A.md work item W4, the seeding half.
@@ -25,16 +26,37 @@ import (
 // mutation rate and reports ~*d*/(2μ) generations. DRIFT knows the true answer is zero
 // generations, which is precisely the comparison W7 is built to make.
 //
-// THE SITE MODEL. Each created allele draws each bit independently with probability *q*,
-// chosen so the expected pairwise difference between any two alleles is exactly *d*:
+// THE SITE MODEL, selected by `founder_allele_site_model`. Both produce the same expected
+// pairwise divergence d; they differ in whether two alleles may carry the derived state at
+// the SAME site, which is the identity-by-state / identity-by-descent question W3 exists
+// to keep straight.
+//
+// "independent" (default, the original model). Each created allele draws each bit
+// independently with probability q, chosen so the expected pairwise difference between any
+// two alleles is exactly d:
 //
 //	2q(1−q) = d   ⇒   q = (1 − √(1 − 2d)) / 2
 //
 // Solving for q rather than setting q = d/2 matters because the naive choice gives
-// d(1 − d/2), which is wrong by 25% at d = 0.5. The model is symmetric — no allele is a
-// reference and no pair is closer than another — so the created alleles form a star with
-// no internal structure for an inference method to mistake for a genealogy. d is capped at
-// 0.5, the maximum pairwise difference independent per-site draws can produce.
+// d(1 − d/2), which is wrong by 25% at d = 0.5. Here two alleles DO coincide at a derived
+// site by chance, at rate q² — recurrent states that look like shared ancestry but are not.
+// d is capped at 0.5, the maximum independent per-site draws can produce.
+//
+// "exclusive". Each variable site is carried by EXACTLY ONE allele; every other allele is
+// ancestral there. So no two created alleles ever share a derived state, and any sharing
+// observed downstream is genuine shared inheritance rather than coincidence. A site is
+// variable with probability p and its variant is assigned to a uniformly-chosen allele:
+//
+//	p = A·d/2   ⇒   each allele holds d·L/2 private sites   ⇒   pairwise difference = d
+//
+// Because p is a probability, this model caps d at 2/A — tighter than 0.5 whenever A > 4.
+// The A alleles form a PERFECT star: only private variants, no shared derived states, and
+// therefore no internal structure whatsoever for an inference method to read as a
+// genealogy.
+//
+// RNG ORDER differs between the two and is documented here because reproducibility depends
+// on it: "independent" is allele-major then bit-minor; "exclusive" is bit-major, drawing
+// one uniform per site plus one allele index per variable site.
 //
 // RNG ORDER is allele-major then bit-minor over sorted founder ids, documented here so the
 // stream is reproducible. This seeder draws RNG — it is a genome seeder, that is its job —
@@ -53,29 +75,53 @@ func SeedingCreated(model *core.Model, pop *core.Pop) {
 	if alleles < 1 {
 		alleles = 4
 	}
+	siteModel := createdSiteModel(model)
+
 	d := model.Parameters["founder_allele_divergence"]
 	if d < 0 {
 		d = 0
 	}
-	if d > 0.5 {
-		fmt.Printf("   founder_allele_divergence %.4f capped at 0.5 (the maximum pairwise "+
-			"difference independent per-site draws can produce)\n", d)
-		d = 0.5
+	// Each site model has its own ceiling on the pairwise divergence it can express.
+	maxD := 0.5
+	if siteModel == siteExclusive {
+		maxD = 2 / float64(alleles)
 	}
-	q := (1 - math.Sqrt(1-2*d)) / 2
+	if d > maxD {
+		fmt.Printf("   founder_allele_divergence %.4f capped at %.4g (the maximum pairwise "+
+			"difference the %q site model can produce with A=%d)\n", d, maxD, siteModel, alleles)
+		d = maxD
+	}
 
-	// Build the created haplotypes. Allele-major, bit-minor.
 	pop.CreatedAlleleSeqs = make([][]uint64, alleles)
 	for a := 0; a < alleles; a++ {
-		seq := make([]uint64, words)
-		if q > 0 {
-			for bit := 0; bit < totalBits; bit++ {
-				if utils.RandFloat64() < q {
-					seq[bit/64] |= 1 << (uint(bit) % 64)
+		pop.CreatedAlleleSeqs[a] = make([]uint64, words)
+	}
+
+	q := 0.0
+	if siteModel == siteExclusive {
+		// Bit-major: one draw decides whether the site varies at all, a second picks the
+		// single allele that carries it. No site is ever derived in two alleles, so the
+		// created alleles form a perfect star.
+		p := float64(alleles) * d / 2
+		for bit := 0; bit < totalBits && p > 0; bit++ {
+			if utils.RandFloat64() < p {
+				a := utils.RandIntn(alleles)
+				pop.CreatedAlleleSeqs[a][bit/64] |= 1 << (uint(bit) % 64)
+			}
+		}
+	} else {
+		// Allele-major, bit-minor \u2014 the original model, byte-identical to pre-existing runs.
+		q = (1 - math.Sqrt(1-2*d)) / 2
+		for a := 0; a < alleles; a++ {
+			seq := pop.CreatedAlleleSeqs[a]
+			if q > 0 {
+				for bit := 0; bit < totalBits; bit++ {
+					if utils.RandFloat64() < q {
+						seq[bit/64] |= 1 << (uint(bit) % 64)
+					}
 				}
 			}
 		}
-		pop.CreatedAlleleSeqs[a] = seq
 	}
 
 	ids := make([]int, 0, len(pop.IndData))
@@ -112,9 +158,39 @@ func SeedingCreated(model *core.Model, pop *core.Pop) {
 			utils.CountSetBits(c0) + utils.CountSetBits(c1)
 	}
 
-	fmt.Printf("   Created %d founder alleles over %d founders (pairwise divergence d=%.4g, "+
-		"per-site q=%.4g); germline pools of up to %d alleles per founder\n",
-		alleles, len(ids), d, q, (alleles+len(ids)-1)/max2(len(ids), 1))
+	pool := (alleles + len(ids) - 1) / max2(len(ids), 1)
+	if siteModel == siteExclusive {
+		fmt.Printf("   Created %d founder alleles over %d founders (pairwise divergence d=%.4g, "+
+			"site model %q: %.4g of sites variable, each carried by exactly ONE allele, no "+
+			"recurrent states); germline pools of up to %d alleles per founder\n",
+			alleles, len(ids), d, siteModel, float64(alleles)*d/2, pool)
+	} else {
+		fmt.Printf("   Created %d founder alleles over %d founders (pairwise divergence d=%.4g, "+
+			"site model %q, per-site q=%.4g); germline pools of up to %d alleles per founder\n",
+			alleles, len(ids), d, siteModel, q, pool)
+	}
+}
+
+// Site-model names for founder_allele_site_model.
+const (
+	siteIndependent = "independent"
+	siteExclusive   = "exclusive"
+)
+
+// createdSiteModel resolves founder_allele_site_model, defaulting to the original
+// "independent" draw so an existing model keeps its behaviour untouched.
+func createdSiteModel(model *core.Model) string {
+	switch v := strings.ToLower(strings.TrimSpace(
+		model.StringParam("founder_allele_site_model", siteIndependent))); v {
+	case "", siteIndependent:
+		return siteIndependent
+	case siteExclusive:
+		return siteExclusive
+	default:
+		fmt.Printf("WARNING: founder_allele_site_model %q is not recognised, using %q "+
+			"(want %q or %q)\n", v, siteIndependent, siteIndependent, siteExclusive)
+		return siteIndependent
+	}
 }
 
 func max2(a, b int) int {

@@ -75,6 +75,10 @@ vcf_allele_labels,VCF Emit Allele-Label Truth,Check,bool,0,Analysis
 export_argweaver,Export ARGweaver .sites,Check,bool,0,Analysis
 argweaver_bp_per_bit,ARGweaver bp per Genome Bit,Text,int,100,Analysis
 argweaver_chroms,ARGweaver Chromosomes,Text,string,,Analysis
+argweaver_emit,ARGweaver Artifacts,Text,string,,Analysis
+argweaver_maxtime,ARGweaver Max Time (gens),Text,float,0,Analysis
+argweaver_ntimes,ARGweaver Time Points,Text,int,0,Analysis
+argweaver_seed,ARGweaver Random Seed,Text,int,0,Analysis
 num_demes,Number of Demes,Text,int,1,Population
 deme_migration_rate,Deme Migration Rate,Text,float,0,Population
 migration_matrix,Migration Matrix,Text,string,,Population
@@ -120,6 +124,7 @@ track_allele_labels,Track Founder Allele Labels,Check,bool,0,Analysis
 founder_alleles_per_locus,Created Alleles per Locus (A),Text,int,4,Analysis
 founder_allele_model,Founder Allele Model,Dropdown,string,diploid,Analysis
 founder_allele_divergence,Created Allele Divergence,Text,float,0,Analysis
+founder_allele_site_model,Created Allele Site Model,Dropdown,string,independent,Analysis
 track_tmrka,Track TMR-K-A (ground truth),Check,bool,0,Analysis
 tmrka_k,TMR-K-A: K,Text,int,4,Analysis
 tmrka_sample_size,TMR-K-A Sample Size,Text,int,0,Analysis
