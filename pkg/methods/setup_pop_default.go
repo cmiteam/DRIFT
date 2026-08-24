@@ -24,7 +24,7 @@ func SetupPopDefault(model *core.Model, pop *core.Pop) error {
 	}
 
 	popSize := int(model.Parameters["start_pop_size"])
-	fitness := int(model.Parameters["mu_scale_factor"])
+	fitness := FounderFitness(model)
 	lifespan := int(model.Parameters["lifespan"])
 
 	// Number of demes (subpopulations). Default 1 = single-population behavior,
@@ -76,6 +76,24 @@ func SetupPopDefault(model *core.Model, pop *core.Pop) error {
 // CreateFounder creates a founding individual for the initial population.
 // deme is the founder's subpopulation label; landCoordinates are the land cells
 // this founder may be placed in (its deme's spatial block when a map exists).
+// FounderFitness is the Fitness value a founder with no mutational load must carry.
+//
+// Fitness is stored SCALED by mu_scale_factor: createChild writes
+// int(fitness * mu_scale_factor) and birth.go divides it back out before using it as a
+// birth probability. So "no load" is mu_scale_factor, NOT 1. Passing a literal 1 gives a
+// founder a birth probability of 1e-6, so the population simply never grows.
+//
+// That defect is invisible until mutations are on, because selectionMode() collapses to
+// "none" when track_mutations is off and Fitness is then never read -- which is why every
+// founding-couple smoke model (all track_mutations=0) passed while Eden, Flood and
+// Creation were silently sterile under track_mutations=1.
+func FounderFitness(model *core.Model) int {
+	if s := model.Parameters["mu_scale_factor"]; s > 0 {
+		return int(s)
+	}
+	return 1
+}
+
 func CreateFounder(pop *core.Pop, id int, age int, lifespan int, fitness int, model *core.Model, landCoordinates [][2]int, deme int) {
 	pop.IndData[id] = individual.MakeIndData()
 	pop.IndData[id][individual.Deme] = deme

@@ -41,7 +41,7 @@ func SetupPopEden(model *core.Model, pop *core.Pop) error {
 
 	const manID, womanID = 0, 1
 
-	CreateFounder(pop, manID, founderAge, founderLifespan, 1, model, landCoordinates, 0)
+	CreateFounder(pop, manID, founderAge, founderLifespan, FounderFitness(model), model, landCoordinates, 0)
 	pop.IndData[manID][individual.Sex] = 0
 	pop.IndData[manID][individual.MarriageState] = womanID
 	pop.IndData[manID][individual.Lat] = loc[0]
@@ -49,7 +49,7 @@ func SetupPopEden(model *core.Model, pop *core.Pop) error {
 	pop.IndData[manID][individual.BirthYear] = founderBirth
 	pop.IndData[manID][individual.Lifespan] = founderLifespan
 
-	CreateFounder(pop, womanID, founderAge, founderLifespan, 1, model, landCoordinates, 0)
+	CreateFounder(pop, womanID, founderAge, founderLifespan, FounderFitness(model), model, landCoordinates, 0)
 	pop.IndData[womanID][individual.Sex] = 1
 	pop.IndData[womanID][individual.MarriageState] = manID
 	pop.IndData[womanID][individual.Lat] = loc[0]
