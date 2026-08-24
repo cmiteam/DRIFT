@@ -32,7 +32,17 @@ func LoadUsers() (*UsersDatabase, error) {
 
 	data, err := os.ReadFile("users/users.json")
 	if err != nil {
-		// If file doesn't exist, create default
+		// No file yet: return the placeholder in memory WITHOUT persisting it.
+		//
+		// This must not write. init() calls LoadUsers, and the path is relative to the
+		// PROCESS working directory -- so saving here means merely importing this package
+		// creates a stray users database wherever it happens to be running. That fired on
+		// every `go test ./pkg/webserver/`, which runs with the package directory as its
+		// cwd, leaving an untracked pkg/webserver/users/users.json behind each time; it
+		// would equally fire for any tool started from outside the DRIFT folder, silently
+		// shadowing the real database instead of finding it.
+		//
+		// AddUser persists on registration, which is the right moment to create the file.
 		if os.IsNotExist(err) {
 			db.Users = []User{
 				{
@@ -42,7 +52,7 @@ func LoadUsers() (*UsersDatabase, error) {
 					Models:       []string{},
 				},
 			}
-			return db, db.Save()
+			return db, nil
 		}
 		return nil, fmt.Errorf("failed to read users.json: %v", err)
 	}

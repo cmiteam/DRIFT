@@ -6,9 +6,11 @@ ExampleResults/
 *.exe
 __debug_bin*
 
-# User data (keep users.json but ignore user simulation results)
-users/*/
-!users/users.json
+# User data (keep users.json but ignore user simulation results).
+# Anchored to the repo root: unanchored, these match a "users" directory at ANY
+# depth, so the negation would un-ignore a nested users.json that no rule covered.
+/users/*/
+!/users/users.json
 
 # Runtime logs
 *.log
