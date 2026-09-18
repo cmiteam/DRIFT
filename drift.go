@@ -17,6 +17,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -56,6 +57,80 @@ func main() {
 	// checks the emergent statistics (SFS, theta_W/theta_pi, Tajima's D, HWE) against
 	// DRIFT's characterized neutral baseline. Exits non-zero if any check fails so it
 	// can gate CI. Does not need a model.
+	// ARGweaver output parser (TMR4A.md W7, the half that needed a real output file
+	// to be written against). Standalone: reads `arg-summarize --tree` output, walks
+	// each local tree back to K lineages, and joins the result against the W5 walker's
+	// ground truth. No model, no run. `arg-summarize --tmrca` cannot do this — it
+	// reports TMR-1-A only, and on a created-origin dataset the full MRCA often does
+	// not exist at all.
+	if commands.ARGweaverTrees != "" {
+		opts := analysis.ARGweaverParseOptions{
+			TreesPath: commands.ARGweaverTrees,
+			TruthPath: commands.ARGweaverTruth,
+			K:         commands.ARGweaverK,
+			BpPerBit:  commands.ARGweaverBpPerBit,
+			GenTime:   commands.ARGweaverGenTime,
+			MinSample: commands.ARGweaverMinSample,
+			MaxSample: commands.ARGweaverMaxSample,
+		}
+		res, err := analysis.ParseARGweaverTrees(opts)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ARGweaver parse failed: %v\n", err)
+			os.Exit(1)
+		}
+		analysis.PrintARGweaverComparison(res)
+
+		out := commands.ARGweaverOut
+		if out == "" {
+			out = strings.TrimSuffix(strings.TrimSuffix(commands.ARGweaverTrees, ".gz"), ".txt") +
+				fmt.Sprintf("_tmr%da_vs_truth.csv", res.K)
+		}
+		if err := analysis.WriteARGweaverComparison(out, res); err != nil {
+			fmt.Fprintf(os.Stderr, "Error writing comparison: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("  wrote %s\n", out)
+		return
+	}
+
+	// Raw ARGweaver .smc scanner. Standalone, and a different question from
+	// -argweaver-trees above: that one joins twenty focal loci against DRIFT's
+	// known truth, this one takes real human data where no truth exists and asks
+	// what the genome-wide TMR-K-A distribution is, and how far it moves between
+	// MCMC samples. Both spreads are missing from the published 495 kya figure —
+	// it is the bp-weighted MEDIAN of one MCMC draw, iteration 2400.
+	if commands.ARGweaverSMC != "" {
+		var paths []string
+		for _, p := range strings.Split(commands.ARGweaverSMC, ",") {
+			if p = strings.TrimSpace(p); p != "" {
+				paths = append(paths, p)
+			}
+		}
+		res, err := analysis.ScanSMC(analysis.SMCScanOptions{
+			Paths:        paths,
+			K:            commands.ARGweaverK,
+			GenTime:      commands.ARGweaverGenTime,
+			IterFromPath: commands.ARGweaverSMCIterPath,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ARGweaver .smc scan failed: %v\n", err)
+			os.Exit(1)
+		}
+		analysis.PrintSMCScan(res)
+
+		out := commands.ARGweaverSMCOut
+		if out == "" {
+			out = filepath.Join(filepath.Dir(paths[0]),
+				fmt.Sprintf("argweaver_smc_tmr%da.csv", res.K))
+		}
+		if err := analysis.WriteSMCScan(out, res); err != nil {
+			fmt.Fprintf(os.Stderr, "Error writing scan CSV: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("\n  wrote %s\n", out)
+		return
+	}
+
 	if commands.Validate {
 		cfg := validation.DefaultNeutralConfig()
 		fmt.Printf("Running neutral-expectation validation (§6h): R=%d replicates, N=%d, mu=%.3g, burn-in=%dy ...\n",

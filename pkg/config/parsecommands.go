@@ -36,6 +36,27 @@ type Config struct {
 	ImportVCF      string
 	ImportPanel    string
 	ImportPolarize string
+
+	// ARGweaver output parsing (TMR4A.md W7, the parser half). ARGweaverTrees is
+	// the path to `arg-summarize -a <run>.bed.gz --tree` output; ARGweaverTruth is
+	// the DRIFT <model>_tmrka_loci_<run>_<year>.csv the inference is judged against.
+	// Standalone: no model is loaded and no run happens. Empty ARGweaverTrees = off.
+	ARGweaverTrees     string
+	ARGweaverTruth     string
+	ARGweaverOut       string
+	ARGweaverK         int
+	ARGweaverBpPerBit  int
+	ARGweaverGenTime   float64
+	ARGweaverMinSample int
+	ARGweaverMaxSample int
+
+	// Raw ARGweaver .smc scanning — the genome-wide TMR-K-A distribution and its
+	// spread across MCMC samples, for real data where there is no truth to join
+	// against (Rasmussen et al. 2014). Comma-separated files and/or directories;
+	// directories are walked for *.smc(.gz). Empty = off.
+	ARGweaverSMC         string
+	ARGweaverSMCOut      string
+	ARGweaverSMCIterPath bool
 }
 
 // Default values for command-line parameters
@@ -110,6 +131,43 @@ func ParseCommandLine() *Config {
 		"aa",
 		"ancestral/derived polarization for -import-vcf: aa (AA INFO, REF fallback) or ref (always REF-ancestral)")
 
+	argweaverTreesArg := flag.String("argweaver-trees",
+		"",
+		"parse `arg-summarize --tree` output into an inferred TMR-K-A and exit (TMR4A.md W7)")
+	argweaverTruthArg := flag.String("argweaver-truth",
+		"",
+		"DRIFT tmrka_loci CSV to join the inferred TMR-K-A against (used with -argweaver-trees)")
+	argweaverOutArg := flag.String("argweaver-out",
+		"",
+		"path to write the truth-vs-inference CSV (default: alongside -argweaver-trees)")
+	argweaverKArg := flag.Int("argweaver-k",
+		4,
+		"K for the inferred TMR-K-A; 4 reproduces the published statistic")
+	argweaverBpPerBitArg := flag.Int("argweaver-bp-per-bit",
+		100,
+		"bp-per-genome-bit convention the .sites file was exported under; must match argweaver_bp_per_bit")
+	argweaverGenTimeArg := flag.Float64("argweaver-gen-time",
+		25,
+		"years per generation, for reporting inferred depths in years")
+	argweaverMinSampleArg := flag.Int("argweaver-min-sample",
+		0,
+		"discard MCMC samples below this iteration (burn-in); establish the cut-off from the run's .log convergence check, not from this flag (0 keeps everything)")
+	argweaverMaxSampleArg := flag.Int("argweaver-max-sample",
+		0,
+		"discard MCMC samples above this iteration; pair with -argweaver-min-sample for the early/late split that shows the answer has stopped moving (0 = no upper bound)")
+
+	argweaverSMCArg := flag.String("argweaver-smc",
+		"",
+		"scan raw ARGweaver .smc(.gz) files for the genome-wide TMR-K-A distribution and its\n"+
+			"\tspread across MCMC samples, then exit; comma-separated files and/or directories")
+	argweaverSMCOutArg := flag.String("argweaver-smc-out",
+		"",
+		"path to write the per-MCMC-sample CSV (default: argweaver_smc_tmr<K>a.csv beside the first input)")
+	argweaverSMCIterPathArg := flag.Bool("argweaver-smc-iter-from-path",
+		false,
+		"take the MCMC iteration from the whole path, not just the filename, for layouts\n"+
+			"\tthat put the iteration in a directory (.../2400/chr1.smc.gz)")
+
 	// Parse the command-line arguments
 	flag.Parse()
 
@@ -145,5 +203,18 @@ func ParseCommandLine() *Config {
 		ImportVCF:      *importVCFArg,
 		ImportPanel:    *importPanelArg,
 		ImportPolarize: *importPolarizeArg,
+
+		ARGweaverTrees:     *argweaverTreesArg,
+		ARGweaverTruth:     *argweaverTruthArg,
+		ARGweaverOut:       *argweaverOutArg,
+		ARGweaverK:         *argweaverKArg,
+		ARGweaverBpPerBit:  *argweaverBpPerBitArg,
+		ARGweaverGenTime:   *argweaverGenTimeArg,
+		ARGweaverMinSample: *argweaverMinSampleArg,
+		ARGweaverMaxSample: *argweaverMaxSampleArg,
+
+		ARGweaverSMC:         *argweaverSMCArg,
+		ARGweaverSMCOut:      *argweaverSMCOutArg,
+		ARGweaverSMCIterPath: *argweaverSMCIterPathArg,
 	}
 }
