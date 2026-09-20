@@ -101,6 +101,11 @@ type ARGweaverParseResult struct {
 	SampleLo       int
 	SampleHi       int
 	sampleSeenOnce bool
+
+	// TruthKMismatch counts focal loci whose truth row was for a different K and
+	// was therefore NOT joined. Non-zero means the truth file needs regenerating
+	// at this K — the inference is still valid, it just has nothing to sit beside.
+	TruthKMismatch int
 }
 
 // ---------------------------------------------------------------- newick
@@ -320,7 +325,7 @@ func ParseARGweaverTrees(opts ARGweaverParseOptions) (*ARGweaverParseResult, err
 	truth := map[int]truthRow{}
 	if opts.TruthPath != "" {
 		var err error
-		truth, err = readTruthLoci(opts.TruthPath)
+		truth, err = readTruthLoci(opts.TruthPath, opts.K)
 		if err != nil {
 			return nil, fmt.Errorf("reading truth file: %w", err)
 		}
@@ -331,7 +336,7 @@ func ParseARGweaverTrees(opts ARGweaverParseOptions) (*ARGweaverParseResult, err
 		}
 	}
 	if len(opts.LocusBits) == 0 {
-		return nil, fmt.Errorf("no focal loci: supply -argweaver-truth or -argweaver-loci")
+		return nil, fmt.Errorf("no focal loci: supply -argweaver-truth")
 	}
 	sort.Ints(opts.LocusBits)
 
@@ -490,7 +495,10 @@ func ParseARGweaverTrees(opts ARGweaverParseOptions) (*ARGweaverParseResult, err
 			st.TMRKAQ975 = quantile(sorted, 0.975)
 			st.TMRCAMean, _ = meanStdev(a.tmrca)
 		}
-		if tr, ok := truth[a.bit]; ok {
+		if tr, ok := truth[a.bit]; ok && !tr.kMatch {
+			res.TruthKMismatch++
+		}
+		if tr, ok := truth[a.bit]; ok && tr.kMatch {
 			st.HasTruth = true
 			st.TruthOutcome = tr.outcome
 			st.TruthGens = tr.gens
@@ -505,9 +513,22 @@ type truthRow struct {
 	outcome        string
 	gens           float64 // -1 when censored
 	createdAlleles int
+
+	// kMatch is false when the CSV carries a `k` column that disagrees with the
+	// K being inferred. The locus still counts as a FOCAL LOCUS — the truth file
+	// is the only source of the focal set — but its truth columns must not be
+	// joined, because a K=4 truth depth beside a K=10 inference would print a
+	// `truth_gens_ago` and an `inferred_over_truth` that are simply the wrong
+	// statistic, silently and in the right format. Same discipline as §3.1's
+	// refusal to collapse outcome classes.
+	kMatch bool
 }
 
-func readTruthLoci(path string) (map[int]truthRow, error) {
+// readTruthLoci reads a DRIFT tmrka_loci CSV. wantK is the K being inferred; rows
+// whose `k` column names a different K are kept as loci but have their truth
+// suppressed. A file with no `k` column at all is trusted as-is, so older truth
+// CSVs keep working.
+func readTruthLoci(path string, wantK int) (map[int]truthRow, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -541,7 +562,12 @@ func readTruthLoci(path string) (map[int]truthRow, error) {
 		if err != nil {
 			continue
 		}
-		tr := truthRow{outcome: strings.TrimSpace(r[col["outcome"]]), gens: -1, createdAlleles: -1}
+		tr := truthRow{outcome: strings.TrimSpace(r[col["outcome"]]), gens: -1, createdAlleles: -1, kMatch: true}
+		if i, ok := col["k"]; ok && i < len(r) {
+			if v, err := strconv.Atoi(strings.TrimSpace(r[i])); err == nil && v != wantK {
+				tr.kMatch = false
+			}
+		}
 		if i, ok := col["tmrka_gens_ago"]; ok && i < len(r) {
 			if v, err := strconv.ParseFloat(strings.TrimSpace(r[i]), 64); err == nil {
 				tr.gens = v
@@ -674,6 +700,11 @@ func PrintARGweaverComparison(res *ARGweaverParseResult) {
 	} else if res.sampleSeenOnce {
 		fmt.Printf("  MCMC samples present: %d-%d (NO burn-in filter — pass -argweaver-min-sample\n"+
 			"    if the chain's early iterations are not converged)\n", res.SampleLo, res.SampleHi)
+	}
+	if res.TruthKMismatch > 0 {
+		fmt.Printf("  NOTE: %d focal loci had truth rows for a DIFFERENT K, so no truth was joined.\n"+
+			"    Re-run DRIFT with tmrka_k=%d to get a comparable truth file; the inferred\n"+
+			"    columns below are valid on their own.\n", res.TruthKMismatch, res.K)
 	}
 	fmt.Printf("  span-weighted over every interval: TMR-%d-A %.0f gen (%.0f y), TMRCA %.0f gen (%.0f y)\n",
 		res.K, res.SpanWeighted, res.SpanWeighted*res.GenTime,
