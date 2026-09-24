@@ -39,6 +39,16 @@ func SaveTMRKA(model *core.Model, res *TMRKAResult) error {
 		return err
 	}
 
+	// The generation time every gens_ago column above was divided by, measured rather
+	// than declared. Printed here and not only in the ARGweaver export because a run
+	// that never exports still reports depths in generations.
+	if res.GenTime != nil {
+		if err := WriteGenTimeCSV(tmrkaPath(model, "generation_time"), res.GenTime); err != nil {
+			return err
+		}
+	}
+	PrintGenTime(res.GenTime)
+
 	// Summarise by outcome class. Averaging only over the loci that actually coalesced
 	// is the point: a mean over censored loci treated as zeros would be meaningless.
 	counts := map[string]int{}

@@ -2,6 +2,7 @@ package analysis
 
 import (
 	"bufio"
+	"drift/pkg/core"
 	"os"
 	"strconv"
 	"strings"
@@ -486,4 +487,157 @@ func nearby(pos []int, lo, hi int) []int {
 		}
 	}
 	return out
+}
+
+// poolOnlyFixture is the merged fixture with the BITFIELD REMOVED: a full de-novo
+// mutation pool and no pop.Chromosomes entry for anyone. This is not a contrived
+// state — it is what a mainstream equilibrium run produces. SeedingPopulation returns
+// without allocating anything at init_heterozygosity = 0, and meiosis only allocates a
+// child's chromosomes when a parent had set bits or presented a created germ cell
+// (pkg/simulation/birth.go:123), so on a pool-only model NOBODY has a bitfield while
+// the pool fills up normally.
+func poolOnlyFixture() (*core.Model, *core.Pop) {
+	model, pop := mergedFixture()
+	pop.Chromosomes = map[int][][]uint64{}
+	return model, pop
+}
+
+// A pool-only sample must export, and the two artifacts must agree on the site count.
+//
+// Before this was fixed, both exports required an allocated bitfield to admit an
+// individual at all: ExportARGweaver failed outright with "no sampled individual has
+// tracked chromosomes" and ExportVCF wrote a sample-less header — on a run whose pool
+// held every site they needed. That made the mainstream arm of the ARGweaver study
+// unexportable.
+func TestPoolOnlyExportAgreesWithVCF(t *testing.T) {
+	ids := []int{1, 2, 3, 4}
+
+	// --- VCF ---
+	model, pop := poolOnlyFixture()
+	model.ResultsDir = t.TempDir()
+	vcfStats, err := ExportVCF(model, pop, ids, VCFOptions{IncludeMutations: true})
+	if err != nil {
+		t.Fatalf("ExportVCF on a pool-only sample failed: %v", err)
+	}
+	// Individual 4 carries neither substrate and stays out; 1, 2 and 3 qualify on the
+	// pool alone.
+	if vcfStats.NumSamples != 3 {
+		t.Fatalf("VCF samples = %d, want 3 (1,2,3 qualify on pool mutations; 4 carries nothing)",
+			vcfStats.NumSamples)
+	}
+	// No bitfield anywhere means no founder sites at all — not a monomorphic row per bit.
+	// The emitted mutations are the same three the merged test expects: 100, 101, 102.
+	// 105 is fixed in the sample, 103 is out of arm range, 104 has no pool entry.
+	if vcfStats.NumFounderSites != 0 {
+		t.Errorf("VCF founder sites = %d, want 0: there is no bitfield to segregate",
+			vcfStats.NumFounderSites)
+	}
+	if vcfStats.NumMutationSites != 3 || vcfStats.NumSites != 3 {
+		t.Errorf("VCF sites = %d (%d de-novo), want 3 (3)",
+			vcfStats.NumSites, vcfStats.NumMutationSites)
+	}
+
+	// --- ARGweaver, same sample ---
+	model2, pop2 := poolOnlyFixture()
+	model2.ResultsDir = t.TempDir()
+	argStats, err := ExportARGweaver(model2, pop2, ids, ARGweaverOptions{BpPerBit: 10})
+	if err != nil {
+		t.Fatalf("ExportARGweaver on a pool-only sample failed: %v", err)
+	}
+	if argStats.NumHaplotypes != 2*vcfStats.NumSamples {
+		t.Errorf("haplotypes = %d, want %d (the VCF's %d samples x 2 strands)",
+			argStats.NumHaplotypes, 2*vcfStats.NumSamples, vcfStats.NumSamples)
+	}
+
+	// THE POINT: the two files describe the same site set, which is what makes the
+	// truth-vs-inference join across them valid.
+	if argStats.TotalSites != vcfStats.NumSites {
+		t.Errorf(".sites wrote %d sites but the VCF reports %d — the two artifacts must "+
+			"agree on the site set", argStats.TotalSites, vcfStats.NumSites)
+	}
+	if argStats.TotalDropped != 0 {
+		t.Errorf("dropped = %d, want 0: three sites cannot overflow a 10 bp bit window",
+			argStats.TotalDropped)
+	}
+
+	// And the file itself is well-formed and genuinely segregating, with no leftover
+	// founder rows.
+	names, _, pos, alleles := readSites(t, argStats.Regions[0].Path)
+	if len(names) != argStats.NumHaplotypes {
+		t.Errorf("NAMES has %d entries, want %d", len(names), argStats.NumHaplotypes)
+	}
+	if len(pos) != vcfStats.NumSites {
+		t.Fatalf("site rows = %d, want %d", len(pos), vcfStats.NumSites)
+	}
+	for i := range pos {
+		if i > 0 && pos[i] <= pos[i-1] {
+			t.Fatalf("positions must be sorted and distinct: pos[%d]=%d follows %d",
+				i, pos[i], pos[i-1])
+		}
+		if len(alleles[i]) != argStats.NumHaplotypes {
+			t.Fatalf("site at %d has %d allele chars, want %d",
+				pos[i], len(alleles[i]), argStats.NumHaplotypes)
+		}
+		if !strings.Contains(alleles[i], "A") || !strings.Contains(alleles[i], "T") {
+			t.Errorf("site at %d is invariant (%q) and should not have been written",
+				pos[i], alleles[i])
+		}
+	}
+}
+
+// IncludeFixed must not resurrect the founder walk on a pool-only run. The founder
+// branch emits one record per genome bit when fixed sites are kept, so leaving it
+// enabled with no bitfield would bury the pool records under a monomorphic row for
+// every bit in the genome (10^6 of them on the real createdvar-scale model).
+func TestPoolOnlyIncludeFixedStillWritesNoFounderSites(t *testing.T) {
+	model, pop := poolOnlyFixture()
+	model.ResultsDir = t.TempDir()
+
+	stats, err := ExportVCF(model, pop, []int{1, 2, 3, 4},
+		VCFOptions{IncludeMutations: true, IncludeFixed: true})
+	if err != nil {
+		t.Fatalf("ExportVCF failed: %v", err)
+	}
+	if stats.NumFounderSites != 0 {
+		t.Errorf("founder sites = %d under IncludeFixed, want 0: there is no bitfield",
+			stats.NumFounderSites)
+	}
+	// 105 is fixed in the sample, so keeping fixed sites adds it to the three
+	// segregating mutations; 103 is still outside every arm and 104 still unpooled.
+	if stats.NumMutationSites != 4 {
+		t.Errorf("de-novo sites = %d under IncludeFixed, want 4 (100,101,102,105)",
+			stats.NumMutationSites)
+	}
+}
+
+// An individual carrying NEITHER substrate is still not exportable, and a sample made
+// only of such individuals is still an error rather than an empty file.
+func TestExportRejectsSampleWithNeitherSubstrate(t *testing.T) {
+	model, pop := poolOnlyFixture()
+	model.ResultsDir = t.TempDir()
+
+	if _, err := ExportARGweaver(model, pop, []int{4}, ARGweaverOptions{BpPerBit: 10}); err == nil {
+		t.Fatal("ExportARGweaver accepted a sample with no chromosomes and no mutations")
+	}
+}
+
+// The unpooled id must not be what admits an individual: an id carried but absent from
+// MutationPool has no Position and can contribute no site, so treating it as evidence of
+// exportable content would put an all-ancestral column in both files.
+func TestUnpooledMutationDoesNotQualifyAnIndividual(t *testing.T) {
+	_, pop := poolOnlyFixture()
+	pop.IndMutations[4] = map[int][]int{0: {104}, 1: {}} // 104 is deliberately not in the pool
+
+	samples, withBitfield := exportSamples(pop, []int{1, 2, 3, 4})
+	if withBitfield != 0 {
+		t.Errorf("withBitfield = %d, want 0 on a pool-only fixture", withBitfield)
+	}
+	for _, id := range samples {
+		if id == 4 {
+			t.Error("individual 4 was admitted on an unpooled mutation id, which has no position")
+		}
+	}
+	if len(samples) != 3 {
+		t.Errorf("samples = %v, want the three pool carriers 1,2,3", samples)
+	}
 }

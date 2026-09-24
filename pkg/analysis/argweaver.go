@@ -176,7 +176,12 @@ type ARGweaverStats struct {
 	BedPath       string
 	RationalePath string
 	CommandPath   string
+	GenTimePath   string
 	Anchors       *RateAnchors
+	// GenTime is the realised generation time measured from this run's pedigree — the
+	// constant that turns arg-sample's generation-denominated output back into years.
+	// nil when track_pedigree was off, in which case nothing verifies generation_time.
+	GenTime *GenTimeStats
 }
 
 // argSite is one biallelic site awaiting a bp coordinate: either a founder bitfield bit
@@ -198,14 +203,14 @@ func ExportARGweaver(model *core.Model, pop *core.Pop, ids []int, opts ARGweaver
 		fmt.Println("WARNING: argweaver_emit excludes sites, so the command file and region BED " +
 			"will reference `.sites` files this run does not write.")
 	}
-	samples := make([]int, 0, len(ids))
-	for _, id := range ids {
-		if c, ok := pop.Chromosomes[id]; ok && len(c) >= 2 && c[0] != nil && c[1] != nil {
-			samples = append(samples, id)
-		}
-	}
+	// Individuals this export can describe, on either substrate (see exportSamples).
+	// withBitfield == 0 is the POOL-ONLY case — a legitimate configuration, and the one
+	// a mainstream equilibrium arm produces — so the founder-site walk is skipped and
+	// the `.sites` file holds de-novo sites alone.
+	samples, withBitfield := exportSamples(pop, ids)
 	if len(samples) == 0 {
-		return nil, fmt.Errorf("ARGweaver export: no sampled individual has tracked chromosomes")
+		return nil, fmt.Errorf("ARGweaver export: no sampled individual has tracked chromosomes " +
+			"or placeable de-novo mutations (is track_DNA or track_mutations on?)")
 	}
 
 	contigs := buildContigs(model)
@@ -234,6 +239,15 @@ func ExportARGweaver(model *core.Model, pop *core.Pop, ids []int, opts ARGweaver
 			"bitfield sites will be written, so the inferred genealogy will rest on seeded variation " +
 			"alone — is track_mutations on?")
 	}
+	if withBitfield == 0 {
+		fmt.Printf("ARGweaver export: pool-only sample (no individual has an allocated bitfield) — "+
+			"every site written comes from the de-novo pool (%d mutations indexed).\n", mutIdx.total)
+	} else if withBitfield < len(samples) {
+		fmt.Printf("WARNING: ARGweaver export: %d of %d sampled individuals have no allocated "+
+			"bitfield and read as ancestral at every founder site. That is correct — they inherited "+
+			"no founder allele — but a partially-seeded bitfield means the two substrates describe "+
+			"different subsets of the sample.\n", len(samples)-withBitfield, len(samples))
+	}
 
 	run := model.FreeParameters["run"]
 	year := model.FreeParameters["year"]
@@ -242,12 +256,18 @@ func ExportARGweaver(model *core.Model, pop *core.Pop, ids []int, opts ARGweaver
 	stats := &ARGweaverStats{
 		NumHaplotypes: 2 * len(samples),
 		Anchors:       ComputeRateAnchors(model, opts.BpPerBit, contigs),
+		// Measured, not declared: arg-sample answers in generations and something has to
+		// convert them back. nil is honest — it means track_pedigree was off and the
+		// generation_time parameter is going into the report unverified.
+		GenTime: PedigreeGenerationStats(pop, model),
 	}
+	stats.Anchors.Warnings = append(stats.Anchors.Warnings, stats.GenTime.Warnings()...)
 
 	// The site walk runs whether or not the file is kept: it is what produces the region
 	// spans and site counts the BED, the rationale and the command file all report on.
 	for _, ct := range contigs {
-		region, err := writeSitesFile(prefix, ct, model, pop, samples, mutIdx, opts.BpPerBit, opts.Emit.Sites)
+		region, err := writeSitesFile(prefix, ct, model, pop, samples, mutIdx,
+			opts.BpPerBit, opts.Emit.Sites, withBitfield > 0)
 		if err != nil {
 			return nil, err
 		}
@@ -263,8 +283,14 @@ func ExportARGweaver(model *core.Model, pop *core.Pop, ids []int, opts ARGweaver
 		}
 	}
 	if opts.Emit.Scaling {
-		if stats.RationalePath, err = writeRationaleFile(prefix, model, stats.Anchors); err != nil {
+		if stats.RationalePath, err = writeRationaleFile(prefix, model, stats.Anchors, stats.GenTime); err != nil {
 			return nil, err
+		}
+		if stats.GenTime != nil {
+			stats.GenTimePath = prefix + "_generation_time.csv"
+			if err = WriteGenTimeCSV(stats.GenTimePath, stats.GenTime); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if opts.Emit.Cmd {
@@ -279,6 +305,12 @@ func ExportARGweaver(model *core.Model, pop *core.Pop, ids []int, opts ARGweaver
 		fmt.Printf("ARGweaver: dropped %d sites whose genome bit had more colliding sites than its "+
 			"%d-bp window could hold; raise argweaver_bp_per_bit\n", stats.TotalDropped, opts.BpPerBit)
 	}
+	if stats.GenTime != nil {
+		fmt.Printf("ARGweaver: realised generation time %.3f +/- %.3f y (SD %.3f over %d "+
+			"pedigree edges) -> pass -argweaver-gen-time %.4g when parsing the output\n",
+			stats.GenTime.Mean, stats.GenTime.SEM, stats.GenTime.SD, stats.GenTime.Edges,
+			stats.GenTime.Recommended())
+	}
 	for _, msg := range stats.Anchors.Warnings {
 		fmt.Printf("WARNING: ARGweaver scaling: %s\n", msg)
 	}
@@ -290,8 +322,11 @@ func ExportARGweaver(model *core.Model, pop *core.Pop, ids []int, opts ARGweaver
 // segregating within the sample only — so the two files describe the same site set.
 // emit false still performs the full walk — the region span and site counts are needed
 // by the other three artifacts — but discards the bytes instead of creating the file.
+// bitfield false means no sampled individual has an allocated bitfield (a pool-only run),
+// so the founder site is not even offered per bit: it could only ever be invariant and
+// dropped, and skipping it saves a full sample-wide scan of every bit in the genome.
 func writeSitesFile(prefix string, ct vcfContig, model *core.Model, pop *core.Pop,
-	samples []int, mutIdx *mutationIndex, bpPerBit int, emit bool) (*ARGweaverRegion, error) {
+	samples []int, mutIdx *mutationIndex, bpPerBit int, emit bool, bitfield bool) (*ARGweaverRegion, error) {
 
 	path := fmt.Sprintf("%s_chr%d.sites", prefix, ct.chrom)
 	var out io.Writer = io.Discard
@@ -329,7 +364,7 @@ func writeSitesFile(prefix string, ct vcfContig, model *core.Model, pop *core.Po
 		for bit := start; bit < start+length; bit++ {
 			// Every site at this bit, in the VCF's order, then laid out consecutively
 			// inside the bit's bp window.
-			sites := collectSitesAtBit(bit, mutIdx)
+			sites := collectSitesAtBit(bit, mutIdx, bitfield)
 			if len(sites) == 0 {
 				continue
 			}
@@ -354,12 +389,22 @@ func writeSitesFile(prefix string, ct vcfContig, model *core.Model, pop *core.Po
 }
 
 // collectSitesAtBit lists the sites sharing one genome bit: the founder bitfield site
-// first, then each de-novo mutation by ascending id. Same order as the VCF's records, and
-// deterministic because buildMutationIndex sorted the ids.
-func collectSitesAtBit(bit int, mutIdx *mutationIndex) []argSite {
+// first (when there is a bitfield at all), then each de-novo mutation by ascending id.
+// Same order as the VCF's records, and deterministic because buildMutationIndex sorted
+// the ids.
+//
+// NOTE FOR ANYONE READING COORDINATES BACK. The founder site is offered first but is
+// dropped when invariant, and the drop happens BEFORE the within-window offset is
+// advanced, so offset 0 of a bit's bp window is NOT a reliable marker of a founder site:
+// on a pool-only run (or wherever the founder bit is invariant in the sample) a de-novo
+// mutation occupies it. Recover provenance from the VCF's F<bit>/M<id> record ids, which
+// key on identity, never from POS.
+func collectSitesAtBit(bit int, mutIdx *mutationIndex, bitfield bool) []argSite {
 	muts := mutIdx.byPos[bit]
 	sites := make([]argSite, 0, len(muts)+1)
-	sites = append(sites, argSite{bit: bit, mutID: -1})
+	if bitfield {
+		sites = append(sites, argSite{bit: bit, mutID: -1})
+	}
 	for _, mid := range muts {
 		sites = append(sites, argSite{bit: bit, mutID: mid})
 	}
@@ -372,9 +417,12 @@ func fillAlleles(buf []byte, s argSite, pop *core.Pop, samples []int, mutIdx *mu
 	ac := 0
 	if s.mutID < 0 {
 		for i, id := range samples {
+			// A sample with no allocated bitfield reads as ancestral: it inherited no
+			// founder allele. bitAt tolerates a short slice, so the nil guard is only
+			// needed for the c[strand] indexing itself.
 			c := pop.Chromosomes[id]
 			for strand := 0; strand < 2; strand++ {
-				if bitAt(c[strand], s.bit) {
+				if len(c) >= 2 && bitAt(c[strand], s.bit) {
 					buf[2*i+strand] = argDerived
 					ac++
 				} else {
@@ -416,7 +464,7 @@ func writeRegionBed(prefix string, regions []ARGweaverRegion) (string, error) {
 	return path, nil
 }
 
-func writeRationaleFile(prefix string, model *core.Model, a *RateAnchors) (string, error) {
+func writeRationaleFile(prefix string, model *core.Model, a *RateAnchors, g *GenTimeStats) (string, error) {
 	path := prefix + "_argweaver_scaling.txt"
 	file, err := os.Create(path)
 	if err != nil {
@@ -426,6 +474,10 @@ func writeRationaleFile(prefix string, model *core.Model, a *RateAnchors) (strin
 	w := bufio.NewWriter(file)
 	defer w.Flush()
 	a.WriteRationale(w, model)
+	// The third constant. The two rate anchors above are per GENERATION, and nothing in
+	// the .sites file says how long a generation is; without this section the reader has
+	// no way to turn arg-sample's answer back into years.
+	g.WriteReport(w)
 	return path, nil
 }
 

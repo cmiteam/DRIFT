@@ -35,45 +35,8 @@ package analysis
 // from the pedigree itself rather than trusting the `generation_time` parameter, which is
 // a reporting convenience and need not match what the life history actually did.
 
-import "drift/pkg/core"
-
-// PedigreeGenerationTime returns the realised generation time in simulated years: the
-// mean parent-to-child birth-year gap over every recorded parent-child edge in the
-// pedigree, together with the number of edges it averaged over.
-//
-// Both parents of every child contribute an edge, so this is the mean age at reproduction
-// weighted by offspring — which is the generation time a coalescent rescaling wants, not
-// the mean age of parents. Founders contribute nothing (they have no recorded parents and
-// their birth years are pre-simulation). ok is false when the pedigree holds no edge at
-// all, in which case there is nothing to measure and a caller must not silently divide by
-// a made-up number.
-func PedigreeGenerationTime(pop *core.Pop) (float64, int) {
-	if pop == nil || pop.Pedigree == nil {
-		return 0, 0
-	}
-	sum, edges := 0, 0
-	for _, n := range pop.Pedigree {
-		for _, parent := range [2]int{n.Dad, n.Mom} {
-			if parent == core.PedFounder {
-				continue
-			}
-			pn, ok := pop.Pedigree[parent]
-			if !ok {
-				continue
-			}
-			gap := n.BirthYear - pn.BirthYear
-			if gap <= 0 {
-				continue // a parent must predate its child; anything else is not a generation
-			}
-			sum += gap
-			edges++
-		}
-	}
-	if edges == 0 {
-		return 0, 0
-	}
-	return float64(sum) / float64(edges), edges
-}
+// PedigreeGenerationTime and the full distribution behind it now live in gentime.go,
+// which keeps the spread and the non-stationarity profile a single constant hides.
 
 // coalescentFactor is (1/k − 1/n), the dimensionless part of E[T(n→k)] = 4Ne(1/k − 1/n).
 // ok is false when the quantity is not defined: fewer than two lineages, or a k that the

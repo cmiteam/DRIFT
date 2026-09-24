@@ -144,12 +144,16 @@ type TMRKAPoint struct {
 
 // TMRKAResult is a whole run's walk over the focal locus set.
 type TMRKAResult struct {
-	K              int
-	SampleYear     int
-	NumSampled     int // individuals in the sample (2× this many starting lineages)
-	Loci           []TMRKALocus
-	MissingARG     int // loci skipped because no provenance was recorded
+	K          int
+	SampleYear int
+	NumSampled int // individuals in the sample (2× this many starting lineages)
+	Loci       []TMRKALocus
+	MissingARG int // loci skipped because no provenance was recorded
+	// GenerationTime is the constant the gens_ago columns are divided by: the declared
+	// `generation_time` unless generation_time_source=pedigree. GenTime always carries
+	// what the life history actually realised, so a reader can see both.
 	GenerationTime float64
+	GenTime        *GenTimeStats
 }
 
 // LineagesAtYear returns the number of lineages remaining at (or immediately after) the
@@ -247,10 +251,7 @@ func ComputeTMRKA(model *core.Model, pop *core.Pop, ids []int) *TMRKAResult {
 	if k < 1 {
 		k = 4
 	}
-	genTime := model.Parameters["generation_time"]
-	if genTime <= 0 {
-		genTime = 25
-	}
+	genTime, genStats := ResolveGenerationTime(model, pop)
 
 	sampleYear := model.FreeParameters["year"]
 	sorted := append([]int(nil), ids...)
@@ -261,6 +262,7 @@ func ComputeTMRKA(model *core.Model, pop *core.Pop, ids []int) *TMRKAResult {
 		SampleYear:     sampleYear,
 		NumSampled:     len(sorted),
 		GenerationTime: genTime,
+		GenTime:        genStats,
 	}
 	for i, pos := range loci {
 		loc := walkLocus(pop, sorted, i, len(loci), pos, k, sampleYear)

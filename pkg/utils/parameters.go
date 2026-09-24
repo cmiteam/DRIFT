@@ -55,6 +55,7 @@ var stringParams = map[string]bool{
 	"arg_loci":                  true,
 	"argweaver_chroms":          true,
 	"argweaver_emit":            true,
+	"generation_time_source":    true,
 	"founder_allele_model":      true,
 	"founder_allele_site_model": true,
 	"habitat_suitability":       true,
