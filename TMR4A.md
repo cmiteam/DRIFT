@@ -324,23 +324,300 @@ Do **not** reimplement the MCMC (README 5b). Run the real tool externally.
   **Done** — see §8a, which is the only test in the set that would catch a walk whose absolute
   timescale is wrong.
 
-### W9 — Ne-prior sensitivity sweep (**no DRIFT code required**)
+### W9 — Ne-prior sweep + the deep-truth positive control — **OPEN, split in two 2026-09-20**
 
-The cheapest high-value experiment in the programme, and it can run before any of W1-W8 exists.
+The load-bearing claim of the whole critique (§1B), and the only arm of the programme never run.
+**W9a needs no DRIFT run and no new code**, and it gates the interpretation of every depth already
+measured. **W9b** is the positive control the study lacks.
 
-- Run ARGweaver on a **fixed** dataset (real 1000G/Complete Genomics, or simulated) under a range of
-  assumed effective sizes and size histories, including constant *N* across a wide span, a recent
-  explosive-growth history, and a recent-bottleneck history.
-- Plot inferred TMR-*K*-A against assumed *N*. The §1B prediction is that it tracks ≈*N* generations.
-  If it does, the statistic is largely determined by its prior and that is demonstrable without
-  simulating anything.
-- Second axis once DRIFT is in play: generate structured populations of known census size and known
-  recent origin (§3 machinery), export via W6, and compare ARGweaver's inferred depth against
-  DRIFT's true Ne trajectory from §6d `track_Ne`. This separates "large ancient population" from
-  "structured recent population", which a constant-*N* prior cannot distinguish.
+#### Why this is now urgent rather than merely cheap
 
-*Size:* external tooling and run management; a parameter sweep harness, no engine changes.
-*Why first:* it is the load-bearing claim of the whole critique, and it is testable immediately.
+`createdvar` was run at `--popsize 10000` — a mainstream Ne prior applied to a population whose
+entire history is 500 y. Under a Kingman prior at *N*=10⁴ with the *n*=40 haplotypes that run
+exported, the prior **alone** predicts:
+
+| | prior-only expectation | createdvar inferred | ratio |
+|---|---|---|---|
+| TMR-4-A = 4*N*(¼ − 1/*n*) | 9,000 gen (225,000 y) | 12,766 gen (319,158 y) | **1.42×** |
+| TMR-1-A = 4*N*(1 − 1/*n*) | 39,000 gen (975,000 y) | 28,223 gen (705,585 y) | **0.72×** |
+
+The headline 319,158 y sits within a factor of 1.5 of what the prior predicts with no data at all,
+and the two statistics straddle it. As it stands **Result 1 is confounded**: it is equally
+consistent with "created divergence forces depth" and with "the popsize prior supplied the depth",
+and that run cannot separate them. The first reviewer to do this arithmetic will say so. W9a
+settles it, and it is the cheapest unrun thing in the study.
+
+**One statistic is already prior-free, because *N* cancels in the ratio.** createdvar's
+12,766/28,223 = **0.452** against the *n*=40 Kingman null (¼ − 1/*n*)/(1 − 1/*n*) = **0.2308** is a
+**+96%** excess; the published data's 0.38 against its *n*=108 null of 0.2665 is **+43%**. Created
+divergence produces roughly **twice** the ratio distortion real human data shows — prior-independent,
+and a second constraint of the same shape as K4/K10 (249× vs 2.7×). Compute it as a per-locus
+distribution before quoting: ratio-of-medians vs median-of-ratios is exactly test-program E3's
+objection, and these two medians are over different quantities.
+
+**It is prior-free but NOT ceiling-free — added 2026-09-20, and this caveat must travel with the
+0.452 until the sweep lands.** *N* cancels in the ratio; **`--maxtime` does not.** At *N*=10⁴ the
+prior's E[TMR-1-A] = 39,000 is **97.5% of the 40,000 ceiling**, and the observed 28,223 sits in the
+top bracket [26,422.7 , 32,512.3] with only 40,000 above it — while TMR-4-A's 12,766 has 23 grid
+points beneath it. **The denominator is truncated and the numerator is not, so the ratio is biased
+upward and +96% is an upper bound, not a measurement.** The sweep fixes this for free: at 10² and
+10³ the ceiling is 102.6× and 10.3× the prior's whole-tree scale, so recompute the ratio there. If
+it holds near 0.45 the caveat retires; if it falls toward 0.2308 as *N* drops, the excess was mostly
+the ceiling and this lead statistic must be **withdrawn**. That is why it is checked before it is
+quoted rather than after.
+
+#### The design — 2×2, truth × prior. Only one cell exists.
+
+| | prior *N*=10⁴ | prior ≈ true (small) | prior swept 10²–10⁵ |
+|---|---|---|---|
+| **recent truth** (createdvar, ordinaryvar — data exists) | done: 12,766 gen | **W9a** | **W9a** |
+| **deep truth** (no run exists) | **W9b**, pipeline check only | — | **W9b**, the validating cell |
+
+A deep-truth run scored under a matched deep prior is **over-determined** — it passes whether
+ARGweaver works, whether the prior is doing everything, or both. Design for a failure that is
+possible: vary the prior, not only the truth.
+
+#### W9a — the prior sweep (no new simulation)
+
+- Re-run `arg-sample` on the **existing** `cv500/createdvar_run1_year500_chr1.sites`, changing only
+  `--popsize`: **10² and 10³** — 10⁴ already exists as `cv_N10000_nt30`. Add `--popsize-file`
+  histories (recent explosive growth, recent bottleneck) once the constant-*N* line exists.
+- Hold everything else at the createdvar command: nt30, `--maxtime 40000`, `--mutrate 1.04e-08`,
+  `--recombrate 1e-08`, `--region 1-2000000`, `--iters 500`, `--randseed 4242`. Same truth CSV, same
+  BED parser, same 13b early/late convergence gate applied **per point**.
+- **Cost is measured, which is why this goes first:** 64.4 s/iter, region-dominated, so ≈9 h per
+  point — two new points ≈ 18 h remote wall clock, zero DRIFT time, zero code.
+- **Commands, and the scoring rule pre-registered before any run: `cv500/RUNME_W9a.md`.**
+- **Written up in `TMR4A Study Design.docx` as §9.13 on 2026-09-20**, alongside §9.10 (createdvar
+  end to end), §9.11 (the free re-parses) and §9.12 (`createdvar_excl`) — the September results
+  were not in the .docx at all before that. §9.13 carries the whole pre-registration, so W9a can
+  be **scored straight out of the .docx** without reopening `RUNME_W9a.md`, and it is the caveat
+  that travels with every depth in §§9.10–9.12. Note §6 E1 still describes this sweep in its
+  pre-W9a form (500–20,000 at `--maxtime` 4× the largest *N* = 80,000, which rescales the grid,
+  and no N=100); **reconcile E1 to the executed design once the sweep lands.**
+
+##### Additional diagnostic registered 2026-09-21 — the allocation split
+
+Not a change to the scoring rule: the primary statistic, the bands, the N=100 anchor and the
+zero-skip-K prediction are all untouched. This is one more free readout per point.
+
+At *N* = 10⁴ `createdvar` puts **0.90%** of its inferred TMR-4-A above the cliff (40 → 7 lineages =
+115.2 gen) and **99.10%** across and below, with the single step K=7 → 6 carrying **60.4%** of the
+whole depth. The Kingman prior alone wants **52.4% / 47.6%**, so the observed split is **41x
+shallower than prior above the cliff and 3.0x deeper below it.** The likelihood is doing real work
+— pathologically: the data contains almost no post-founding drift, so the shallow part is
+compressed far below the prior and the created divergence is dumped into the handful of
+coalescences that remain. **That inversion is the cliff stated as a mechanism**, and the truth
+allocates time the opposite way (98.9% of real coalescence in the first 20 of 24 generations, the
+final collapse one pedigree step).
+
+**Record the same split at 10² and 10³.** It is TMR-K-A at the cliff top divided by TMR-4-A, both
+already produced by the K scan, so it costs nothing. If the allocation is roughly invariant in *N*
+while the absolute depths move, the **shape** is data-driven even where the depth is prior-driven
+— quotable in all three bands, and the strongest thing left in band 1 after the 319,158 y is
+withdrawn. Full derivation and the truth-side curve: Study Design §9.14,
+`users/Rob/ArgWeaver/RESULTS_descent_20260921.md`.
+
+##### E3 discharged at *N* = 10⁴ — computed 2026-09-21, no remote time
+
+§2.3 and test-program E3 require the ratio to be reported as a **per-locus distribution**, and
+warn that ratio-of-medians and median-of-ratios are different statistics. Both were already
+computable from `cv_nt30_k4_burnedin.csv`, which carries TMR-4-A *and* TMRCA per locus; the
+21-locus table is now written out as `cv500/cv_N10000_nt30_k4k1_ratio_perlocus.csv`.
+
+| estimator | value | excess over the *n*=40 Kingman null 0.2308 |
+|---|---|---|
+| ratio-of-medians — median(T4)/median(T1), the quoted form | **0.4523** | **+96.0%** |
+| median-of-ratios — median(T4ᵢ/T1ᵢ) | 0.4770 | +106.7% |
+| mean-of-ratios | 0.4820 | +108.9% |
+
+**Three things this settles, none of which change the plan.**
+
+1. **The quoted 12,766 / 28,223 are the pre-registered medians, not a convenient pair.** Each is
+   rank 11 of 21 in its own column. The headline was computed as §2 specifies.
+2. **E3's objection is real but small and points the safe way: +5.46%.** The two estimators
+   disagree by less than a twentieth, and the *quoted* one is the **lower** of the two, so the
+   published form is conservative. E3 does not overturn anything and the sweep does not need to
+   wait on it.
+3. **The excess is not carried by outliers — every locus shows it.** Per-locus ratios run
+   0.3867–0.5996, median 0.4770, sd 0.0415, CV 0.086. **0 of 21 loci fall below the Kingman
+   null**, and the *minimum* locus is still +68% over it.
+
+**What this does NOT do, and the caveat still travels.** The 21 loci sit on one 2 Mb region of one
+realization at `rng_seed` 4242, so their spread is within-realization dispersion, **not an error
+bar** — §3's standing caveat is untouched and seed replicates (§10.8) remain the only real
+independence. And this is the *N* = 10⁴ point, which is exactly the ceiling-compressed one: §2.3's
+question is whether 0.45 survives at 10² and 10³, and **that still requires the sweep.** The
+upper-bound caveat on +96% stays attached until it does.
+
+**Zero-skip *K* baseline re-confirmed from the same files.** The §2.5 prediction is scored against
+`cv_N10000_nt30`, so the baseline is worth stating exactly: at *K*=7 the lineage count lands on 7
+in **861 of 861** locus-samples (21 loci × 41 burned-in samples) with **zero** skips, and every
+neighbouring *K* skips (K=6: 135, K=8: 272, K=5: 222, K=4: 278, K=10: 670). The zero-skip *K* at
+*N*=10⁴ is **7**, unanimous and one *K* wide — exactly the form §2.5 predicts should be invariant.
+
+**Grid quantization, measured on the same table.** The 21 posterior medians occupy **four** grid
+points in total — 11502.8/11502.9 (10 loci), 14166.8 (10), 17442.5 (1). The posterior median is
+quantized to effectively three distinct values across the whole region, which is the resolution
+floor any per-locus claim at this `--maxtime` is working against.
+
+##### *N* = 10⁵ is deliberately excluded — decided 2026-09-20
+
+The apparent conflict between "hold `--maxtime` at 4× the largest *N*" and "hold it at 40000
+everywhere" was never real for this sweep: with largest *N* = 10⁴, **4 × 10⁴ = 40,000**, so the two
+rules give the same number. Adding 10⁵ is what creates the clash, and the 10⁵ point is not worth
+what it costs:
+
+| *N* | prior E[TMR-4-A] | prior E[TMR-1-A] | grid pts inside (0, E[TMR-1-A]] | ceiling / E[TMR-1-A] |
+|---|---|---|---|---|
+| 10² | 90 gen | 390 gen | 7 of 29 | 102.6× |
+| 10³ | 900 | 3,900 | 17 of 29 | 10.3× |
+| 10⁴ | 9,000 | 39,000 | 28 of 29 | **1.03×** |
+| 10⁵ | 90,000 | 390,000 | **29 of 29** | **0.10×** |
+
+At 10⁵ the ceiling does not clip a tail — the **entire prior sits above it**, so the point measures
+`--maxtime` rather than `--popsize`. **And it fails in the direction that flatters the thesis:** a
+pinned point makes the series rise then *flatten*, and flat is exactly what the scoring rule below
+reads as "the prior is not carrying Result 1". Doing it properly needs `--maxtime 400000` **and** a
+matched 10⁴ re-run (≈18 h) — and `--maxtime` rescales *every* grid point, not just the ceiling
+(nt30 shallow end 23.0 / 51.2 / 85.9 → **33.1 / 77.2 / 135.9**, coarser by **1.44×**), which
+relocates the K=12 truth check, the cliff top and the zero-skip K onto a lattice comparable to
+nothing else in the study. Add 10⁵ only if the three-decade slope is ambiguous, and then only as
+that 400000 **pair**, reported as its own series. **Never mix maxtimes within one slope.**
+
+##### The `.sites` file already names its own preferred *N*e, and it is 10⁴
+
+With no ARGweaver at all: *S* = 3,373 segregating sites, *n* = 40, μ = 1.04e-08 over 2 Mb ⇒ total
+branch length *S*/(μ·2×10⁶) = **162,163 gen** ⇒ Watterson-equivalent *N*e = *L*/(4·*H*₃₉) =
+**9,531**, against the 10,000 assumed — **agreement to 5%**. That is the precise statement of why
+`cv_N10000_nt30` cannot attribute its depth to prior or likelihood: they were coincidentally
+matched, so the run is confounded by construction rather than by oversight. It also locates the
+informative conflict at the **bottom** of the sweep — at *N*=100 the prior wants 4*N*·*H*₃₉ =
+**1,701 gen** of branch length against the data's **162,163**, a **95×** conflict, with θ = 4*N*μ
+and ρ = 4*N*r both crushed by the same factor. **Record the recombination count at every point:**
+flat depth at *N*=100 with a blown-up recomb count means the chain absorbed that conflict into
+*topology* rather than depth, and is not the clean result it appears to be.
+- **Score it in advance.** Inferred TMR-4-A tracking ≈4*N*(¼ − 1/*n*) across the sweep ⇒ the
+  statistic is its prior, demonstrated on data whose truth is known: the strongest form of the §1B
+  claim available. Inferred depth **flat** in *N* ⇒ the prior is not carrying Result 1 and the
+  created-divergence mechanism is doing real work — report that, it strengthens the result.
+  Intermediate is likeliest: the quantity to report is the slope d(log depth)/d(log *N*).
+- Sweep `ordinaryvar` (ov500's existing `.sites`) the same way as the contrast — an ordinary neutral
+  history should respond to the prior differently from one where 84% of pairs are created.
+- **Sweep the zero-skip K too; it costs nothing extra.** It is a shape statistic (§9 item 0a), so if
+  it is invariant to the prior it becomes the most portable claim in the study — and that is exactly
+  the property needed to run it on the published ARGs.
+
+#### W9b — the deep-truth positive control (the "mainstream arm" of §5)
+
+The study has measured what ARGweaver does to a recent population. It has never measured what it
+does to a genuinely deep one produced by the same DRIFT code and the same export path, so
+"DRIFT + W6/W7 produce data ARGweaver reads correctly" is still an assumption.
+
+- Run DRIFT under a mainstream-shaped history — large *N*, deep enough that a true TMR-4-A exists
+  and is far older than the founding — with `track_pedigree`/`track_arg` on, export via W6/W7, and
+  run `arg-sample` at a matched prior **and** across the W9a sweep.
+- **What the matched-prior pass buys, and what it does not.** It validates the **export pipeline**
+  against a known-deep truth — scaling, mutation and recombination units, phasing, sample size —
+  which is load-bearing for every number in the study and is a genuine failure mode. It does **not**
+  independently validate ARGweaver's timescale, for the over-determination reason above. Do not
+  write it up as "both are validated"; the validating cell is deep truth under a *mismatched* prior.
+- Scale per §5: order 10⁴ diploids over order 10⁴ generations. **Read the Q-rescaling warning in §5
+  before costing it** — `Rescale` does not touch μ or *r*.
+- **Cheaper first pass, and probably the right one.** §8a already has truth and inference agreeing
+  to ~5% at *N*=120 by two independent routes. A mid-scale run (*N*≈10³) that a deep-truth ARGweaver
+  pass can actually score beats a full-scale one that never finishes: the true depth only has to
+  clear the time grid's resolution, not match human history.
+
+#### W9c — sampling variance, the fourth component (new 2026-09-21)
+
+**ARGweaver has no sample-size setting.** Checked against `arg-sample`'s usage text: no flag
+selects, subsets or resamples individuals; only `--region` and `--compress-seq` shape the input,
+and `--resample-region` resamples a region of an *ARG*, not the sequence set. ***n* is whatever the
+`.sites` file holds** — 40 here (DRIFT `vcf_sample_size` = 20), 108 in Rasmussen et al. (54
+Complete Genomics individuals). So the sample is frozen upstream and arg-sample never sees the
+other 3,960 haplotypes.
+
+**§10.8's variance list was missing this component, and seed replicates cannot recover it.**
+`SampleIDs` draws from the same seeded stream as the simulation, so changing `rng_seed` changes the
+realization **and** the draw together. Isolating sampling variance needs the realization held fixed
+and only the draw varied.
+
+**Why it matters here.** The cliff position and the zero-skip K are counts of divergent classes
+*in the sample*; miss a class and the cliff moves by one, indistinguishably from §9.12's recombinant
+explanation. `createdvar_excl`'s sampled classes already include **two singletons** (sizes 8, 6, 5,
+5, 5, 4, 3, 2, 1, 1), and the population Simpson index gives an **effective** class count of 6.52
+(createdvar) / 7.31 (`_excl`) against 10 alleles surviving. A class at frequency 1/40 is missed by
+a fresh draw 36% of the time; at 1/400, 90%.
+
+**The rule to carry: depth is nearly *n*-invariant, structure detection is strongly *n*-dependent.**
+E[TMR-4-A] = 4*N*(¼ − 1/*n*) rises only 7.0% from *n* = 40 to *n* = 108 and 11.0% from 40 to the
+whole 4,000-haplotype population — but for *D* equal demes, P(a deme is unrepresented) =
+(1 − 1/*D*)ⁿ, so at *D* = 70 a 40-haplotype sample represents **31 of 70 demes** and *n* = 108 only
+55. **Sampling is therefore a weak objection to the published depth and a serious one to any
+structure claim, ours or theirs** — say both.
+
+**Direct consequence for the Flood/Babel programme:** the post-Flood bottleneck is the *safe*
+regime (4–10 distinct founding haplotypes, 0.2–3.1% chance of missing a class), while post-Babel
+subdivision is the dangerous one. **Scale the sample to the number of demes, not the population
+size, and prefer deme-stratified draws over uniform ones.**
+
+- **Stage 1 — ~3 min of DRIFT, no ARGweaver time.** Re-run `createdvar` at `vcf_sample_size = 0`
+  (draws no RNG, so the realization is byte-identical — a fuller export, not a new experiment).
+  Bootstrap random 20-individual subsets in analysis and cluster each by pairwise divergence.
+  §9.12 showed clustering predicts the cliff position exactly on createdvar (7 = 7), so this gives
+  the **distribution of cliff positions under resampling with no MCMC at all**, plus the per-allele
+  frequency vector that `summariseSources` currently computes and discards.
+- **Stage 2 — ~27 h.** Three draws from that distribution (mode and both tails), exported and run
+  at §9.10's settings: the fourth variance component, measured.
+- **Stage 3 — the *n*-scaling series**, *n* = 40 / 108 / 200 from the same realization. Also puts
+  the study on the **published *n* = 108 footing** (retiring a "your sample size differs from
+  theirs" objection) and measures arg-sample's cost scaling in *n*, which is currently unknown —
+  §9.10's region-dominated cost model was measured only at *n* = 40.
+
+Full record: Study Design §9.15, `users/Rob/ArgWeaver/RESULTS_sampling_20260921.md`.
+
+##### Stage 1 EXECUTED 2026-09-21 — done, no ARGweaver time. Full record: `RESULTS_sampling_stage1_20260921.md`
+
+`cvall` (createdvar at `vcf_sample_size = 0`, 5 m 29 s) exported all 2,000 individuals. The
+realization is byte-identical to `createdvar` — the results CSV and the TMR-K-A loci CSV both match
+`cmp`, and within the 2 Mb window arg-sample was given the 40 archived haplotypes are
+character-identical. **The clustering that §9.12 performed now exists as code**
+(`pkg/analysis/haploclust.go`, tested, `drift -cluster-sites`); it previously left nothing behind
+and could not be re-applied.
+
+**The deliverable: the cliff position under resampling is median 9, p05–p95 = 7–11, range 5–12 over
+2,000 redraws. The archived draw's 7 is its own distribution's 5th percentile.** §9.12's prediction
+(7 = 7) stands as a per-sample statement and is untouched; what changes is the error bar, and the
+statistic should be quoted as **9, 90% interval 7–11**. Stage 2's three draws are thereby specified
+rather than guessed: the 7 / 9 / 11 points, named in the draws CSV.
+
+**Three results that were not asked for.**
+
+1. **n = 40 → n = 108 is immaterial (median 9 → 10), so stage 3's published-panel arm is answered
+   and should be demoted to presentation.** §9.15 left this open; it cost no MCMC to close.
+2. **Past ~400 haplotypes the class count falls (7 → 4 → 3) and that is recombination, not
+   sampling.** Denser sampling draws the recombinant mosaics that sit *between* created alleles and
+   single linkage joins classes through them. The structure is still there at 4,000 haplotypes —
+   effective class count 7.3–9.4 against a truth of 10 — but resolves at a lower cut (~180–220
+   differing sites against ~497 at n = 40). **A clustering cut calibrated at one sample size does
+   not transfer to another; recalibrate per n or the collapse reads as loss of structure.**
+3. **§9.15's binomial miss-rate table is confirmed empirically to within 2% across four decades of
+   class frequency**, and the per-allele frequency vector it recorded as "computed and discarded" is
+   now in an output file.
+
+**Two caveats to carry.** (a) §9.12's "predicted 10, answered 9" on `createdvar_excl` **is** a
+threshold sensitivity: the 0.128 mosaic merges between cuts 0.12 and 0.13, so the same data gives 10
+or 9 depending on a constant that was never written down — which is why the tool sweeps the
+threshold and defaults to a parameter-free largest-gap rule that reproduces both archived counts.
+(b) **bp coordinates are not stable across exports of different sample sizes**: a bit's 100 bp window
+holds the founder site then each mutation, but only sites variable *in the sample* are emitted, so a
+founder site invariant among 40 haplotypes and variable among 4,000 shifts every later offset. 18
+positions moved this way. None fell inside the region arg-sample used, but any cross-export
+positional join in stages 2–3 must be checked rather than assumed.
+
+*Size:* W9a is run management only. **W9c stage 1 is DONE (2026-09-21, 5 m 29 s of DRIFT + free analysis); stage 3's n=108 arm is answered by it.** W9b is a DRIFT run plus the §5 memory/throughput question.
+*Why now:* W9a decides whether the study's headline number survives review.
 
 ---
 
@@ -410,6 +687,16 @@ as the swept variable.
   [demography.go:275-285](pkg/demography/demography.go#L275-L285) applies: TMR-*K*-A measured in
   generations rescales the same way, so a Q=10 run may suffice. Worth confirming against your actual
   throughput before committing to a full-scale run.
+- **Q-rescaling warning (added 2026-09-20, before W9b is costed).** `Rescale` is a *demographic*
+  rescaler only: it divides epoch sizes ([demography.go:219](pkg/demography/demography.go#L219)) and
+  durations ([:146](pkg/demography/demography.go#L146)), multiplies migration rates
+  ([:242](pkg/demography/demography.go#L242)), and scales split founder counts ([:284](pkg/demography/demography.go#L284)).
+  It does **not** touch `mu` or the recombination map. A correct rescaling also needs μ→Qμ and
+  r→Qr, or both θ=4Nμ and ρ=4Nr come out Q-fold too low and ARGweaver returns shallow trees from a
+  correctly-deep genealogy — a silent failure that would be misread as the instrument undershooting.
+  It also only engages through the scenario/epoch machinery; a plain single-population run ignores
+  it entirely. Before spending W9b compute, run a fixed-θ consistency check at small N (Q=1 vs Q=10
+  with μ and r adjusted) and confirm the exported diversity matches.
 - **Genome memory is the binding constraint at high X, and there is a way out.** Chromosomes are
   dense per-individual bitfields, so at 10⁶ bits an individual costs ~250 KB and a population of
   10⁴ costs ~2.5 GB resident — before the pedigree. But the TMR-*K*-A walker never reads the
@@ -424,6 +711,61 @@ as the swept variable.
 - **Determinism is the escape hatch.** Per-run deterministic RNG means re-running with a different
   focal-locus set reproduces a byte-identical genealogy. Sweep loci in passes instead of holding a
   full ARG in memory. W8 must actually test this, or the whole strategy rests on an assumption.
+
+### Throughput, measured 2026-09-21 — W9b is ~2 h, not days, once the region is scoped right
+
+§5 above says the Q=10 suggestion is "worth confirming against your actual throughput before
+committing to a full-scale run." It has now been confirmed, and the answer reorders the costs.
+
+**The fitted cost model.** Three single-threaded runs (N=1000, `mu`=0, bitfield only, Windows
+desktop) give per-simulated-year cost as a function of `genome_bits`:
+
+| `genome_bits` | region @ B=100 | measured ms/year |
+|---|---|---|
+| 3,046 | 0.3 Mb | 1.02 |
+| 20,000 | 2 Mb | 2.69 |
+| 1,000,000 | 100 Mb | 124.0 |
+
+Fit: **ms/year ≈ (N/1000) × (0.6 + 1.23×10⁻⁴ × genome_bits)**, holding to within 12% across two
+decades. A mutation-tracking run adds a term that grows **linearly in elapsed generations** — the
+per-individual pool is 25.6 copies/individual per 1000 y at `mu`=1 and never plateaus (fixed
+mutations are retained by design, §6f), which makes a `track_mutations` run **quadratic in T**:
+14.0 s at T=10 ky against 209.5 s at T=40 ky, N=1000, i.e. T^1.95.
+
+**The consequence for W9b.** §1A already establishes that ARGweaver's native unit is a ~2 Mb block
+and that "a single chromosome arm is a sufficient test object." `createdvar` runs a 10⁶-bit genome
+at B=100 — **100 Mb, fifty times larger than the unit the tool was run on.** Scoping W9b to 2 Mb:
+
+| region | N=10⁴ × 300 ky forward |
+|---|---|
+| 2 Mb — ARGweaver's own block | **~2.2 h** |
+| 100 Mb — current `createdvar` map | ~4.3 days |
+
+So the sequence-length axis costs nothing and should simply be dropped to 20,000 bits. W9b at
+~2 h/point is cheap enough to run **across** the W9a prior sweep rather than at a single Ne, which
+is what the 2×2 in W9 actually wants.
+
+**A 3-minute pre-check for the Q-rescaling warning above.** The warning says to run a fixed-θ
+consistency check before spending W9b compute. There is a sharper and cheaper one: under `mu`=0 a
+seeded population's heterozygosity decays at exactly 1/(2Ne) per generation, so the decay curve
+**measures Ne directly** rather than inferring it through exported θ. A 40-second N=1000 run
+(H 19,932 → 2,363 over 35 ky) fits a decay rate of 6.44×10⁻⁵/y ⇒ **Ne/N ≈ 0.27–0.31** depending on
+the generation time assumed, independently reproducing §6h's 0.313. Run that probe at Q = 1, 2, 5,
+10 and confirm Ne/N is flat. DRIFT is non-WF and its Ne/N comes from reproductive variance; whether
+*that ratio* is Q-invariant is the whole question, and this answers it for ~3 minutes of compute.
+
+**The dense-bitfield finding strengthens the breakpoint-mode argument above.** At 10⁶ bits the
+bitfield is not merely 2.5 GB of memory — `meiosisFrom` ([birth.go:471](pkg/simulation/birth.go#L471))
+allocates and writes the full array per gamete regardless of how many sites are polymorphic, so it
+is **124 of the 124.6 ms/year**, essentially the entire per-year cost. Breakpoint mode plus painted
+mutations removes ~99.5% of it and leaves the ~0.6 ms/year intercept. It also makes region length a
+post-processing parameter rather than a simulation parameter.
+
+**Three things that must not be rescaled**, for the record: sample size *n* (it sets both
+ARGweaver's power and the ratio null — 0.2665 at *n*=108 against 0.2308 at the *n*=40 exported
+here); segregating sites per non-recombining block (§6 risk 1 — correct Q-rescaling preserves it
+because θ and ρ are both held fixed, sloppy Q-rescaling destroys the study's subject matter); and
+`--maxtime`, which divides by Q and rescales every grid point with it.
 
 ---
 
@@ -448,15 +790,19 @@ as the swept variable.
 
 ## 7. Suggested order
 
-0. **W9 (constant-*N* sweep)** — needs no DRIFT code and tests the load-bearing claim directly: does
-   inferred TMR4A track the assumed Ne at ≈*N* generations? Do this first. If it holds, every later
-   result lands on prepared ground; if it doesn't, the whole critique needs rethinking before any
-   engine work is committed.
+0. **W9a (constant-*N* prior sweep)** — needs no DRIFT code and tests the load-bearing claim
+   directly: does inferred TMR4A track the assumed Ne at ≈*N* generations? Do this first. If it
+   holds, every later result lands on prepared ground; if it doesn't, the whole critique needs
+   rethinking before any engine work is committed. **It was NOT done first, and on 2026-09-20 that
+   became a problem rather than a missed optimisation** — `createdvar` has been run and written up
+   at `--popsize 10000`, so its headline depth cannot yet be separated from its prior. W9a is now a
+   correction, not a preliminary.
 1. **W1 + W2 (focal mode) + W5** — ground-truth TMR-*K*-A on ordinary diploid runs. Self-contained,
    publishable on its own, and validates the machinery before any created-allele modelling.
 2. **W3 + W4** — created alleles and germline heterogeneity; the distinctively creationist model.
-3. **W6 + W7 + W9 second axis** — the ARGweaver calibration, including structured-population runs
-   scored against DRIFT's true §6d Ne trajectory.
+3. **W6 + W7 + W9b** — the ARGweaver calibration: structured-population runs scored against
+   DRIFT's true §6d Ne trajectory, plus the deep-truth positive control that gives the export path a
+   known-deep case to be checked against. W6/W7 landed; W9b is open.
 4. **W2 breakpoint mode** — promote to the tskit substrate TODO §7 wants, unlocking genome-wide
    TMR-*K*-A instead of focal loci. **Promote this earlier if the memory measurement in §5 bites**:
    breakpoint mode plus after-the-fact mutation placement removes per-individual genomes from the
@@ -631,6 +977,57 @@ Years are converted to generations by the **realised** mean parent-to-child birt
 from the pedigree itself (`analysis.PedigreeGenerationTime`), not by the `generation_time`
 parameter, which is a reporting convenience and need not match what the life history did.
 
+#### The generation-time correction, applied to the archived runs 2026-09-21 — full record: `RESULTS_gentime_correction_20260921.md`
+
+The paragraph above is the design; it had **not** been applied to §§9.10–9.12, which were written
+before the measurement existed. Applying it moves every year-denominated depth and every
+inferred/truth ratio by exactly **1.72×, in the direction that strengthens the result.**
+
+**Three distinct errors, only the first of which was anticipated.**
+
+1. **The constant.** Years were generations × the declared **25**. The pedigree realises **43.04 y**
+   (createdvar, 17,786 edges) and **43.09 y** (ordinaryvarg, 17,958 edges) — agreeing to 0.1%,
+   because the two arms share a life history and differ only in `seed_style`.
+2. **The denominator.** "× the entire history" divided by 500 y. The founders' effective birth year
+   is **−100**, so the history is **600 y** — verified from the deepest point of the TMR-K-A
+   trajectory on both arms.
+3. **A unit mismatch in the truth join.** The truth CSV's `tmrka_gens_ago` is
+   `(sample_year − year)/25` — *pseudo*-generations — while `inferred_*_gen` is real ARGweaver
+   generations, so **every `inferred_over_truth` ratio divides real by pseudo.** Checked to
+   floating-point equality on all 21 loci. **This is why §9.14's "24 generations" is not 24
+   generations**: it is 600 years on a 25-year axis, against a real pedigree depth of 11.74 ± 0.97
+   (deepest ~14).
+
+| | as published | corrected |
+|---|---|---|
+| createdvar TMR-4-A | 319,157 y = 638× the history | **549,460 y = 916×** |
+| createdvar_excl TMR-4-A | 346,352 y = 693× | **596,279 y = 994×** |
+| createdvar K=12 inferred/true | 2.13× | **3.67×** |
+| ordinaryvar K=4 inferred/true | 4.41× | **7.61×** |
+
+**Two things do not move.** The **K=12 grid-adjacency claim survives** — 13.94 real generations still
+rounds to the nt30 grid point at 23.0, so the inferred 51.2 is still one grid step away; only the
+ratio beside it changes. And every **ratio of two inferred quantities** is immune: K4/K10, the
+allocation split, the zero-skip K, and TMR-4-A/TMR-1-A = 0.4523.
+
+**W9a's pre-registration is entirely immune**, which is why this was landed before the sweep
+returned rather than after: the slope is on depth in *generations* (and a constant factor moves an
+intercept, never a slope), the *N*=100 anchor is in generations, and the ratio, the allocation split
+and the 13b gate are all ratios. Writing the sweep up at 25 y would have meant redoing it.
+
+**It is a map, not a constant.** Generation 1 runs **184.75 y** (the founding couple reproducing
+across centuries at `lifespan` 650, `menopause` 0.9), 2 is 79.55, 3 is 56.24, settling to ~43 from
+generation 5; generations 12+ are right-censored and must not be read as the life history speeding
+up. Those 790 pre-plateau edges are 4.4% of the total **but are the deepest part of every
+genealogy**, so a flat constant mistimes exactly the oldest coalescences. Policy: truth-side depths
+through the bins map, depths past the real history at the 43.04 plateau, and **method error quoted
+in generations, where no constant is needed at all** — the preferred form, and the one that should
+lead: *ARGweaver returns 12,766 generations where the true genealogy is 14.*
+
+Corrected parses are new files (`*_k4_burnedin_gt43.csv` in cv500/cx500/ov500); the archives are
+untouched and `generation_time_source` still defaults to `declared`, so no existing CSV changes
+meaning.
+
 ### The result
 
 `RunTMRKAAnchor`, default settings (N=120, 6000-year burn-in, 24 sampled individuals ⇒ *n*=48
@@ -706,14 +1103,21 @@ heavy anchor tests cost ~38 s and ~16 s; the placement contrast skips under `-sh
 
 ## 8b. Not yet done, in the §7 order
 
-- **W9** (constant-*N* ARGweaver sweep) — needs no DRIFT code, but does need ARGweaver runs; it is
-  external tooling and run management, not an engine change. Still the highest-value next step.
+- **W9a** (the Ne-prior sweep) — needs no DRIFT code and no new simulation: re-runs `arg-sample` on
+  the existing `cv500` / `ov500` `.sites` at `--popsize` 10²–10⁵. **The highest-value next step,
+  and now a correction rather than an addition** — `createdvar` was run at `--popsize 10000` and its
+  319,158 y headline sits within 1.5× of the prior-only expectation, so Result 1 is confounded until
+  this sweep exists. ≈9 h per point, measured. See W9 for the scoring rule, fixed in advance.
+- **W9b** (the deep-truth positive control) — the missing cell: a DRIFT run whose *true* TMR-4-A is
+  genuinely deep, through the same W6/W7 export, scored against both a matched prior and the W9a
+  sweep. Validates the export pipeline against known-deep truth; only the mismatched-prior points
+  validate the instrument. Mid-scale (*N*≈10³) first — see the §5 Q-rescaling warning before costing
+  a full-scale run.
 - **`mutational_diffs` / `created_diffs`** — still `-1`. W4 supplies the created divergence, so
   these are now computable: they need a pass that counts, over sampled pairs, sequence differences
   attributable to created divergence versus to de-novo mutation. Small, and the natural companion to
   W6 — deliberately still not filled, because W6 emits sites and these are per-pair sequence counts.
-- **W7's parser** — ARGweaver output → inferred TMR-*K*-A, joined against W5 truth on `locus`. The
-  export half is done (§8d); this half needs a real ARGweaver run to be written against.
+- ~~**W7's parser**~~ — **LANDED** (`99690ff`, K-aware truth join `67917c6`). Both halves done.
 - **W2 breakpoint mode** — promote when the §5 memory measurement bites.
 
 ## 8d. Implementation record — W7's export half
