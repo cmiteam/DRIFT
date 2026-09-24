@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -128,6 +129,75 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Printf("\n  wrote %s\n", out)
+		return
+	}
+
+	// Haplotype clustering and the sampling bootstrap (TMR4A.md W9c stage 1).
+	// Standalone: reads an exported .sites file, groups the haplotype columns into
+	// divergence classes, then resamples individuals from the full export to get the
+	// distribution of class counts. Because the class count predicts the ARGweaver
+	// cliff position exactly (§9.12: 7 = 7 on createdvar), that distribution IS the
+	// distribution of cliff positions under resampling — with no MCMC at all.
+	if commands.ClusterSites != "" {
+		sample, err := analysis.LoadSitesWindow(commands.ClusterSites, commands.ClusterWindow)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Clustering failed: %v\n", err)
+			os.Exit(1)
+		}
+		// The default metric is the differing-SITE COUNT, not the fraction of window
+		// sites. A bigger sample emits more sites, so the fraction's denominator grows
+		// with n while the numerator does not — the count is identical in every file
+		// holding both haplotypes, and only the count puts n=40 and n=4,000 on one
+		// ruler. "fraction" selects the legacy metric that §9.12 used.
+		if commands.ClusterMetric == "sites" {
+			sample.SetScale(1)
+		} else if commands.ClusterMetric != "fraction" {
+			fmt.Fprintf(os.Stderr, "unknown -cluster-metric %q: want \"sites\" or \"fraction\"\n",
+				commands.ClusterMetric)
+			os.Exit(1)
+		}
+		// A negative threshold means "do not commit to a constant": use the
+		// parameter-free largest-gap cut. MinHeight keeps that rule from cutting at
+		// the gap between identical haplotypes and the first real merge, and its
+		// default has to follow the metric's units.
+		threshold := math.NaN()
+		if commands.ClusterThreshold >= 0 {
+			threshold = commands.ClusterThreshold
+		}
+		minHeight := commands.ClusterMinHeight
+		if minHeight < 0 {
+			minHeight = 0.01
+			if commands.ClusterMetric == "sites" {
+				minHeight = 10
+			}
+		}
+		res, err := analysis.RunBootstrap(sample, commands.ClusterSites, commands.ClusterWindow,
+			analysis.BootstrapOptions{
+				NIndividuals: commands.ClusterN,
+				Draws:        commands.ClusterDraws,
+				Seed:         commands.ClusterSeed,
+				Threshold:    threshold,
+				MinHeight:    minHeight,
+			})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Clustering failed: %v\n", err)
+			os.Exit(1)
+		}
+		analysis.PrintBootstrap(res)
+
+		prefix := commands.ClusterOut
+		if prefix == "" {
+			prefix = strings.TrimSuffix(commands.ClusterSites, ".sites") + "_haploclust"
+		}
+		written, err := analysis.WriteBootstrap(prefix, res)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error writing clustering CSVs: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println()
+		for _, p := range written {
+			fmt.Printf("  wrote %s\n", p)
+		}
 		return
 	}
 

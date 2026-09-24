@@ -57,6 +57,20 @@ type Config struct {
 	ARGweaverSMC         string
 	ARGweaverSMCOut      string
 	ARGweaverSMCIterPath bool
+
+	// Haplotype clustering + the sampling bootstrap (TMR4A.md W9c stage 1).
+	// ClusterSites is an exported `.sites` file; the clustering runs on the window
+	// 1..ClusterWindow bp so it measures the same object arg-sample was given via
+	// `--region`. Standalone: no model, no run, no ARGweaver. Empty = off.
+	ClusterSites     string
+	ClusterOut       string
+	ClusterWindow    int
+	ClusterN         int
+	ClusterDraws     int
+	ClusterSeed      int64
+	ClusterThreshold float64
+	ClusterMetric    string
+	ClusterMinHeight float64
 }
 
 // Default values for command-line parameters
@@ -169,6 +183,26 @@ func ParseCommandLine() *Config {
 			"\tthat put the iteration in a directory (.../2400/chr1.smc.gz)")
 
 	// Parse the command-line arguments
+	clusterSitesArg := flag.String("cluster-sites",
+		"", "Exported .sites file to cluster by pairwise divergence (TMR4A.md W9c stage 1)")
+	clusterOutArg := flag.String("cluster-out",
+		"", "Output prefix for the clustering CSVs (default: alongside the .sites file)")
+	clusterWindowArg := flag.Int("cluster-window",
+		2000000, "Cluster only sites at or below this bp position; 0 = the whole file")
+	clusterNArg := flag.Int("cluster-n",
+		20, "Individuals per bootstrap draw (20 = the study's vcf_sample_size)")
+	clusterDrawsArg := flag.Int("cluster-draws",
+		1000, "Number of bootstrap draws")
+	clusterSeedArg := flag.Int64("cluster-seed",
+		4242, "Seed for the resampling only; the realization is already fixed")
+	clusterThresholdArg := flag.Float64("cluster-threshold",
+		-1, "Single-linkage threshold; negative selects the parameter-free largest-gap cut")
+	clusterMetricArg := flag.String("cluster-metric",
+		"sites", "Distance unit: \"sites\" = differing-site count, comparable across sample "+
+			"sizes; \"fraction\" = fraction of window sites, the legacy metric")
+	clusterMinHeightArg := flag.Float64("cluster-min-height",
+		-1, "Smallest merge height the largest-gap rule may cut above; negative = per-metric default")
+
 	flag.Parse()
 
 	// If output-dir is specified, use it for results
@@ -216,5 +250,15 @@ func ParseCommandLine() *Config {
 		ARGweaverSMC:         *argweaverSMCArg,
 		ARGweaverSMCOut:      *argweaverSMCOutArg,
 		ARGweaverSMCIterPath: *argweaverSMCIterPathArg,
+
+		ClusterSites:     *clusterSitesArg,
+		ClusterOut:       *clusterOutArg,
+		ClusterWindow:    *clusterWindowArg,
+		ClusterN:         *clusterNArg,
+		ClusterDraws:     *clusterDrawsArg,
+		ClusterSeed:      *clusterSeedArg,
+		ClusterThreshold: *clusterThresholdArg,
+		ClusterMetric:    *clusterMetricArg,
+		ClusterMinHeight: *clusterMinHeightArg,
 	}
 }
