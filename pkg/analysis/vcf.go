@@ -121,6 +121,64 @@ func bitAt(words []uint64, p int) bool {
 	return (words[w]>>(uint(p)%64))&1 == 1
 }
 
+// hasPoolMutations reports whether an individual carries any de-novo mutation that
+// can actually be placed — i.e. one whose id resolves to a Mutation in MutationPool.
+// An id carried but unpooled has no Position (see buildMutationIndex), so it cannot
+// contribute a site and must not make an otherwise-empty individual look exportable.
+func hasPoolMutations(pop *core.Pop, id int) bool {
+	strands := pop.IndMutations[id]
+	for s := 0; s < 2; s++ {
+		for _, mid := range strands[s] {
+			if _, ok := pop.MutationPool[mid]; ok {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hasBitfield reports whether an individual has two allocated strand bitfields.
+// Absence is not an error: pop.Chromosomes[child] is only allocated when a parent
+// had set bits or presented a created germ cell (pkg/simulation/birth.go:123), so on
+// a POOL-ONLY run (init_heterozygosity = 0, no created alleles) NOBODY has one while
+// the mutation pool is full. Such an individual reads as ancestral at every founder
+// site, which is exactly right — it inherited no founder allele because there were
+// none to inherit.
+func hasBitfield(pop *core.Pop, id int) bool {
+	c, ok := pop.Chromosomes[id]
+	return ok && len(c) >= 2 && c[0] != nil && c[1] != nil
+}
+
+// exportSamples picks the individuals a genotype export can describe, preserving the
+// given (already sorted) id order so sample columns are stable. ONE definition shared
+// by ExportVCF and ExportARGweaver, because drift.go draws a single sample for both
+// and the two files are only joinable if they agree on who is in it.
+//
+// An individual qualifies on EITHER substrate: an allocated bitfield, or at least one
+// placeable pool mutation. Requiring the bitfield — as this did before — made a
+// pool-only run unexportable (ARGweaver errored with "no sampled individual has
+// tracked chromosomes"; the VCF wrote a sample-less header) even though every site it
+// needed was sitting in the pool. Worse, in the patchy case it silently DROPPED the
+// individuals with no founder alleles, biasing the sample while still producing a
+// well-formed file.
+//
+// withBitfield is how many of the returned samples have one, so a caller can skip the
+// founder-site walk entirely when the answer is none.
+func exportSamples(pop *core.Pop, ids []int) (samples []int, withBitfield int) {
+	samples = make([]int, 0, len(ids))
+	for _, id := range ids {
+		bf := hasBitfield(pop, id)
+		if !bf && !hasPoolMutations(pop, id) {
+			continue
+		}
+		if bf {
+			withBitfield++
+		}
+		samples = append(samples, id)
+	}
+	return samples, withBitfield
+}
+
 // ExportVCF writes the sampled individuals' genomes to a VCF v4.2 file in the
 // model's results directory and returns a summary. Pass a SAMPLE of ids (see
 // SampleIDs); individuals without tracked chromosomes are skipped. When
@@ -128,14 +186,8 @@ func bitAt(words []uint64, p int) bool {
 // see VCFOptions (vcf_merged.go) for the W6 merged-export and truth-annotation
 // switches. The zero VCFOptions reproduces the pre-W6 output byte for byte.
 func ExportVCF(model *core.Model, pop *core.Pop, ids []int, opts VCFOptions) (*VCFStats, error) {
-	// Keep only individuals that actually carry two strand copies, in the given
-	// (already sorted) id order, so the sample columns are stable.
-	samples := make([]int, 0, len(ids))
-	for _, id := range ids {
-		if c, ok := pop.Chromosomes[id]; ok && len(c) >= 2 && c[0] != nil && c[1] != nil {
-			samples = append(samples, id)
-		}
-	}
+	// Individuals this export can describe, on either substrate (see exportSamples).
+	samples, withBitfield := exportSamples(pop, ids)
 
 	run := model.FreeParameters["run"]
 	year := model.FreeParameters["year"]
@@ -220,20 +272,31 @@ func ExportVCF(model *core.Model, pop *core.Pop, ids []int, opts VCFOptions) (*V
 				}
 
 				// --- founder bitfield site ---
+				// Skipped wholesale on a pool-only run: with no bitfield anywhere there
+				// are no founder sites, and emitting one all-reference record per genome
+				// bit under IncludeFixed would bury the pool records under millions of
+				// monomorphic rows.
 				ac := 0
 				gt = gt[:0]
-				for si, id := range samples {
-					c := pop.Chromosomes[id]
-					a0, a1 := bitAt(c[0], bit), bitAt(c[1], bit)
-					gt = appendSample(gt, a0, a1, fl, si)
-					if a0 {
-						ac++
-					}
-					if a1 {
-						ac++
+				if withBitfield > 0 {
+					for si, id := range samples {
+						// A sample with no allocated bitfield reads as ancestral here; it
+						// inherited no founder allele. bitAt already tolerates a short
+						// slice, so only the c[0]/c[1] indexing needs the length guard.
+						a0, a1 := false, false
+						if c := pop.Chromosomes[id]; len(c) >= 2 {
+							a0, a1 = bitAt(c[0], bit), bitAt(c[1], bit)
+						}
+						gt = appendSample(gt, a0, a1, fl, si)
+						if a0 {
+							ac++
+						}
+						if a1 {
+							ac++
+						}
 					}
 				}
-				if opts.IncludeFixed || (ac != 0 && ac != an) {
+				if withBitfield > 0 && (opts.IncludeFixed || (ac != 0 && ac != an)) {
 					recID := "."
 					if mutIdx != nil {
 						recID = "F" + strconv.Itoa(bit)
